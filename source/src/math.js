@@ -1,6 +1,6 @@
 // math.js: Mathe, Noise, Flussverlauf und Mat4
 // --- Math & Noise Utilities ---
-const LOOP_LENGTH = 360.0;
+const LOOP_LENGTH = 480.0;
 
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -34,16 +34,39 @@ function fbm2(x, y, octaves = 4) {
   return val / norm;
 }
 
-// Winding river spline along negative Z
+// Gewundener Fluss entlang -Z. Alle Frequenzen sind Vielfache von 2*PI/LOOP_LENGTH,
+// dadurch schließt die Strecke nahtlos an ihren Anfang an.
+const KZ = (Math.PI * 2.0) / LOOP_LENGTH;
+function wrapZ(z) {
+  return -((((-z) % LOOP_LENGTH) + LOOP_LENGTH) % LOOP_LENGTH);
+}
 function riverCenterX(z) {
-  return Math.sin(z * 0.022) * 7.5 + Math.cos(z * 0.009) * 4.2;
+  return Math.sin(z * KZ * 2.0) * 7.5 + Math.cos(z * KZ) * 4.2 + Math.sin(z * KZ * 3.0 + 1.3) * 1.6;
 }
 function riverSlopeX(z) {
   const eps = 0.5;
   return (riverCenterX(z + eps) - riverCenterX(z - eps)) / (2.0 * eps);
 }
 function riverHalfWidth(z) {
-  return 5.4 + Math.sin(z * 0.035 + 1.1) * 1.4;
+  return 5.6 + Math.sin(z * KZ * 4.0 + 1.1) * 1.3;
+}
+// fbm, die in z periodisch über die Schleifenlänge ist (Überblendung zweier Abtastungen)
+function pnoise(x, z, scale, octaves) {
+  z = wrapZ(z);
+  const s = -z / LOOP_LENGTH;
+  return lerp(fbm2(x * scale, z * scale, octaves), fbm2(x * scale, (z + LOOP_LENGTH) * scale, octaves), s);
+}
+// Höhe des Talbodens an (x, z), identisch mit dem Terrain-Mesh
+function terrainHeight(x, z) {
+  const cx = riverCenterX(z);
+  const hw = riverHalfWidth(z);
+  const ax = Math.abs(x - cx);
+  const d = Math.max(0.0, ax - hw);
+  const riverDip = -1.35 * (1.0 - smoothstep(0.0, hw * 1.12, ax));
+  const bankRise = Math.pow(d / 15.0, 1.4) * 5.2;
+  const ridge = smoothstep(20.0, 52.0, d) * (3.0 + 6.0 * pnoise(x, z, 0.04, 3));
+  const undulation = (pnoise(x, z, 0.16, 3) - 0.5) * 0.8 * smoothstep(0.5, 4.0, d);
+  return riverDip + bankRise + ridge + undulation;
 }
 
 // Mat4 helpers (column-major)

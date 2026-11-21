@@ -133,31 +133,52 @@ function uploadStaticMesh(glCtx, builder) {
 
 // Instance buffer layout per instance:
 // mat4 (16 floats) + tint vec4 (4 floats) = 20 floats
-function uploadInstancedMesh(glCtx, builder, matsArray, tintsArray) {
+// Die Instanzen werden nach z sortiert. So lässt sich beim Zeichnen nur der Abschnitt der Strecke
+// auswählen, den die Kamera gerade sehen kann (siehe drawInstancedRange).
+function uploadInstancedMesh(glCtx, builder, matsArray, tintsArray, margin = 6.0) {
   const base = uploadStaticMesh(glCtx, builder);
   const count = tintsArray.length / 4;
+  const order = Array.from({ length: count }, (_, i) => i).sort((a, b) => matsArray[b * 16 + 14] - matsArray[a * 16 + 14]);
   const instData = new Float32Array(count * 20);
-  for (let i = 0; i < count; i++) {
-    instData.set(matsArray.subarray(i * 16, i * 16 + 16), i * 20);
-    instData.set(tintsArray.subarray(i * 4, i * 4 + 4), i * 20 + 16);
-  }
+  const zs = new Float32Array(count);
+  order.forEach((src, i) => {
+    instData.set(matsArray.subarray(src * 16, src * 16 + 16), i * 20);
+    instData.set(tintsArray.subarray(src * 4, src * 4 + 4), i * 20 + 16);
+    zs[i] = matsArray[src * 16 + 14];
+  });
 
   glCtx.bindVertexArray(base.vao);
   const instBuf = glCtx.createBuffer();
   glCtx.bindBuffer(glCtx.ARRAY_BUFFER, instBuf);
   glCtx.bufferData(glCtx.ARRAY_BUFFER, instData, glCtx.STATIC_DRAW);
-
-  const instStride = 20 * 4;
-  for (let col = 0; col < 4; col++) {
-    const loc = 5 + col;
+  for (let loc = 5; loc <= 9; loc++) {
     glCtx.enableVertexAttribArray(loc);
-    glCtx.vertexAttribPointer(loc, 4, glCtx.FLOAT, false, instStride, col * 16);
     glCtx.vertexAttribDivisor(loc, 1);
   }
-  glCtx.enableVertexAttribArray(9);
-  glCtx.vertexAttribPointer(9, 4, glCtx.FLOAT, false, instStride, 64);
-  glCtx.vertexAttribDivisor(9, 1);
-
   glCtx.bindVertexArray(null);
-  return { vao: base.vao, indexCount: base.indexCount, instanceCount: count };
+  return { vao: base.vao, indexCount: base.indexCount, instanceCount: count, instBuf, zs, margin };
+}
+
+// zs ist absteigend sortiert (0 ... -LOOP_LENGTH): erster Index mit zs[i] <= z
+function lowerIndex(zs, z) {
+  let lo = 0, hi = zs.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (zs[mid] > z) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// Zeichnet nur die Instanzen mit zMin <= z <= zMax
+function drawInstancedRange(glCtx, grp, zMin, zMax) {
+  const first = lowerIndex(grp.zs, zMax + grp.margin);
+  const last = lowerIndex(grp.zs, zMin - grp.margin);
+  const n = last - first;
+  if (n <= 0) return;
+  glCtx.bindVertexArray(grp.vao);
+  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, grp.instBuf);
+  const stride = 80, base = first * stride;
+  for (let col = 0; col < 4; col++) glCtx.vertexAttribPointer(5 + col, 4, glCtx.FLOAT, false, stride, base + col * 16);
+  glCtx.vertexAttribPointer(9, 4, glCtx.FLOAT, false, stride, base + 64);
+  glCtx.drawElementsInstanced(glCtx.TRIANGLES, grp.indexCount, glCtx.UNSIGNED_INT, 0, n);
 }

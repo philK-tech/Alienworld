@@ -2,28 +2,21 @@
 // --- Procedural Meshes ---
 function buildValleyTerrainMesh() {
   const b = createGeometryBuilder();
-  const segX = 110;
-  const segZ = 220;
-  const spanX = 96.0;
+  const segX = 150;
+  const segZ = Math.round(LOOP_LENGTH);
+  const spanX = 120.0;
   for (let iz = 0; iz <= segZ; iz++) {
-    const vz = iz / segZ;
-    const z = -vz * LOOP_LENGTH;
+    const z = -(iz / segZ) * LOOP_LENGTH;
     const cx = riverCenterX(z);
     const hw = riverHalfWidth(z);
     for (let ix = 0; ix <= segX; ix++) {
-      const vx = ix / segX;
-      const localX = (vx * 2.0 - 1.0) * spanX;
+      // Spalten nahe am Fluss dichter, weit draußen gröber
+      const u = (ix / segX) * 2.0 - 1.0;
+      const localX = Math.sign(u) * Math.pow(Math.abs(u), 1.7) * spanX;
       const x = cx + localX;
+      const y = terrainHeight(x, z);
       const distFromRiver = Math.max(0.0, Math.abs(localX) - hw);
-
-      // Riverbed dips to -1.25; banks rise gently with mossy terraces & low distant ridges
-      const riverDip = -1.25 * (1.0 - smoothstep(0.0, hw * 1.12, Math.abs(localX)));
-      const bankRise = Math.pow(distFromRiver / 16.0, 1.35) * 4.4;
-      const lowRidge = smoothstep(22.0, 48.0, distFromRiver) * (2.2 + 3.4 * fbm2(x * 0.045, z * 0.045, 3));
-      const undulation = (fbm2(x * 0.14, z * 0.14, 3) - 0.5) * 0.65 * smoothstep(0.5, 4.0, distFromRiver);
-      const y = riverDip + bankRise + lowRidge + undulation;
-
-      const emMask = smoothstep(0.4, 2.2, distFromRiver) * (1.0 - smoothstep(8.0, 18.0, distFromRiver));
+      const emMask = smoothstep(0.2, 1.6, distFromRiver) * (1.0 - smoothstep(14.0, 30.0, distFromRiver));
       b.pushVertex(x, y, z, 0, 1, 0, x * 0.18, z * 0.18, 0.85, emMask, 0.0, 0);
     }
   }
@@ -31,10 +24,7 @@ function buildValleyTerrainMesh() {
   for (let iz = 0; iz < segZ; iz++) {
     for (let ix = 0; ix < segX; ix++) {
       const a = iz * row + ix;
-      const c = a + 1;
-      const d = a + row;
-      const e = d + 1;
-      b.pushQuad(a, c, e, d);
+      b.pushQuad(a, a + 1, a + row + 1, a + row);
     }
   }
   b.computeSmoothNormals();
@@ -43,28 +33,25 @@ function buildValleyTerrainMesh() {
 
 function buildWaterSurfaceMesh() {
   const b = createGeometryBuilder();
-  const segX = 44;
-  const segZ = 220;
-  const spanX = 24.0;
+  const segX = 64;
+  const segZ = Math.round(LOOP_LENGTH / 1.5);
+  const spanX = 16.0;
   for (let iz = 0; iz <= segZ; iz++) {
-    const vz = iz / segZ;
-    const z = -vz * LOOP_LENGTH;
+    const z = -(iz / segZ) * LOOP_LENGTH;
     const cx = riverCenterX(z);
     for (let ix = 0; ix <= segX; ix++) {
       const vx = ix / segX;
       const x = cx + (vx * 2.0 - 1.0) * spanX;
-      const edgeMask = 1.0 - Math.pow(Math.abs(vx * 2.0 - 1.0), 3.0);
-      b.pushVertex(x, 0.0, z, 0, 1, 0, vx, vz * 45.0, edgeMask, 0.0, 0.0, 1);
+      // e0: Nähe zum Ufer (Terrain knapp unter der Wasserlinie) für leuchtenden Uferschaum
+      const shore = smoothstep(-0.7, 0.05, terrainHeight(x, z));
+      b.pushVertex(x, 0.0, z, 0, 1, 0, vx, z, shore, 0.0, 0.0, 1);
     }
   }
   const row = segX + 1;
   for (let iz = 0; iz < segZ; iz++) {
     for (let ix = 0; ix < segX; ix++) {
       const a = iz * row + ix;
-      const c = a + 1;
-      const d = a + row;
-      const e = d + 1;
-      b.pushQuad(a, c, e, d);
+      b.pushQuad(a, a + 1, a + row + 1, a + row);
     }
   }
   return b;
@@ -103,8 +90,8 @@ function buildSkyDomeMesh() {
 
 function buildRockCliffMesh() {
   const b = createGeometryBuilder();
-  const rings = 20;
-  const sectors = 24;
+  const rings = 28;
+  const sectors = 32;
   for (let ir = 0; ir <= rings; ir++) {
     const v = ir / rings;
     const strata = 1.0 + 0.17 * Math.sin(v * Math.PI * 8.0) + 0.08 * Math.cos(v * Math.PI * 16.0);
@@ -113,7 +100,7 @@ function buildRockCliffMesh() {
     for (let is = 0; is <= sectors; is++) {
       const u = is / sectors;
       const ang = u * Math.PI * 2.0;
-      const nA = fbm2(Math.cos(ang) * 2.5 + v * 4.0, Math.sin(ang) * 2.5 + 3.7, 3);
+      const nA = fbm2(Math.cos(ang) * 2.5 + v * 4.0, Math.sin(ang) * 2.5 + 3.7, 5);
       const jag = 0.72 + 0.44 * nA;
       const rx = Math.cos(ang) * radius * jag;
       const rz = Math.sin(ang) * radius * jag * 0.88;
@@ -132,7 +119,7 @@ function buildRockCliffMesh() {
       b.pushQuad(a, c, e, d);
     }
   }
-  b.computeFacetedNormals();
+  b.computeSmoothNormals();
   return b;
 }
 
@@ -176,49 +163,76 @@ function buildWaterfallCliffHousingMesh() {
       b.pushQuad(a, c, e, d);
     }
   }
-  b.computeFacetedNormals();
+  b.computeSmoothNormals();
   return b;
 }
 
 function buildFloatingMountainMesh() {
   const b = createGeometryBuilder();
-  const rings = 22;
-  const sectors = 32;
-  // v=0 is pointed inverted cone bottom; v=0.68 is broad plateau; v=1 is rounded mossy cap
+  const rings = 40;
+  const sectors = 56;
+  // v=0 ist die hängende Spitze unten, v=0.7 das breite Plateau, v=1 die bemooste Kuppe
+  const ringStart = [];
   for (let ir = 0; ir <= rings; ir++) {
     const v = ir / rings;
     let radius, y;
-    if (v < 0.68) {
-      const t = v / 0.68;
-      radius = Math.pow(t, 0.78);
-      y = (t - 0.68) * 0.85;
+    if (v < 0.7) {
+      const t = v / 0.7;
+      radius = Math.pow(t, 0.72);
+      y = (t - 0.7) * 0.95;
     } else {
-      const t = (v - 0.68) / 0.32;
-      radius = Math.cos(t * Math.PI * 0.46);
-      y = t * 0.32;
+      const t = (v - 0.7) / 0.3;
+      radius = Math.cos(t * Math.PI * 0.47);
+      y = t * 0.34;
     }
+    ringStart.push(b.positions.length / 3);
     for (let is = 0; is <= sectors; is++) {
       const u = is / sectors;
       const ang = u * Math.PI * 2.0;
-      const n = fbm2(Math.cos(ang) * 2.6 + v * 3.4, Math.sin(ang) * 2.6 + 8.2, 4);
-      const jag = 0.68 + 0.48 * n;
-      const rx = Math.cos(ang) * radius * jag;
-      const rz = Math.sin(ang) * radius * jag * 0.86;
-      const glow = smoothstep(0.55, 0.9, n) * (1.0 - smoothstep(0.68, 1.0, v)) * 0.65;
-      b.pushVertex(rx, y, rz, rx, y + 0.2, rz, u * 3.0, v * 3.0, 0.4 + 0.6 * v, glow, 0.0, 2);
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const n = fbm2(ca * 2.2 + v * 3.0, sa * 2.2 + 8.2, 5);
+      const strata = 1.0 + 0.06 * Math.sin(v * 70.0 + n * 6.0);
+      const jag = (0.62 + 0.58 * n) * strata;
+      const rx = ca * radius * jag;
+      const rz = sa * radius * jag * 0.86;
+      const glow = smoothstep(0.55, 0.85, n) * 0.6;
+      b.pushVertex(rx, y, rz, rx, y + 0.2, rz, u * 4.0, v * 4.0, 0.35 + 0.65 * v, glow, 0.0, 2);
     }
   }
   const row = sectors + 1;
   for (let ir = 0; ir < rings; ir++) {
     for (let is = 0; is < sectors; is++) {
       const a = ir * row + is;
-      const c = a + 1;
-      const d = a + row;
-      const e = d + 1;
-      b.pushQuad(a, c, e, d);
+      b.pushQuad(a, a + 1, a + row + 1, a + row);
     }
   }
-  b.computeFacetedNormals();
+  b.computeSmoothNormals();
+
+  // Lianen, die von der Unterseite herabhängen (eigene Material-ID 16)
+  for (let i = 0; i < 46; i++) {
+    const ang = hash2(i, 3.3) * Math.PI * 2.0;
+    const v = 0.35 + hash2(i, 4.4) * 0.32;
+    const t = v / 0.7;
+    const rad = Math.pow(t, 0.72) * 0.8;
+    const x0 = Math.cos(ang) * rad, z0 = Math.sin(ang) * rad * 0.86;
+    const y0 = (t - 0.7) * 0.95;
+    const len = 0.25 + hash2(i, 5.5) * 0.7;
+    const w = 0.006 + hash2(i, 6.6) * 0.006;
+    const nx = -Math.sin(ang), nz = Math.cos(ang);
+    const segs = 10;
+    const startIdx = b.positions.length / 3;
+    for (let sgi = 0; sgi <= segs; sgi++) {
+      const st = sgi / segs;
+      const y = y0 - st * len;
+      const curl = Math.sin(st * 4.0 + i) * 0.03 * st;
+      b.pushVertex(x0 - nx * w + curl, y, z0 - nz * w, nx, 0, nz, 0, st * len * 30.0, 1.0, st, 1.0 + st, 16);
+      b.pushVertex(x0 + nx * w + curl, y, z0 + nz * w, nx, 0, nz, 1, st * len * 30.0, 1.0, st, 1.0 + st, 16);
+    }
+    for (let sgi = 0; sgi < segs; sgi++) {
+      const a = startIdx + sgi * 2;
+      b.pushQuad(a, a + 1, a + 3, a + 2);
+    }
+  }
   return b;
 }
 
@@ -260,7 +274,7 @@ function buildStoneArchMesh() {
       b.pushQuad(a, c, e, d);
     }
   }
-  b.computeFacetedNormals();
+  b.computeSmoothNormals();
   return b;
 }
 
@@ -336,84 +350,143 @@ function buildPlungeRippleMesh() {
 
 function buildJungleTreeMesh() {
   const b = createGeometryBuilder();
-  const trunkRings = 14;
-  const trunkSectors = 12;
+  // Stamm mit Brettwurzeln, leicht gebogen. Skaliert wird mit [r, h, r].
+  const trunkRings = 22;
+  const trunkSectors = 16;
+  const trunkCenter = (v) => [Math.sin(v * Math.PI * 1.35) * 0.3, Math.cos(v * Math.PI * 1.1) * 0.22 - 0.22];
   for (let ir = 0; ir <= trunkRings; ir++) {
     const v = ir / trunkRings;
-    const rootFlare = 1.0 + 1.8 * Math.pow(1.0 - v, 3.2);
-    const rad = lerp(0.42, 0.13, v) * rootFlare;
-    const bendX = Math.sin(v * Math.PI * 1.35) * 0.32;
-    const bendZ = Math.cos(v * Math.PI * 1.1) * 0.24;
-    const y = v * 1.0;
+    const rootFlare = 1.0 + 2.4 * Math.pow(1.0 - v, 4.0);
+    const rad = lerp(0.42, 0.16, Math.pow(v, 0.8)) * rootFlare;
+    const [bx, bz] = trunkCenter(v);
     for (let is = 0; is <= trunkSectors; is++) {
       const u = is / trunkSectors;
       const ang = u * Math.PI * 2.0;
-      const buttress = 1.0 + 0.42 * Math.cos(ang * 5.0) * Math.pow(1.0 - v, 2.0);
-      const px = bendX + Math.cos(ang) * rad * buttress;
-      const pz = bendZ + Math.sin(ang) * rad * buttress;
-      const sapVein = smoothstep(0.75, 0.97, Math.sin(ang * 3.0 + v * 10.0)) * 0.45;
-      b.pushVertex(px, y, pz, Math.cos(ang), 0.15, Math.sin(ang), u * 2.0, v * 5.0, 0.42 + 0.48 * v, sapVein, v * 0.3, 5);
+      const buttress = 1.0 + 0.6 * Math.pow(Math.max(0.0, Math.cos(ang * 5.0)), 3.0) * Math.pow(1.0 - v, 3.0);
+      const px = bx + Math.cos(ang) * rad * buttress;
+      const pz = bz + Math.sin(ang) * rad * buttress;
+      b.pushVertex(px, v - 0.04, pz, Math.cos(ang), 0.15, Math.sin(ang), u * 2.0, v * 5.0, 0.3 + 0.6 * v, 1.0, v * 0.3, 5);
     }
   }
   const row = trunkSectors + 1;
   for (let ir = 0; ir < trunkRings; ir++) {
     for (let is = 0; is < trunkSectors; is++) {
       const a = ir * row + is;
-      const c = a + 1;
-      const d = a + row;
-      const e = d + 1;
-      b.pushQuad(a, c, e, d);
+      b.pushQuad(a, a + 1, a + row + 1, a + row);
     }
   }
 
+  // Blätterdach aus breiten, nach unten hängenden Blättern in mehreren Etagen
+  const [topX, topZ] = trunkCenter(1.0);
   const tiers = [
-    { y: 0.84, r: 1.62, h: 0.18 },
-    { y: 0.94, r: 1.28, h: 0.16 },
-    { y: 1.02, r: 0.85, h: 0.12 }
+    { y: 0.80, n: 9, len: 2.9, w: 0.95 },
+    { y: 0.90, n: 8, len: 2.3, w: 0.85 },
+    { y: 0.98, n: 6, len: 1.6, w: 0.7 }
   ];
-  for (const tier of tiers) {
-    const baseIdx = b.positions.length / 3;
-    const cSectors = 16;
-    b.pushVertex(0.14, tier.y + tier.h, 0.1, 0, 1, 0, 0.5, 0.5, 0.85, 0.18, 0.95, 6);
-    for (let is = 0; is <= cSectors; is++) {
-      const ang = (is / cSectors) * Math.PI * 2.0;
-      const leafWave = 0.82 + 0.24 * Math.sin(ang * 6.0);
-      const px = 0.14 + Math.cos(ang) * tier.r * leafWave;
-      const pz = 0.1 + Math.sin(ang) * tier.r * leafWave;
-      const py = tier.y - 0.04 * Math.sin(ang * 4.0);
-      b.pushVertex(px, py, pz, Math.cos(ang) * 0.5, 0.85, Math.sin(ang) * 0.5, Math.cos(ang) * 0.5 + 0.5, Math.sin(ang) * 0.5 + 0.5, 0.45, 0.3, 1.0, 6);
+  tiers.forEach((tier, ti) => {
+    for (let k = 0; k < tier.n; k++) {
+      const ang = (k / tier.n) * Math.PI * 2.0 + ti * 0.7 + hash2(k, ti) * 0.4;
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const len = tier.len * (0.8 + hash2(k, ti + 7.0) * 0.4);
+      const segL = 7, segW = 2;
+      const base = b.positions.length / 3;
+      for (let i = 0; i <= segL; i++) {
+        const t = i / segL;
+        const r = 0.15 + t * len;
+        const droop = 0.03 * Math.sin(t * Math.PI) - t * t * 0.09;
+        const halfW = Math.pow(Math.sin(Math.min(t * 1.15, 1.0) * Math.PI), 0.7) * tier.w * 0.5 + 0.02;
+        for (let j = 0; j <= segW; j++) {
+          const s2 = j / segW * 2.0 - 1.0;
+          const crease = (1.0 - Math.abs(s2)) * 0.012;
+          const px = topX + ca * r - sa * s2 * halfW;
+          const pz = topZ + sa * r + ca * s2 * halfW;
+          b.pushVertex(px, tier.y + droop + crease, pz, 0, 1, 0, j / segW, t, 0.55 + 0.3 * t, 0.0, 0.4 + t * 0.6, 6);
+        }
+      }
+      for (let i = 0; i < segL; i++) {
+        for (let j = 0; j < segW; j++) {
+          const a = base + i * (segW + 1) + j;
+          b.pushQuad(a, a + 1, a + segW + 2, a + segW + 1);
+        }
+      }
     }
-    for (let is = 0; is < cSectors; is++) {
-      b.pushTri(baseIdx, baseIdx + 1 + is, baseIdx + 2 + is);
-    }
-  }
+  });
 
-  // Hanging glowing willow tendrils
-  const vineCount = 14;
-  const vineSegs = 6;
+  // Leuchtende Lianen, die aus dem Blätterdach hängen (Material 14)
+  const vineCount = 16;
   for (let vc = 0; vc < vineCount; vc++) {
-    const ang = (vc / vineCount) * Math.PI * 2.0 + 0.25;
-    const rRim = 1.05 + (vc % 3) * 0.22;
-    const vx = 0.14 + Math.cos(ang) * rRim;
-    const vz = 0.1 + Math.sin(ang) * rRim;
-    const vLen = 0.22 + (vc % 4) * 0.06;
-    const nx = -Math.sin(ang);
-    const nz = Math.cos(ang);
+    const ang = hash2(vc, 41.0) * Math.PI * 2.0;
+    const rRim = 0.4 + hash2(vc, 42.0) * 2.3;
+    const vx = topX + Math.cos(ang) * rRim;
+    const vz = topZ + Math.sin(ang) * rRim;
+    const vy = 0.86 - rRim * 0.025;
+    const vLen = 0.12 + hash2(vc, 43.0) * 0.42;
+    const nx = -Math.sin(ang), nz = Math.cos(ang);
+    const vineSegs = 10;
     const startIdx = b.positions.length / 3;
-    for (let s = 0; s <= vineSegs; s++) {
-      const t = s / vineSegs;
-      const w = lerp(0.02, 0.005, t);
-      const py = 0.84 - t * vLen;
-      const tipGlow = smoothstep(0.25, 1.0, t) * 1.2;
-      b.pushVertex(vx - nx * w, py, vz - nz * w, nx, 0, nz, 0, t, 0.9, tipGlow, 0.85 + t * 0.75, 6);
-      b.pushVertex(vx + nx * w, py, vz + nz * w, nx, 0, nz, 1, t, 0.9, tipGlow, 0.85 + t * 0.75, 6);
+    for (let sgi = 0; sgi <= vineSegs; sgi++) {
+      const t = sgi / vineSegs;
+      const w = lerp(0.018, 0.008, t);
+      const py = vy - t * vLen;
+      b.pushVertex(vx - nx * w, py, vz - nz * w, nx, 0, nz, 0, t * vLen * 40.0, 0.9, t, 1.0 + t, 14);
+      b.pushVertex(vx + nx * w, py, vz + nz * w, nx, 0, nz, 1, t * vLen * 40.0, 0.9, t, 1.0 + t, 14);
     }
-    for (let s = 0; s < vineSegs; s++) {
-      const a = startIdx + s * 2;
+    for (let sgi = 0; sgi < vineSegs; sgi++) {
+      const a = startIdx + sgi * 2;
       b.pushQuad(a, a + 1, a + 3, a + 2);
     }
   }
 
+  b.computeSmoothNormals();
+  return b;
+}
+
+// Großblättrige Bodenpflanze mit leuchtenden Blattadern (Material 13)
+function buildBroadLeafPlantMesh() {
+  const b = createGeometryBuilder();
+  const leaves = 7;
+  for (let l = 0; l < leaves; l++) {
+    const ang = (l / leaves) * Math.PI * 2.0 + hash2(l, 2.0) * 0.5;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const stemLen = 0.25 + hash2(l, 3.0) * 0.25;
+    const rise = 0.35 + hash2(l, 4.0) * 0.45;
+    const bladeLen = 0.75 + hash2(l, 5.0) * 0.4;
+    const bladeW = 0.42 + hash2(l, 6.0) * 0.12;
+    const segL = 8, segW = 4;
+    const base = b.positions.length / 3;
+    for (let i = 0; i <= segL; i++) {
+      const t = i / segL;
+      const r = stemLen + t * bladeLen;
+      const y = rise + Math.sin(t * Math.PI * 0.6) * 0.18 - t * t * 0.42;
+      const halfW = Math.pow(Math.sin(Math.min(t * 1.25 + 0.05, 1.0) * Math.PI * 0.5 + (t > 0.8 ? 0 : 0)), 0.6) * bladeW * 0.5 * (1.0 - Math.pow(t, 3.0));
+      for (let j = 0; j <= segW; j++) {
+        const s2 = j / segW * 2.0 - 1.0;
+        const cup = -s2 * s2 * 0.06;
+        b.pushVertex(ca * r - sa * s2 * halfW, y + cup, sa * r + ca * s2 * halfW, 0, 1, 0, j / segW, t, 0.6 + 0.4 * t, 1.0, 0.3 + t * 0.7, 13);
+      }
+    }
+    for (let i = 0; i < segL; i++) {
+      for (let j = 0; j < segW; j++) {
+        const a = base + i * (segW + 1) + j;
+        b.pushQuad(a, a + 1, a + segW + 2, a + segW + 1);
+      }
+    }
+    // Stiel
+    const sBase = b.positions.length / 3;
+    const segS = 4;
+    for (let i = 0; i <= segS; i++) {
+      const t = i / segS;
+      const r = t * stemLen;
+      const y = Math.sin(t * Math.PI * 0.5) * rise;
+      const w = 0.025;
+      b.pushVertex(ca * r + sa * w, y, sa * r - ca * w, 0, 1, 0, 0.45, -1.0, 0.5, 0.4, t * 0.3, 13);
+      b.pushVertex(ca * r - sa * w, y, sa * r + ca * w, 0, 1, 0, 0.55, -1.0, 0.5, 0.4, t * 0.3, 13);
+    }
+    for (let i = 0; i < segS; i++) {
+      const a = sBase + i * 2;
+      b.pushQuad(a, a + 1, a + 3, a + 2);
+    }
+  }
   b.computeSmoothNormals();
   return b;
 }
@@ -647,8 +720,8 @@ function buildCanopyJellyfishMesh() {
 function buildLightShaftMesh() {
   const b = createGeometryBuilder();
   const segs = 16;
-  const topR = 0.55;
-  const botR = 2.4;
+  const topR = 0.35;
+  const botR = 1.6;
   const h = 16.0;
   for (let iy = 0; iy <= 1; iy++) {
     const v = iy;
