@@ -34,7 +34,7 @@ function updateChapterLabel(zMod) {
   if (zMod > LOOP_LENGTH / 3 && zMod <= (LOOP_LENGTH * 2) / 3) {
     label = "Kronendach der Violetten Quallenpilze";
   } else if (zMod > (LOOP_LENGTH * 2) / 3) {
-    label = "Lagune der Schwebenden Hallelujah-Berge";
+    label = "Lagune der Schwebenden Berge";
   }
   if (chapterEl.textContent !== label) {
     chapterEl.textContent = label;

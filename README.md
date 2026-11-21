@@ -1,4 +1,4 @@
-# EYWA // Pandora Night Ride
+# Alienworld
 
 Eine nächtliche Fahrt durch eine leuchtende Schlucht mit Wasserfällen, Riesenpilzen und Quallen. Alles wird per Code erzeugt (WebGL2), ohne Bilder, Modelle oder Sounddateien.
 

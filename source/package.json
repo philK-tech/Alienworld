@@ -1,7 +1,7 @@
 {
-  "name": "pandora-themepark",
+  "name": "alienworld",
   "private": true,
-  "description": "EYWA // Pandora Night Ride: prozedurale WebGL2-Fahrt, gebündelt in eine HTML-Datei",
+  "description": "Alienworld: prozedurale WebGL2-Fahrt, gebündelt in eine HTML-Datei",
   "type": "module",
   "scripts": {
     "build": "node build.mjs"
