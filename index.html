@@ -1,0 +1,2255 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EYWA // PANDORA NIGHT RIDE</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #02050c;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #dff8ff;
+      user-select: none;
+    }
+    canvas#scene {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #hud-top {
+      position: fixed;
+      top: 14px;
+      left: 16px;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      opacity: 0.88;
+      transition: opacity 0.6s ease;
+    }
+    #hud-top .title {
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #6ceeff;
+      text-shadow: 0 0 12px rgba(56, 224, 255, 0.45);
+    }
+    #hud-top .chapter {
+      font-size: 12px;
+      color: rgba(215, 244, 255, 0.78);
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
+    }
+    #hud-pill {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: rgba(6, 13, 26, 0.62);
+      border: 1px solid rgba(110, 232, 255, 0.22);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+    }
+    button.pill-btn {
+      appearance: none;
+      border: none;
+      background: rgba(25, 195, 235, 0.16);
+      color: #dcf8ff;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 5px 11px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.12s ease;
+    }
+    button.pill-btn:hover {
+      background: rgba(45, 215, 255, 0.3);
+    }
+    button.pill-btn:active {
+      transform: scale(0.96);
+    }
+    button.pill-btn.muted {
+      opacity: 0.55;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    #err-banner {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 20;
+      max-width: 520px;
+      padding: 18px 22px;
+      border-radius: 10px;
+      background: rgba(18, 8, 16, 0.92);
+      border: 1px solid rgba(255, 110, 150, 0.5);
+      color: #ffd6e2;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="hud-top">
+    <div class="title">EYWA // PANDORA NIGHT RIDE</div>
+    <div class="chapter" id="chapter-label">Schlucht der Leuchtenden Wasserfälle</div>
+  </div>
+  <div id="hud-pill">
+    <button class="pill-btn" id="btn-toggle" title="Leertaste">Stop</button>
+    <button class="pill-btn muted" id="btn-audio" title="M">Ton Aus</button>
+  </div>
+  <div id="err-banner"></div>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const canvas = document.getElementById("scene");
+    const errBanner = document.getElementById("err-banner");
+    const chapterEl = document.getElementById("chapter-label");
+    const btnToggle = document.getElementById("btn-toggle");
+    const btnAudio = document.getElementById("btn-audio");
+
+    function showError(msg) {
+      errBanner.style.display = "block";
+      errBanner.textContent = msg;
+    }
+
+    const gl = canvas.getContext("webgl2", { antialias: false, powerPreference: "high-performance" });
+    if (!gl) {
+      showError("WebGL2 wird von diesem Browser/Gerät nicht unterstützt.");
+      return;
+    }
+
+    // --- Math & Noise Utilities ---
+    const LOOP_LENGTH = 360.0;
+
+    function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function smoothstep(e0, e1, x) {
+      const t = clamp01((x - e0) / (e1 - e0));
+      return t * t * (3.0 - 2.0 * t);
+    }
+    function hash2(x, y) {
+      const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
+      return s - Math.floor(s);
+    }
+    function vnoise2(x, y) {
+      const ix = Math.floor(x), iy = Math.floor(y);
+      const fx = x - ix, fy = y - iy;
+      const ux = fx * fx * (3.0 - 2.0 * fx);
+      const uy = fy * fy * (3.0 - 2.0 * fy);
+      const a = hash2(ix, iy);
+      const b = hash2(ix + 1, iy);
+      const c = hash2(ix, iy + 1);
+      const d = hash2(ix + 1, iy + 1);
+      return lerp(lerp(a, b, ux), lerp(c, d, ux), uy);
+    }
+    function fbm2(x, y, octaves = 4) {
+      let val = 0.0, amp = 0.5, freq = 1.0, norm = 0.0;
+      for (let i = 0; i < octaves; i++) {
+        val += amp * vnoise2(x * freq, y * freq);
+        norm += amp;
+        amp *= 0.5;
+        freq *= 2.03;
+      }
+      return val / norm;
+    }
+
+    // Winding river spline along negative Z
+    function riverCenterX(z) {
+      return Math.sin(z * 0.022) * 7.5 + Math.cos(z * 0.009) * 4.2;
+    }
+    function riverSlopeX(z) {
+      const eps = 0.5;
+      return (riverCenterX(z + eps) - riverCenterX(z - eps)) / (2.0 * eps);
+    }
+    function riverHalfWidth(z) {
+      return 5.4 + Math.sin(z * 0.035 + 1.1) * 1.4;
+    }
+
+    // Mat4 helpers (column-major)
+    const Mat4 = {
+      create() {
+        const m = new Float32Array(16);
+        m[0] = m[5] = m[10] = m[15] = 1;
+        return m;
+      },
+      multiply(out, a, b) {
+        const o = out === a || out === b ? new Float32Array(16) : out;
+        for (let c = 0; c < 4; c++) {
+          const b0 = b[c * 4 + 0], b1 = b[c * 4 + 1], b2 = b[c * 4 + 2], b3 = b[c * 4 + 3];
+          o[c * 4 + 0] = a[0] * b0 + a[4] * b1 + a[8]  * b2 + a[12] * b3;
+          o[c * 4 + 1] = a[1] * b0 + a[5] * b1 + a[9]  * b2 + a[13] * b3;
+          o[c * 4 + 2] = a[2] * b0 + a[6] * b1 + a[10] * b2 + a[14] * b3;
+          o[c * 4 + 3] = a[3] * b0 + a[7] * b1 + a[11] * b2 + a[15] * b3;
+        }
+        if (out !== o) out.set(o);
+        return out;
+      },
+      perspective(out, fovRad, aspect, near, far) {
+        const f = 1.0 / Math.tan(fovRad * 0.5);
+        const nf = 1.0 / (near - far);
+        out.fill(0);
+        out[0] = f / aspect;
+        out[5] = f;
+        out[10] = (far + near) * nf;
+        out[11] = -1.0;
+        out[14] = 2.0 * far * near * nf;
+        return out;
+      },
+      lookAt(out, eye, target, up) {
+        let zx = eye[0] - target[0], zy = eye[1] - target[1], zz = eye[2] - target[2];
+        let zl = Math.hypot(zx, zy, zz) || 1;
+        zx /= zl; zy /= zl; zz /= zl;
+
+        let xx = up[1] * zz - up[2] * zy;
+        let xy = up[2] * zx - up[0] * zz;
+        let xz = up[0] * zy - up[1] * zx;
+        let xl = Math.hypot(xx, xy, xz) || 1;
+        xx /= xl; xy /= xl; xz /= xl;
+
+        const yx = zy * xz - zz * xy;
+        const yy = zz * xx - zx * xz;
+        const yz = zx * xy - zy * xx;
+
+        out[0] = xx; out[4] = xy; out[8]  = xz; out[12] = -(xx * eye[0] + xy * eye[1] + xz * eye[2]);
+        out[1] = yx; out[5] = yy; out[9]  = yz; out[13] = -(yx * eye[0] + yy * eye[1] + yz * eye[2]);
+        out[2] = zx; out[6] = zy; out[10] = zz; out[14] = -(zx * eye[0] + zy * eye[1] + zz * eye[2]);
+        out[3] = 0;  out[7] = 0;  out[11] = 0;  out[15] = 1;
+        return out;
+      },
+      compose(out, pos, rotY, rotX, rotZ, scale) {
+        const cy = Math.cos(rotY), sy = Math.sin(rotY);
+        const cx = Math.cos(rotX), sx = Math.sin(rotX);
+        const cz = Math.cos(rotZ), sz = Math.sin(rotZ);
+
+        // R = Ry * Rx * Rz
+        const r00 = cy * cz + sy * sx * sz;
+        const r01 = -cy * sz + sy * sx * cz;
+        const r02 = sy * cx;
+
+        const r10 = cx * sz;
+        const r11 = cx * cz;
+        const r12 = -sx;
+
+        const r20 = -sy * cz + cy * sx * sz;
+        const r21 = sy * sz + cy * sx * cz;
+        const r22 = cy * cx;
+
+        const sxS = scale[0], syS = scale[1], szS = scale[2];
+        out[0] = r00 * sxS; out[4] = r01 * syS; out[8]  = r02 * szS; out[12] = pos[0];
+        out[1] = r10 * sxS; out[5] = r11 * syS; out[9]  = r12 * szS; out[13] = pos[1];
+        out[2] = r20 * sxS; out[6] = r21 * syS; out[10] = r22 * szS; out[14] = pos[2];
+        out[3] = 0;         out[7] = 0;         out[11] = 0;         out[15] = 1;
+        return out;
+      }
+    };
+
+    // --- Geometry Builder ---
+    // Vertex layout (12 floats per vertex):
+    // pos(3), normal(3), uv(2), extra(3: ao, glow/edge, sway/layer), matId(1)
+    function createGeometryBuilder() {
+      return {
+        positions: [],
+        normals: [],
+        uvs: [],
+        extras: [],
+        matIds: [],
+        indices: [],
+        pushVertex(px, py, pz, nx, ny, nz, u, v, e0 = 1.0, e1 = 0.0, e2 = 0.0, matId = 0) {
+          this.positions.push(px, py, pz);
+          this.normals.push(nx, ny, nz);
+          this.uvs.push(u, v);
+          this.extras.push(e0, e1, e2);
+          this.matIds.push(matId);
+        },
+        pushTri(a, b, c) {
+          this.indices.push(a, b, c);
+        },
+        pushQuad(a, b, c, d) {
+          this.indices.push(a, b, c, a, c, d);
+        },
+        computeSmoothNormals() {
+          const count = this.positions.length / 3;
+          const acc = new Float32Array(count * 3);
+          for (let i = 0; i < this.indices.length; i += 3) {
+            const ia = this.indices[i], ib = this.indices[i + 1], ic = this.indices[i + 2];
+            const ax = this.positions[ia * 3], ay = this.positions[ia * 3 + 1], az = this.positions[ia * 3 + 2];
+            const bx = this.positions[ib * 3], by = this.positions[ib * 3 + 1], bz = this.positions[ib * 3 + 2];
+            const cx = this.positions[ic * 3], cy = this.positions[ic * 3 + 1], cz = this.positions[ic * 3 + 2];
+            const ux = bx - ax, uy = by - ay, uz = bz - az;
+            const vx = cx - ax, vy = cy - ay, vz = cz - az;
+            const nx = uy * vz - uz * vy;
+            const ny = uz * vx - ux * vz;
+            const nz = ux * vy - uy * vx;
+            for (const idx of [ia, ib, ic]) {
+              acc[idx * 3] += nx;
+              acc[idx * 3 + 1] += ny;
+              acc[idx * 3 + 2] += nz;
+            }
+          }
+          for (let i = 0; i < count; i++) {
+            let nx = acc[i * 3], ny = acc[i * 3 + 1], nz = acc[i * 3 + 2];
+            const len = Math.hypot(nx, ny, nz) || 1.0;
+            this.normals[i * 3] = nx / len;
+            this.normals[i * 3 + 1] = ny / len;
+            this.normals[i * 3 + 2] = nz / len;
+          }
+        },
+        computeFacetedNormals() {
+          // Unrolls indexed triangles into crisp faceted triangles for craggy rock strata
+          const newPos = [], newNorm = [], newUv = [], newExt = [], newMat = [], newIdx = [];
+          for (let i = 0; i < this.indices.length; i += 3) {
+            const ia = this.indices[i], ib = this.indices[i + 1], ic = this.indices[i + 2];
+            const ax = this.positions[ia * 3], ay = this.positions[ia * 3 + 1], az = this.positions[ia * 3 + 2];
+            const bx = this.positions[ib * 3], by = this.positions[ib * 3 + 1], bz = this.positions[ib * 3 + 2];
+            const cx = this.positions[ic * 3], cy = this.positions[ic * 3 + 1], cz = this.positions[ic * 3 + 2];
+            const ux = bx - ax, uy = by - ay, uz = bz - az;
+            const vx = cx - ax, vy = cy - ay, vz = cz - az;
+            let nx = uy * vz - uz * vy;
+            let ny = uz * vx - ux * vz;
+            let nz = ux * vy - uy * vx;
+            const len = Math.hypot(nx, ny, nz) || 1.0;
+            nx /= len; ny /= len; nz /= len;
+            for (const vIdx of [ia, ib, ic]) {
+              const outIdx = newPos.length / 3;
+              newPos.push(this.positions[vIdx * 3], this.positions[vIdx * 3 + 1], this.positions[vIdx * 3 + 2]);
+              newNorm.push(nx, ny, nz);
+              newUv.push(this.uvs[vIdx * 2], this.uvs[vIdx * 2 + 1]);
+              newExt.push(this.extras[vIdx * 3], this.extras[vIdx * 3 + 1], this.extras[vIdx * 3 + 2]);
+              newMat.push(this.matIds[vIdx]);
+              newIdx.push(outIdx);
+            }
+          }
+          this.positions = newPos;
+          this.normals = newNorm;
+          this.uvs = newUv;
+          this.extras = newExt;
+          this.matIds = newMat;
+          this.indices = newIdx;
+        }
+      };
+    }
+
+    function uploadStaticMesh(glCtx, builder) {
+      const vertCount = builder.positions.length / 3;
+      const interleaved = new Float32Array(vertCount * 12);
+      for (let i = 0; i < vertCount; i++) {
+        const o = i * 12;
+        interleaved[o + 0] = builder.positions[i * 3 + 0];
+        interleaved[o + 1] = builder.positions[i * 3 + 1];
+        interleaved[o + 2] = builder.positions[i * 3 + 2];
+        interleaved[o + 3] = builder.normals[i * 3 + 0];
+        interleaved[o + 4] = builder.normals[i * 3 + 1];
+        interleaved[o + 5] = builder.normals[i * 3 + 2];
+        interleaved[o + 6] = builder.uvs[i * 2 + 0];
+        interleaved[o + 7] = builder.uvs[i * 2 + 1];
+        interleaved[o + 8] = builder.extras[i * 3 + 0];
+        interleaved[o + 9] = builder.extras[i * 3 + 1];
+        interleaved[o + 10] = builder.extras[i * 3 + 2];
+        interleaved[o + 11] = builder.matIds[i];
+      }
+
+      const vao = glCtx.createVertexArray();
+      glCtx.bindVertexArray(vao);
+
+      const vbo = glCtx.createBuffer();
+      glCtx.bindBuffer(glCtx.ARRAY_BUFFER, vbo);
+      glCtx.bufferData(glCtx.ARRAY_BUFFER, interleaved, glCtx.STATIC_DRAW);
+
+      const stride = 12 * 4;
+      glCtx.enableVertexAttribArray(0);
+      glCtx.vertexAttribPointer(0, 3, glCtx.FLOAT, false, stride, 0);
+      glCtx.enableVertexAttribArray(1);
+      glCtx.vertexAttribPointer(1, 3, glCtx.FLOAT, false, stride, 12);
+      glCtx.enableVertexAttribArray(2);
+      glCtx.vertexAttribPointer(2, 2, glCtx.FLOAT, false, stride, 24);
+      glCtx.enableVertexAttribArray(3);
+      glCtx.vertexAttribPointer(3, 3, glCtx.FLOAT, false, stride, 32);
+      glCtx.enableVertexAttribArray(4);
+      glCtx.vertexAttribPointer(4, 1, glCtx.FLOAT, false, stride, 44);
+
+      const ibo = glCtx.createBuffer();
+      glCtx.bindBuffer(glCtx.ELEMENT_ARRAY_BUFFER, ibo);
+      glCtx.bufferData(glCtx.ELEMENT_ARRAY_BUFFER, new Uint32Array(builder.indices), glCtx.STATIC_DRAW);
+
+      glCtx.bindVertexArray(null);
+      return { vao, indexCount: builder.indices.length };
+    }
+
+    // Instance buffer layout per instance:
+    // mat4 (16 floats) + tint vec4 (4 floats) = 20 floats
+    function uploadInstancedMesh(glCtx, builder, matsArray, tintsArray) {
+      const base = uploadStaticMesh(glCtx, builder);
+      const count = tintsArray.length / 4;
+      const instData = new Float32Array(count * 20);
+      for (let i = 0; i < count; i++) {
+        instData.set(matsArray.subarray(i * 16, i * 16 + 16), i * 20);
+        instData.set(tintsArray.subarray(i * 4, i * 4 + 4), i * 20 + 16);
+      }
+
+      glCtx.bindVertexArray(base.vao);
+      const instBuf = glCtx.createBuffer();
+      glCtx.bindBuffer(glCtx.ARRAY_BUFFER, instBuf);
+      glCtx.bufferData(glCtx.ARRAY_BUFFER, instData, glCtx.STATIC_DRAW);
+
+      const instStride = 20 * 4;
+      for (let col = 0; col < 4; col++) {
+        const loc = 5 + col;
+        glCtx.enableVertexAttribArray(loc);
+        glCtx.vertexAttribPointer(loc, 4, glCtx.FLOAT, false, instStride, col * 16);
+        glCtx.vertexAttribDivisor(loc, 1);
+      }
+      glCtx.enableVertexAttribArray(9);
+      glCtx.vertexAttribPointer(9, 4, glCtx.FLOAT, false, instStride, 64);
+      glCtx.vertexAttribDivisor(9, 1);
+
+      glCtx.bindVertexArray(null);
+      return { vao: base.vao, indexCount: base.indexCount, instanceCount: count };
+    }
+
+    // --- Procedural Meshes ---
+    function buildValleyTerrainMesh() {
+      const b = createGeometryBuilder();
+      const segX = 110;
+      const segZ = 220;
+      const spanX = 96.0;
+      for (let iz = 0; iz <= segZ; iz++) {
+        const vz = iz / segZ;
+        const z = -vz * LOOP_LENGTH;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        for (let ix = 0; ix <= segX; ix++) {
+          const vx = ix / segX;
+          const localX = (vx * 2.0 - 1.0) * spanX;
+          const x = cx + localX;
+          const distFromRiver = Math.max(0.0, Math.abs(localX) - hw);
+
+          // Riverbed dips to -1.25; banks rise gently with mossy terraces & low distant ridges
+          const riverDip = -1.25 * (1.0 - smoothstep(0.0, hw * 1.12, Math.abs(localX)));
+          const bankRise = Math.pow(distFromRiver / 16.0, 1.35) * 4.4;
+          const lowRidge = smoothstep(22.0, 48.0, distFromRiver) * (2.2 + 3.4 * fbm2(x * 0.045, z * 0.045, 3));
+          const undulation = (fbm2(x * 0.14, z * 0.14, 3) - 0.5) * 0.65 * smoothstep(0.5, 4.0, distFromRiver);
+          const y = riverDip + bankRise + lowRidge + undulation;
+
+          const emMask = smoothstep(0.4, 2.2, distFromRiver) * (1.0 - smoothstep(8.0, 18.0, distFromRiver));
+          b.pushVertex(x, y, z, 0, 1, 0, x * 0.18, z * 0.18, 0.85, emMask, 0.0, 0);
+        }
+      }
+      const row = segX + 1;
+      for (let iz = 0; iz < segZ; iz++) {
+        for (let ix = 0; ix < segX; ix++) {
+          const a = iz * row + ix;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildWaterSurfaceMesh() {
+      const b = createGeometryBuilder();
+      const segX = 44;
+      const segZ = 220;
+      const spanX = 24.0;
+      for (let iz = 0; iz <= segZ; iz++) {
+        const vz = iz / segZ;
+        const z = -vz * LOOP_LENGTH;
+        const cx = riverCenterX(z);
+        for (let ix = 0; ix <= segX; ix++) {
+          const vx = ix / segX;
+          const x = cx + (vx * 2.0 - 1.0) * spanX;
+          const edgeMask = 1.0 - Math.pow(Math.abs(vx * 2.0 - 1.0), 3.0);
+          b.pushVertex(x, 0.0, z, 0, 1, 0, vx, vz * 45.0, edgeMask, 0.0, 0.0, 1);
+        }
+      }
+      const row = segX + 1;
+      for (let iz = 0; iz < segZ; iz++) {
+        for (let ix = 0; ix < segX; ix++) {
+          const a = iz * row + ix;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      return b;
+    }
+
+    function buildSkyDomeMesh() {
+      const b = createGeometryBuilder();
+      const rings = 24;
+      const sectors = 40;
+      const radius = 260.0;
+      for (let ir = 0; ir <= rings; ir++) {
+        const v = ir / rings;
+        const phi = v * Math.PI * 0.52;
+        const y = Math.sin(phi) * radius;
+        const rXZ = Math.cos(phi) * radius;
+        for (let is = 0; is <= sectors; is++) {
+          const u = is / sectors;
+          const theta = u * Math.PI * 2.0;
+          const x = Math.cos(theta) * rXZ;
+          const z = Math.sin(theta) * rXZ;
+          b.pushVertex(x, y, z, -x, -y, -z, u, v, 1.0, 0.0, 0.0, 99);
+        }
+      }
+      const row = sectors + 1;
+      for (let ir = 0; ir < rings; ir++) {
+        for (let is = 0; is < sectors; is++) {
+          const a = ir * row + is;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, d, e, c);
+        }
+      }
+      return b;
+    }
+
+    function buildRockCliffMesh() {
+      const b = createGeometryBuilder();
+      const rings = 20;
+      const sectors = 24;
+      for (let ir = 0; ir <= rings; ir++) {
+        const v = ir / rings;
+        const strata = 1.0 + 0.17 * Math.sin(v * Math.PI * 8.0) + 0.08 * Math.cos(v * Math.PI * 16.0);
+        const radius = (1.0 - Math.pow(v, 1.45) * 0.64) * strata;
+        const y = v * 1.0;
+        for (let is = 0; is <= sectors; is++) {
+          const u = is / sectors;
+          const ang = u * Math.PI * 2.0;
+          const nA = fbm2(Math.cos(ang) * 2.5 + v * 4.0, Math.sin(ang) * 2.5 + 3.7, 3);
+          const jag = 0.72 + 0.44 * nA;
+          const rx = Math.cos(ang) * radius * jag;
+          const rz = Math.sin(ang) * radius * jag * 0.88;
+          const ao = clamp01(0.32 + 0.68 * v);
+          const glow = smoothstep(0.45, 0.88, Math.sin(v * Math.PI * 6.0)) * (1.0 - v * 0.8) * 0.55;
+          b.pushVertex(rx, y, rz, rx, 0.3, rz, u * 3.0, v * 3.0, ao, glow, 0.0, 2);
+        }
+      }
+      const row = sectors + 1;
+      for (let ir = 0; ir < rings; ir++) {
+        for (let is = 0; is < sectors; is++) {
+          const a = ir * row + is;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      b.computeFacetedNormals();
+      return b;
+    }
+
+    // Sculpted waterfall cliff basin: local +Z faces toward the river
+    function buildWaterfallCliffHousingMesh() {
+      const b = createGeometryBuilder();
+      const segsX = 28;
+      const segsY = 24;
+      for (let iy = 0; iy <= segsY; iy++) {
+        const v = iy / segsY; // 0 = river base, 1 = top crest
+        const y = v * 1.0;
+        for (let ix = 0; ix <= segsX; ix++) {
+          const u = ix / segsX;
+          const sx = u * 2.0 - 1.0; // -1..+1 across cliff face
+          const absX = Math.abs(sx);
+
+          const chuteMask = 1.0 - smoothstep(0.14, 0.44, absX);
+          const topLip = smoothstep(0.76, 0.92, v) * (1.0 - smoothstep(0.92, 1.0, v));
+          const flankBulge = smoothstep(0.16, 0.62, absX) * (1.0 - smoothstep(0.76, 1.0, absX)) * 1.1;
+          const taper = 1.0 - Math.pow(v, 1.75) * 0.32;
+          const crag = fbm2(sx * 3.6 + 2.1, v * 5.0 + 1.4, 4);
+
+          // Recessed dark alcove in center, overhanging lip at top crest
+          let z = (-0.3 + flankBulge + (crag - 0.5) * 0.62) * taper;
+          z -= chuteMask * (0.46 - topLip * 0.42);
+          z += chuteMask * topLip * 0.34;
+
+          const px = sx * (1.0 + (1.0 - v) * 0.22);
+          const ao = clamp01((0.36 + 0.64 * v) * (1.0 - chuteMask * 0.45));
+          const glow = smoothstep(0.42, 0.88, crag) * (1.0 - chuteMask * 0.75) * 0.5;
+          b.pushVertex(px, y, z, 0, 0.2, 1, u * 3.0, v * 3.0, ao, glow, 0.0, 2);
+        }
+      }
+      const row = segsX + 1;
+      for (let iy = 0; iy < segsY; iy++) {
+        for (let ix = 0; ix < segsX; ix++) {
+          const a = iy * row + ix;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      b.computeFacetedNormals();
+      return b;
+    }
+
+    function buildFloatingMountainMesh() {
+      const b = createGeometryBuilder();
+      const rings = 22;
+      const sectors = 32;
+      // v=0 is pointed inverted cone bottom; v=0.68 is broad plateau; v=1 is rounded mossy cap
+      for (let ir = 0; ir <= rings; ir++) {
+        const v = ir / rings;
+        let radius, y;
+        if (v < 0.68) {
+          const t = v / 0.68;
+          radius = Math.pow(t, 0.78);
+          y = (t - 0.68) * 0.85;
+        } else {
+          const t = (v - 0.68) / 0.32;
+          radius = Math.cos(t * Math.PI * 0.46);
+          y = t * 0.32;
+        }
+        for (let is = 0; is <= sectors; is++) {
+          const u = is / sectors;
+          const ang = u * Math.PI * 2.0;
+          const n = fbm2(Math.cos(ang) * 2.6 + v * 3.4, Math.sin(ang) * 2.6 + 8.2, 4);
+          const jag = 0.68 + 0.48 * n;
+          const rx = Math.cos(ang) * radius * jag;
+          const rz = Math.sin(ang) * radius * jag * 0.86;
+          const glow = smoothstep(0.55, 0.9, n) * (1.0 - smoothstep(0.68, 1.0, v)) * 0.65;
+          b.pushVertex(rx, y, rz, rx, y + 0.2, rz, u * 3.0, v * 3.0, 0.4 + 0.6 * v, glow, 0.0, 2);
+        }
+      }
+      const row = sectors + 1;
+      for (let ir = 0; ir < rings; ir++) {
+        for (let is = 0; is < sectors; is++) {
+          const a = ir * row + is;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      b.computeFacetedNormals();
+      return b;
+    }
+
+    function buildStoneArchMesh() {
+      const b = createGeometryBuilder();
+      const segs = 36;
+      const radialSegs = 12;
+      for (let i = 0; i <= segs; i++) {
+        const t = i / segs;
+        const ang = t * Math.PI; // 0..PI across river
+        const archX = -Math.cos(ang) * 11.5;
+        const archY = Math.sin(ang) * 10.5 - 0.6;
+        const thick = lerp(2.1, 1.15, Math.sin(ang));
+        const tx = Math.sin(ang) * 11.5;
+        const ty = Math.cos(ang) * 10.5;
+        const tLen = Math.hypot(tx, ty) || 1.0;
+        const nxBase = -ty / tLen;
+        const nyBase = tx / tLen;
+
+        for (let j = 0; j <= radialSegs; j++) {
+          const v = j / radialSegs;
+          const phi = v * Math.PI * 2.0;
+          const crag = 0.78 + 0.36 * fbm2(t * 9.0, v * 5.0, 3);
+          const r = thick * crag;
+          const px = archX + nxBase * Math.cos(phi) * r;
+          const py = archY + nyBase * Math.cos(phi) * r;
+          const pz = Math.sin(phi) * r * 1.15;
+          const glow = smoothstep(0.62, 0.92, crag) * 0.45;
+          b.pushVertex(px, py, pz, nxBase * Math.cos(phi), nyBase * Math.cos(phi), Math.sin(phi), t * 5.0, v * 2.0, 0.75, glow, 0.0, 2);
+        }
+      }
+      const row = radialSegs + 1;
+      for (let i = 0; i < segs; i++) {
+        for (let j = 0; j < radialSegs; j++) {
+          const a = i * row + j;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      b.computeFacetedNormals();
+      return b;
+    }
+
+    // Waterfall ribbon: local y goes from 0 (crest) down to -1 (river surface), curving forward along +Z
+    function buildWaterfallRibbonMesh() {
+      const b = createGeometryBuilder();
+      const layers = [
+        { zOff: 0.0, wScale: 1.0, uvMul: 1.0, glow: 1.0 },
+        { zOff: 0.14, wScale: 0.82, uvMul: 1.35, glow: 1.25 }
+      ];
+      for (let l = 0; l < layers.length; l++) {
+        const lay = layers[l];
+        const segsX = 18;
+        const segsY = 28;
+        const baseIdx = b.positions.length / 3;
+        for (let iy = 0; iy <= segsY; iy++) {
+          const v = iy / segsY; // 0 = top crest, 1 = bottom splash
+          const curveZ = lay.zOff + Math.sin(Math.min(v * 1.35, 1.0) * Math.PI * 0.5) * 0.85;
+          const flareX = (0.76 + Math.pow(v, 0.85) * 0.46) * lay.wScale;
+          for (let ix = 0; ix <= segsX; ix++) {
+            const u = ix / segsX;
+            const ux = (u * 2.0 - 1.0) * 0.5 * flareX;
+            const rippleZ = Math.sin(u * Math.PI * 6.0 + v * 8.0 + l * 1.7) * 0.05;
+            const edgeFade = 1.0 - Math.pow(Math.abs(u * 2.0 - 1.0), 2.2);
+            const topFade = smoothstep(0.0, 0.06, v);
+            b.pushVertex(
+              ux, -v, curveZ + rippleZ,
+              0, 0.25, 1,
+              u * lay.uvMul, v * 3.0 * lay.uvMul,
+              edgeFade * topFade, lay.glow, l * 0.5, 4
+            );
+          }
+        }
+        const row = segsX + 1;
+        for (let iy = 0; iy < segsY; iy++) {
+          for (let ix = 0; ix < segsX; ix++) {
+            const a = baseIdx + iy * row + ix;
+            const c = a + 1;
+            const d = a + row;
+            const e = d + 1;
+            b.pushQuad(a, d, e, c);
+          }
+        }
+      }
+      return b;
+    }
+
+    function buildPlungeRippleMesh() {
+      const b = createGeometryBuilder();
+      const rings = 6;
+      const sectors = 28;
+      for (let ir = 0; ir <= rings; ir++) {
+        const v = ir / rings; // 0 = center, 1 = outer edge
+        const r = 0.1 + v * 0.9;
+        for (let is = 0; is <= sectors; is++) {
+          const u = is / sectors;
+          const ang = u * Math.PI * 2.0;
+          b.pushVertex(Math.cos(ang) * r, 0.02, Math.sin(ang) * r, 0, 1, 0, u, v, 1.0 - v, 1.0, 0.0, 15);
+        }
+      }
+      const row = sectors + 1;
+      for (let ir = 0; ir < rings; ir++) {
+        for (let is = 0; is < sectors; is++) {
+          const a = ir * row + is;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      return b;
+    }
+
+    function buildJungleTreeMesh() {
+      const b = createGeometryBuilder();
+      const trunkRings = 14;
+      const trunkSectors = 12;
+      for (let ir = 0; ir <= trunkRings; ir++) {
+        const v = ir / trunkRings;
+        const rootFlare = 1.0 + 1.8 * Math.pow(1.0 - v, 3.2);
+        const rad = lerp(0.42, 0.13, v) * rootFlare;
+        const bendX = Math.sin(v * Math.PI * 1.35) * 0.32;
+        const bendZ = Math.cos(v * Math.PI * 1.1) * 0.24;
+        const y = v * 1.0;
+        for (let is = 0; is <= trunkSectors; is++) {
+          const u = is / trunkSectors;
+          const ang = u * Math.PI * 2.0;
+          const buttress = 1.0 + 0.42 * Math.cos(ang * 5.0) * Math.pow(1.0 - v, 2.0);
+          const px = bendX + Math.cos(ang) * rad * buttress;
+          const pz = bendZ + Math.sin(ang) * rad * buttress;
+          const sapVein = smoothstep(0.75, 0.97, Math.sin(ang * 3.0 + v * 10.0)) * 0.45;
+          b.pushVertex(px, y, pz, Math.cos(ang), 0.15, Math.sin(ang), u * 2.0, v * 5.0, 0.42 + 0.48 * v, sapVein, v * 0.3, 5);
+        }
+      }
+      const row = trunkSectors + 1;
+      for (let ir = 0; ir < trunkRings; ir++) {
+        for (let is = 0; is < trunkSectors; is++) {
+          const a = ir * row + is;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+
+      const tiers = [
+        { y: 0.84, r: 1.62, h: 0.18 },
+        { y: 0.94, r: 1.28, h: 0.16 },
+        { y: 1.02, r: 0.85, h: 0.12 }
+      ];
+      for (const tier of tiers) {
+        const baseIdx = b.positions.length / 3;
+        const cSectors = 16;
+        b.pushVertex(0.14, tier.y + tier.h, 0.1, 0, 1, 0, 0.5, 0.5, 0.85, 0.18, 0.95, 6);
+        for (let is = 0; is <= cSectors; is++) {
+          const ang = (is / cSectors) * Math.PI * 2.0;
+          const leafWave = 0.82 + 0.24 * Math.sin(ang * 6.0);
+          const px = 0.14 + Math.cos(ang) * tier.r * leafWave;
+          const pz = 0.1 + Math.sin(ang) * tier.r * leafWave;
+          const py = tier.y - 0.04 * Math.sin(ang * 4.0);
+          b.pushVertex(px, py, pz, Math.cos(ang) * 0.5, 0.85, Math.sin(ang) * 0.5, Math.cos(ang) * 0.5 + 0.5, Math.sin(ang) * 0.5 + 0.5, 0.45, 0.3, 1.0, 6);
+        }
+        for (let is = 0; is < cSectors; is++) {
+          b.pushTri(baseIdx, baseIdx + 1 + is, baseIdx + 2 + is);
+        }
+      }
+
+      // Hanging glowing willow tendrils
+      const vineCount = 14;
+      const vineSegs = 6;
+      for (let vc = 0; vc < vineCount; vc++) {
+        const ang = (vc / vineCount) * Math.PI * 2.0 + 0.25;
+        const rRim = 1.05 + (vc % 3) * 0.22;
+        const vx = 0.14 + Math.cos(ang) * rRim;
+        const vz = 0.1 + Math.sin(ang) * rRim;
+        const vLen = 0.22 + (vc % 4) * 0.06;
+        const nx = -Math.sin(ang);
+        const nz = Math.cos(ang);
+        const startIdx = b.positions.length / 3;
+        for (let s = 0; s <= vineSegs; s++) {
+          const t = s / vineSegs;
+          const w = lerp(0.02, 0.005, t);
+          const py = 0.84 - t * vLen;
+          const tipGlow = smoothstep(0.25, 1.0, t) * 1.2;
+          b.pushVertex(vx - nx * w, py, vz - nz * w, nx, 0, nz, 0, t, 0.9, tipGlow, 0.85 + t * 0.75, 6);
+          b.pushVertex(vx + nx * w, py, vz + nz * w, nx, 0, nz, 1, t, 0.9, tipGlow, 0.85 + t * 0.75, 6);
+        }
+        for (let s = 0; s < vineSegs; s++) {
+          const a = startIdx + s * 2;
+          b.pushQuad(a, a + 1, a + 3, a + 2);
+        }
+      }
+
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildFernRosetteMesh() {
+      const b = createGeometryBuilder();
+      const fronds = 10;
+      const segs = 5;
+      for (let f = 0; f < fronds; f++) {
+        const ang = (f / fronds) * Math.PI * 2.0 + (f % 2) * 0.15;
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        const perpX = -sinA, perpZ = cosA;
+        const len = 0.68 + (f % 3) * 0.14;
+        const lift = 0.36 + (f % 2) * 0.1;
+        const startIdx = b.positions.length / 3;
+        for (let s = 0; s <= segs; s++) {
+          const t = s / segs;
+          const r = t * len;
+          const y = Math.sin(t * Math.PI * 0.72) * lift;
+          const halfW = Math.sin(t * Math.PI) * 0.12 + 0.015;
+          const tipGlow = smoothstep(0.45, 1.0, t) * 0.85;
+          const px = cosA * r;
+          const pz = sinA * r;
+          b.pushVertex(px - perpX * halfW, y, pz - perpZ * halfW, 0, 1, 0, 0, t, 0.7 + 0.3 * t, tipGlow, t, 7);
+          b.pushVertex(px + perpX * halfW, y, pz + perpZ * halfW, 0, 1, 0, 1, t, 0.7 + 0.3 * t, tipGlow, t, 7);
+        }
+        for (let s = 0; s < segs; s++) {
+          const a = startIdx + s * 2;
+          b.pushQuad(a, a + 1, a + 3, a + 2);
+        }
+      }
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildReedClusterMesh() {
+      const b = createGeometryBuilder();
+      const blades = 12;
+      for (let i = 0; i < blades; i++) {
+        const ang = (i / blades) * Math.PI * 2.0;
+        const lean = 0.14 + (i % 3) * 0.06;
+        const h = 0.55 + (i % 4) * 0.16;
+        const bx = Math.cos(ang) * 0.12;
+        const bz = Math.sin(ang) * 0.12;
+        const dx = Math.cos(ang) * lean;
+        const dz = Math.sin(ang) * lean;
+        const px = -Math.sin(ang) * 0.025;
+        const pz = Math.cos(ang) * 0.025;
+        const baseIdx = b.positions.length / 3;
+        b.pushVertex(bx - px, 0, bz - pz, 0, 1, 0, 0, 0, 0.6, 0.0, 0.0, 8);
+        b.pushVertex(bx + px, 0, bz + pz, 0, 1, 0, 1, 0, 0.6, 0.0, 0.0, 8);
+        b.pushVertex(bx + dx * 0.5 - px * 0.7, h * 0.5, bz + dz * 0.5 - pz * 0.7, 0, 1, 0, 0, 0.5, 0.85, 0.45, 0.5, 8);
+        b.pushVertex(bx + dx * 0.5 + px * 0.7, h * 0.5, bz + dz * 0.5 + pz * 0.7, 0, 1, 0, 1, 0.5, 0.85, 0.45, 0.5, 8);
+        b.pushVertex(bx + dx, h, bz + dz, 0, 1, 0, 0.5, 1.0, 1.0, 1.2, 1.0, 8);
+        b.pushQuad(baseIdx, baseIdx + 1, baseIdx + 3, baseIdx + 2);
+        b.pushTri(baseIdx + 2, baseIdx + 3, baseIdx + 4);
+      }
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildGlowBudClusterMesh() {
+      const b = createGeometryBuilder();
+      const buds = [
+        { x: 0.0, y: 0.0, z: 0.0, r: 0.14, h: 0.38 },
+        { x: 0.18, y: 0.0, z: 0.08, r: 0.11, h: 0.28 },
+        { x: -0.16, y: 0.0, z: 0.11, r: 0.10, h: 0.24 },
+        { x: 0.05, y: 0.0, z: -0.17, r: 0.12, h: 0.31 }
+      ];
+      for (const bud of buds) {
+        const rings = 7, sectors = 10;
+        const baseIdx = b.positions.length / 3;
+        for (let ir = 0; ir <= rings; ir++) {
+          const v = ir / rings;
+          const profile = Math.sin(v * Math.PI) * bud.r;
+          const py = bud.y + v * bud.h;
+          const glow = smoothstep(0.25, 0.95, v) * 1.45;
+          for (let is = 0; is <= sectors; is++) {
+            const u = is / sectors;
+            const ang = u * Math.PI * 2.0;
+            b.pushVertex(bud.x + Math.cos(ang) * profile, py, bud.z + Math.sin(ang) * profile, Math.cos(ang), 0.3, Math.sin(ang), u, v, 0.7 + 0.3 * v, glow, v, 9);
+          }
+        }
+        const row = sectors + 1;
+        for (let ir = 0; ir < rings; ir++) {
+          for (let is = 0; is < sectors; is++) {
+            const a = baseIdx + ir * row + is;
+            const c = a + 1;
+            const d = a + row;
+            const e = d + 1;
+            b.pushQuad(a, c, e, d);
+          }
+        }
+      }
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildGoldenBlossomMesh() {
+      const b = createGeometryBuilder();
+      const petals = 10;
+      for (let p = 0; p < petals; p++) {
+        const ang = (p / petals) * Math.PI * 2.0;
+        const tilt = 0.55 + (p % 2) * 0.25;
+        const len = 0.52;
+        const wid = 0.14;
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        const px = -sinA * wid, pz = cosA * wid;
+        const tipX = cosA * len * Math.sin(tilt);
+        const tipZ = sinA * len * Math.sin(tilt);
+        const tipY = 0.16 + len * Math.cos(tilt);
+        const baseIdx = b.positions.length / 3;
+        b.pushVertex(0, 0.12, 0, 0, 1, 0, 0.5, 0.0, 0.7, 0.4, 0.0, 10);
+        b.pushVertex(tipX * 0.55 - px, 0.15 + len * 0.55 * Math.cos(tilt), tipZ * 0.55 - pz, 0, 1, 0, 0, 0.5, 0.9, 1.1, 0.5, 10);
+        b.pushVertex(tipX * 0.55 + px, 0.15 + len * 0.55 * Math.cos(tilt), tipZ * 0.55 + pz, 0, 1, 0, 1, 0.5, 0.9, 1.1, 0.5, 10);
+        b.pushVertex(tipX, tipY, tipZ, 0, 1, 0, 0.5, 1.0, 1.0, 1.65, 1.0, 10);
+        b.pushTri(baseIdx, baseIdx + 1, baseIdx + 2);
+        b.pushTri(baseIdx + 1, baseIdx + 3, baseIdx + 2);
+      }
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildGiantMushroomMesh() {
+      const b = createGeometryBuilder();
+      // Stalk
+      const sRings = 8, sSecs = 10;
+      for (let ir = 0; ir <= sRings; ir++) {
+        const v = ir / sRings;
+        const r = lerp(0.14, 0.08, v);
+        const y = v * 0.72;
+        for (let is = 0; is <= sSecs; is++) {
+          const u = is / sSecs;
+          const ang = u * Math.PI * 2.0;
+          b.pushVertex(Math.cos(ang) * r, y, Math.sin(ang) * r, Math.cos(ang), 0.1, Math.sin(ang), u, v, 0.6 + 0.4 * v, 0.25, v * 0.4, 11);
+        }
+      }
+      const sRow = sSecs + 1;
+      for (let ir = 0; ir < sRings; ir++) {
+        for (let is = 0; is < sSecs; is++) {
+          const a = ir * sRow + is;
+          const c = a + 1;
+          const d = a + sRow;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      // Cap
+      const cRings = 7, cSecs = 18;
+      const baseIdx = b.positions.length / 3;
+      for (let ir = 0; ir <= cRings; ir++) {
+        const v = ir / cRings;
+        const r = Math.sin(v * Math.PI * 0.88) * 0.62;
+        const y = 0.72 + Math.cos(v * Math.PI * 0.5) * 0.24;
+        for (let is = 0; is <= cSecs; is++) {
+          const u = is / cSecs;
+          const ang = u * Math.PI * 2.0;
+          const rib = 1.0 + 0.08 * Math.sin(ang * 14.0);
+          const glow = (0.55 + 0.65 * Math.sin(ang * 14.0)) * smoothstep(0.15, 0.85, v);
+          b.pushVertex(Math.cos(ang) * r * rib, y, Math.sin(ang) * r * rib, Math.cos(ang) * 0.5, 0.85, Math.sin(ang) * 0.5, u, v, 0.85, glow, 0.8, 11);
+        }
+      }
+      const cRow = cSecs + 1;
+      for (let ir = 0; ir < cRings; ir++) {
+        for (let is = 0; is < cSecs; is++) {
+          const a = baseIdx + ir * cRow + is;
+          const c = a + 1;
+          const d = a + cRow;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildCanopyJellyfishMesh() {
+      const b = createGeometryBuilder();
+      // Ribbed bell (top at y=0 down to rim y=-0.42)
+      const rings = 8, secs = 22;
+      for (let ir = 0; ir <= rings; ir++) {
+        const v = ir / rings;
+        const r = Math.sin(v * Math.PI * 0.65) * 1.15;
+        const y = -v * 0.42;
+        for (let is = 0; is <= secs; is++) {
+          const u = is / secs;
+          const ang = u * Math.PI * 2.0;
+          const rib = 1.0 + 0.09 * Math.sin(ang * 16.0);
+          const glow = 0.75 + 0.55 * Math.sin(ang * 16.0);
+          b.pushVertex(Math.cos(ang) * r * rib, y, Math.sin(ang) * r * rib, Math.cos(ang) * 0.4, 0.9, Math.sin(ang) * 0.4, u, v, 0.9, glow, 1.0, 12);
+        }
+      }
+      const row = secs + 1;
+      for (let ir = 0; ir < rings; ir++) {
+        for (let is = 0; is < secs; is++) {
+          const a = ir * row + is;
+          const c = a + 1;
+          const d = a + row;
+          const e = d + 1;
+          b.pushQuad(a, c, e, d);
+        }
+      }
+      // Trailing glowing tentacles
+      const tenCount = 12, tenSegs = 8;
+      for (let tc = 0; tc < tenCount; tc++) {
+        const ang = (tc / tenCount) * Math.PI * 2.0;
+        const rStart = 0.25 + (tc % 3) * 0.22;
+        const tx = Math.cos(ang) * rStart;
+        const tz = Math.sin(ang) * rStart;
+        const tLen = 1.35 + (tc % 4) * 0.28;
+        const nx = -Math.sin(ang), nz = Math.cos(ang);
+        const startIdx = b.positions.length / 3;
+        for (let s = 0; s <= tenSegs; s++) {
+          const t = s / tenSegs;
+          const w = lerp(0.024, 0.004, t);
+          const py = -0.35 - t * tLen;
+          const swayX = Math.sin(t * 5.0 + tc) * 0.14 * t;
+          const glow = 1.25 * (1.0 - t * 0.45);
+          b.pushVertex(tx + swayX - nx * w, py, tz - nz * w, nx, 0, nz, 0, t, 0.95, glow, 1.0, 12);
+          b.pushVertex(tx + swayX + nx * w, py, tz + nz * w, nx, 0, nz, 1, t, 0.95, glow, 1.0, 12);
+        }
+        for (let s = 0; s < tenSegs; s++) {
+          const a = startIdx + s * 2;
+          b.pushQuad(a, a + 1, a + 3, a + 2);
+        }
+      }
+      b.computeSmoothNormals();
+      return b;
+    }
+
+    function buildLightShaftMesh() {
+      const b = createGeometryBuilder();
+      const segs = 16;
+      const topR = 0.55;
+      const botR = 2.4;
+      const h = 16.0;
+      for (let iy = 0; iy <= 1; iy++) {
+        const v = iy;
+        const y = (1.0 - v) * h;
+        const r = lerp(topR, botR, v);
+        for (let is = 0; is <= segs; is++) {
+          const u = is / segs;
+          const ang = u * Math.PI * 2.0;
+          b.pushVertex(Math.cos(ang) * r, y, Math.sin(ang) * r, Math.cos(ang), 0.15, Math.sin(ang), u, v, 1.0, 1.0, 0.0, 20);
+        }
+      }
+      const row = segs + 1;
+      for (let is = 0; is < segs; is++) {
+        b.pushQuad(is, is + 1, row + is + 1, row + is);
+      }
+      return b;
+    }
+
+    // --- Shaders ---
+    const VS_WORLD = `#version 300 es
+    precision highp float;
+
+    layout(location = 0) in vec3 aPos;
+    layout(location = 1) in vec3 aNormal;
+    layout(location = 2) in vec2 aUv;
+    layout(location = 3) in vec3 aExtra;
+    layout(location = 4) in float aMatId;
+
+    layout(location = 5) in vec4 aInstCol0;
+    layout(location = 6) in vec4 aInstCol1;
+    layout(location = 7) in vec4 aInstCol2;
+    layout(location = 8) in vec4 aInstCol3;
+    layout(location = 9) in vec4 aInstTint;
+
+    uniform mat4 uViewProj;
+    uniform mat4 uModel;
+    uniform vec4 uTint;
+    uniform float uTime;
+    uniform float uInstanced;
+
+    out vec3 vWorldPos;
+    out vec3 vNormal;
+    out vec2 vUv;
+    out vec3 vExtra;
+    out vec4 vTint;
+    out float vMatId;
+
+    void main() {
+      mat4 modelMat = uModel;
+      vec4 tint = uTint;
+      if (uInstanced > 0.5) {
+        modelMat = mat4(aInstCol0, aInstCol1, aInstCol2, aInstCol3);
+        tint = aInstTint;
+      }
+
+      vec3 p = aPos;
+      int matId = int(aMatId + 0.5);
+
+      // Gentle breeze & bioluminescent sway on flora/tendrils
+      if (matId == 6 || matId == 7 || matId == 8 || matId == 10 || matId == 12) {
+        vec3 wpBase = (modelMat * vec4(p, 1.0)).xyz;
+        float phase = wpBase.x * 0.37 + wpBase.z * 0.29 + uTime * 1.35;
+        float swayAmt = (matId == 12) ? (0.08 + aUv.y * 0.14) : (aExtra.z * 0.08);
+        p.x += sin(phase) * swayAmt;
+        p.z += cos(phase * 0.83 + 1.1) * swayAmt * 0.75;
+      }
+
+      vec4 worldPosition = modelMat * vec4(p, 1.0);
+      vWorldPos = worldPosition.xyz;
+      vNormal = normalize(mat3(modelMat) * aNormal);
+      vUv = aUv;
+      vExtra = aExtra;
+      vTint = tint;
+      vMatId = aMatId;
+
+      gl_Position = uViewProj * worldPosition;
+    }`;
+
+    const FS_OPAQUE = `#version 300 es
+    precision highp float;
+
+    in vec3 vWorldPos;
+    in vec3 vNormal;
+    in vec2 vUv;
+    in vec3 vExtra;
+    in vec4 vTint;
+    in float vMatId;
+
+    out vec4 fragColor;
+
+    uniform float uTime;
+    uniform vec3 uCamPos;
+
+    float hash21(vec2 p) {
+      p = fract(p * vec2(234.34, 435.345));
+      p += dot(p, p + 34.23);
+      return fract(p.x * p.y);
+    }
+
+    float vnoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+        mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+        u.y
+      );
+    }
+
+    float fbm(vec2 p) {
+      float v = 0.0;
+      float a = 0.5;
+      mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+      for (int i = 0; i < 4; i++) {
+        v += a * vnoise(p);
+        p = rot * p * 2.04;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    vec3 applyNightFog(vec3 col, vec3 wp) {
+      float dist = length(wp - uCamPos);
+      float fog = 1.0 - exp(-max(dist - 12.0, 0.0) * 0.0145);
+      vec3 fogCol = vec3(0.014, 0.032, 0.068);
+      return mix(col, fogCol, clamp(fog, 0.0, 0.92));
+    }
+
+    void main() {
+      int matId = int(vMatId + 0.5);
+
+      // Sky dome with Polyphemus gas giant, two moons & crisp starfield
+      if (matId == 99) {
+        vec3 dir = normalize(vWorldPos - uCamPos);
+        float elev = clamp(dir.y, 0.0, 1.0);
+        vec3 zenith = vec3(0.010, 0.022, 0.056);
+        vec3 horizon = vec3(0.035, 0.085, 0.155);
+        vec3 sky = mix(horizon, zenith, pow(elev, 0.65));
+
+        // Nebula / mist band
+        float mist = fbm(dir.xz * 3.2 + vec2(uTime * 0.008, 0.0));
+        sky += vec3(0.02, 0.07, 0.13) * mist * smoothstep(0.05, 0.65, elev);
+
+        // Stars
+        vec2 starCell = floor(dir.xz / max(dir.y + 0.25, 0.15) * 140.0);
+        float sRand = hash21(starCell);
+        if (sRand > 0.994 && elev > 0.12) {
+          float tw = 0.65 + 0.35 * sin(uTime * 2.2 + sRand * 90.0);
+          sky += vec3(0.75, 0.92, 1.0) * tw * smoothstep(0.12, 0.45, elev);
+        }
+
+        // Polyphemus gas giant
+        vec3 polyDir = normalize(vec3(-0.34, 0.42, -0.84));
+        float pAng = acos(clamp(dot(dir, polyDir), -1.0, 1.0));
+        if (pAng < 0.21) {
+          float pDisc = 1.0 - smoothstep(0.175, 0.21, pAng);
+          float bands = 0.5 + 0.5 * sin((dir.y - polyDir.y) * 58.0 + fbm(dir.xy * 18.0) * 3.5);
+          vec3 polyCol = mix(vec3(0.06, 0.18, 0.34), vec3(0.18, 0.48, 0.68), bands);
+          float litSide = clamp(dot(normalize(dir - polyDir * 0.8), normalize(vec3(0.6, 0.5, -0.5))) * 0.5 + 0.5, 0.15, 1.0);
+          sky = mix(sky, polyCol * litSide, pDisc * 0.85);
+        }
+
+        // Two smaller moons
+        vec3 m1Dir = normalize(vec3(-0.56, 0.33, -0.76));
+        float m1 = 1.0 - smoothstep(0.022, 0.032, acos(clamp(dot(dir, m1Dir), -1.0, 1.0)));
+        sky += vec3(0.55, 0.92, 1.0) * m1 * 1.4;
+
+        vec3 m2Dir = normalize(vec3(-0.46, 0.48, -0.75));
+        float m2 = 1.0 - smoothstep(0.013, 0.020, acos(clamp(dot(dir, m2Dir), -1.0, 1.0)));
+        sky += vec3(0.85, 0.78, 1.0) * m2 * 1.1;
+
+        fragColor = vec4(sky, 1.0);
+        return;
+      }
+
+      // River water surface
+      if (matId == 1) {
+        vec3 N = normalize(vec3(0.0, 1.0, 0.0));
+        float w1 = vnoise(vec2(vWorldPos.x * 2.4, vWorldPos.z * 1.1 + uTime * 1.65));
+        float w2 = vnoise(vec2(vWorldPos.x * 5.2 + 3.1, vWorldPos.z * 2.6 + uTime * 2.9));
+        float h = (w1 * 0.6 + w2 * 0.4) - 0.5;
+        N = normalize(vec3(h * 0.18, 1.0, (w2 - 0.5) * 0.22));
+
+        vec3 V = normalize(uCamPos - vWorldPos);
+        float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.6);
+        vec3 deepWater = vec3(0.008, 0.026, 0.056);
+        vec3 bioShimmer = vec3(0.04, 0.48, 0.62) * smoothstep(0.58, 0.85, w1 + w2 * 0.45);
+        vec3 violetBounce = vec3(0.26, 0.09, 0.44) * (0.35 + 0.35 * sin(vWorldPos.z * 0.06 + vWorldPos.x * 0.2));
+
+        vec3 moonDir = normalize(vec3(0.28, 0.72, -0.63));
+        vec3 H = normalize(moonDir + V);
+        float spec = pow(max(dot(N, H), 0.0), 64.0) * 0.55;
+
+        vec3 col = mix(deepWater, vec3(0.08, 0.26, 0.42), fresnel * 0.65) + bioShimmer + violetBounce * 0.32 + vec3(0.5, 0.85, 1.0) * spec;
+        col *= mix(0.35, 1.0, vExtra.x);
+        col = applyNightFog(col, vWorldPos);
+        fragColor = vec4(max(col, vec3(0.0)), 1.0);
+        return;
+      }
+
+      vec3 N = normalize(vNormal);
+      vec3 V = normalize(uCamPos - vWorldPos);
+      float ao = vExtra.x;
+      float glowMask = vExtra.y;
+
+      float detailXY = fbm(vWorldPos.xy * 1.35);
+      float detailXZ = fbm(vWorldPos.xz * 1.45);
+      float fineDetail = fbm(vWorldPos.xz * 4.6 + vWorldPos.yy * 3.1);
+      vec3 blend = abs(N);
+      blend /= max(blend.x + blend.y + blend.z, 0.001);
+      float texDetail = detailXZ * blend.y + (detailXY * 0.5 + detailXZ * 0.5) * (blend.x + blend.z);
+
+      vec3 bumpPerturb = vec3(
+        fbm(vWorldPos.yz * 3.6) - 0.5,
+        fineDetail - 0.5,
+        fbm(vWorldPos.xy * 3.6) - 0.5
+      ) * 0.24;
+      N = normalize(N + bumpPerturb);
+
+      vec3 moonDir = normalize(vec3(0.28, 0.72, -0.63));
+      float nDotL = max(dot(N, moonDir), 0.0);
+      float hemi = N.y * 0.5 + 0.5;
+      float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+
+      float wetness = 1.0 - smoothstep(0.0, 2.2, vWorldPos.y);
+      vec3 H = normalize(moonDir + V);
+      float spec = pow(max(dot(N, H), 0.0), 32.0) * wetness * 0.42;
+
+      float shoreLight = exp(-abs(vWorldPos.y - 0.35) * 1.1) * (0.45 + 0.55 * sin(vWorldPos.z * 0.25 + vWorldPos.x * 0.3));
+      vec3 bounceColor = mix(vec3(0.05, 0.45, 0.55), vec3(0.36, 0.14, 0.52), 0.5 + 0.5 * sin(vWorldPos.z * 0.05));
+
+      vec3 baseCol = vec3(0.02, 0.04, 0.07);
+      vec3 emissive = vec3(0.0);
+
+      if (matId == 0) {
+        // Valley terrain & mossy banks
+        float slope = clamp(N.y, 0.0, 1.0);
+        vec3 wetRock = vec3(0.014, 0.026, 0.052) * (0.65 + 0.7 * fineDetail);
+        vec3 deepMoss = vec3(0.014, 0.072, 0.088) * (0.6 + 0.8 * texDetail);
+        baseCol = mix(wetRock, deepMoss, smoothstep(0.45, 0.88, slope) * smoothstep(-0.1, 0.5, vWorldPos.y));
+        float vein = smoothstep(0.66, 0.78, fbm(vWorldPos.xz * 1.8)) * glowMask;
+        emissive += vec3(0.08, 0.88, 0.86) * vein * 1.2;
+      } else if (matId == 2) {
+        // Jagged layered rock cliffs, waterfall housings, stone arch & floating mountains
+        float strata = 0.5 + 0.5 * sin(vWorldPos.y * 4.2 + texDetail * 5.0 + fineDetail * 1.8);
+        vec3 darkSlate = mix(vec3(0.016, 0.030, 0.062), vec3(0.042, 0.074, 0.132), strata * texDetail);
+        vec3 topMoss = vec3(0.018, 0.095, 0.105) * (0.75 + 0.5 * fineDetail);
+        baseCol = mix(darkSlate, topMoss, smoothstep(0.52, 0.88, N.y) * 0.82) * vTint.rgb;
+        baseCol *= (1.0 - wetness * 0.25);
+        float crevice = smoothstep(0.58, 0.84, fineDetail) * glowMask;
+        emissive += mix(vec3(0.08, 0.85, 0.95), vec3(0.62, 0.26, 0.98), 0.35 + 0.35 * sin(vWorldPos.y * 1.4)) * crevice * 1.1;
+      } else if (matId == 5 || matId == 6) {
+        // Jungle trees & glowing willow tendrils
+        baseCol = mix(vec3(0.022, 0.036, 0.065), vec3(0.025, 0.085, 0.105), detailXZ) * vTint.rgb;
+        emissive += vTint.rgb * glowMask * (0.75 + 0.35 * sin(uTime * 2.0 + vWorldPos.y * 2.5));
+      } else if (matId == 7 || matId == 8 || matId == 9 || matId == 10 || matId == 11 || matId == 12) {
+        // Bioluminescent flora: ferns, reeds, glow buds, golden blossoms, mushrooms & canopy jellyfish
+        baseCol = vec3(0.02, 0.05, 0.08) * vTint.rgb;
+        float pulse = 0.82 + 0.25 * sin(uTime * 1.8 + vWorldPos.x * 0.7 + vWorldPos.z * 0.5);
+        emissive += vTint.rgb * (0.35 + glowMask * 1.15) * pulse;
+      }
+
+      vec3 ambient = mix(vec3(0.012, 0.024, 0.052), vec3(0.036, 0.082, 0.145), hemi) * ao;
+      vec3 diffuse = vec3(0.15, 0.28, 0.46) * nDotL * ao;
+      vec3 lit = baseCol * (ambient + diffuse + bounceColor * shoreLight * 0.42);
+      lit += vec3(0.28, 0.65, 0.88) * spec * ao;
+      lit += vec3(0.14, 0.38, 0.58) * rim * 0.18 * ao;
+      lit += emissive;
+      lit = applyNightFog(lit, vWorldPos);
+      fragColor = vec4(max(lit, vec3(0.0)), 1.0);
+    }`;
+
+    const VS_FX = `#version 300 es
+    precision highp float;
+
+    layout(location = 0) in vec3 aPos;
+    layout(location = 1) in vec3 aNormal;
+    layout(location = 2) in vec2 aUv;
+    layout(location = 3) in vec3 aExtra;
+    layout(location = 4) in float aMatId;
+
+    uniform mat4 uViewProj;
+    uniform mat4 uModel;
+    uniform vec4 uTint;
+
+    out vec3 vWorldPos;
+    out vec3 vNormal;
+    out vec2 vUv;
+    out vec3 vExtra;
+    out vec4 vTint;
+    out float vMatId;
+
+    void main() {
+      vec4 wp = uModel * vec4(aPos, 1.0);
+      vWorldPos = wp.xyz;
+      vNormal = normalize(mat3(uModel) * aNormal);
+      vUv = aUv;
+      vExtra = aExtra;
+      vTint = uTint;
+      vMatId = aMatId;
+      gl_Position = uViewProj * wp;
+    }`;
+
+    const FS_FX = `#version 300 es
+    precision highp float;
+
+    in vec3 vWorldPos;
+    in vec3 vNormal;
+    in vec2 vUv;
+    in vec3 vExtra;
+    in vec4 vTint;
+    in float vMatId;
+
+    out vec4 fragColor;
+
+    uniform float uTime;
+    uniform vec3 uCamPos;
+
+    float hash21(vec2 p) {
+      p = fract(p * vec2(234.34, 435.345));
+      p += dot(p, p + 34.23);
+      return fract(p.x * p.y);
+    }
+
+    float vnoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+        mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+        u.y
+      );
+    }
+
+    void main() {
+      int matId = int(vMatId + 0.5);
+      float d = length(vWorldPos - uCamPos);
+      float distFade = exp(-max(d - 22.0, 0.0) * 0.014);
+
+      if (matId == 4) {
+        // Multi-strand waterfall ribbons
+        float edgeFade = vExtra.x;
+        float layerBoost = vExtra.y;
+        float warp = (vnoise(vec2(vUv.x * 7.0, vUv.y * 2.5 - uTime * 2.4)) - 0.5) * 0.18;
+        float s1 = vnoise(vec2((vUv.x + warp) * 22.0, vUv.y * 4.5 - uTime * 4.8));
+        float s2 = vnoise(vec2((vUv.x - warp * 0.7) * 42.0 + 4.3, vUv.y * 8.0 - uTime * 7.6));
+        float filaments = pow(clamp(s1 * 0.55 + s2 * 0.45, 0.0, 1.0), 1.65);
+        float vNorm = clamp(vUv.y / 3.0, 0.0, 1.0);
+        float crestGlow = (1.0 - smoothstep(0.0, 0.14, vNorm)) * 0.65;
+        float splashGlow = smoothstep(0.76, 1.0, vNorm) * 1.15;
+
+        vec3 deepCyan = vec3(0.08, 0.64, 0.94);
+        vec3 brightFoam = vec3(0.78, 0.99, 1.0);
+        vec3 waterCol = mix(deepCyan, brightFoam, clamp(filaments * 1.25 + splashGlow * 0.6, 0.0, 1.0));
+        float alpha = edgeFade * (0.28 + 0.68 * filaments + crestGlow + splashGlow) * distFade;
+        fragColor = vec4(waterCol * (1.15 + filaments * 0.95) * layerBoost * alpha, alpha);
+      } else if (matId == 15) {
+        // Plunge-pool concentric ripples
+        float distR = 1.0 - vExtra.x;
+        float rings = 0.5 + 0.5 * sin(distR * 28.0 - uTime * 5.2);
+        float ringLine = pow(rings, 3.0) * smoothstep(0.0, 0.18, distR) * smoothstep(1.0, 0.25, distR);
+        float coreMist = exp(-distR * 4.2) * 0.75;
+        vec3 col = mix(vec3(0.14, 0.88, 0.96), vec3(0.72, 0.98, 1.0), coreMist);
+        float alpha = (ringLine * 0.65 + coreMist) * distFade;
+        fragColor = vec4(col * 1.35 * alpha, alpha);
+      } else {
+        // Volumetric light shafts
+        vec3 N = normalize(vNormal);
+        vec3 V = normalize(uCamPos - vWorldPos);
+        float viewFade = pow(abs(dot(N, V)), 1.65);
+        float verticalFade = sin(clamp(vUv.y, 0.0, 1.0) * 3.14159);
+        float shimmer = 0.75 + 0.25 * vnoise(vec2(vUv.x * 8.0 + uTime * 0.15, vUv.y * 3.0));
+        float alpha = viewFade * verticalFade * shimmer * 0.12 * distFade;
+        fragColor = vec4(vTint.rgb * alpha * 1.35, alpha);
+      }
+    }`;
+
+    const VS_PARTICLES = `#version 300 es
+    precision highp float;
+
+    layout(location = 0) in vec3 aSeed;
+    layout(location = 1) in vec3 aColor;
+    layout(location = 2) in float aSize;
+
+    uniform mat4 uViewProj;
+    uniform float uTime;
+    uniform vec3 uCamPos;
+    uniform float uPixelRatio;
+
+    out vec3 vColor;
+    out float vAlpha;
+
+    void main() {
+      float t = uTime * (0.35 + aSeed.z * 0.45) + aSeed.x * 37.0;
+      float zWrap = mod(aSeed.y * 360.0 - uTime * (1.8 + aSeed.z * 2.2), 360.0);
+      float z = uCamPos.z + 24.0 - zWrap;
+      float cx = sin(z * 0.022) * 7.5 + cos(z * 0.009) * 4.2;
+      float x = cx + sin(t * 1.3 + aSeed.x * 20.0) * (3.5 + aSeed.z * 7.5);
+      float y = 0.4 + fract(aSeed.x * 13.7 + sin(t) * 0.15) * 6.5;
+
+      vec4 wp = vec4(x, y, z, 1.0);
+      float dist = length(wp.xyz - uCamPos);
+      float fade = exp(-max(dist - 8.0, 0.0) * 0.022);
+      float twinkle = 0.55 + 0.45 * sin(uTime * 3.2 + aSeed.y * 80.0);
+
+      vColor = aColor;
+      vAlpha = fade * twinkle * 0.85;
+      gl_Position = uViewProj * wp;
+      gl_PointSize = clamp((aSize * uPixelRatio * 28.0) / max(dist, 1.5), 1.5, 14.0);
+    }`;
+
+    const FS_PARTICLES = `#version 300 es
+    precision highp float;
+
+    in vec3 vColor;
+    in float vAlpha;
+    out vec4 fragColor;
+
+    void main() {
+      vec2 p = gl_PointCoord * 2.0 - 1.0;
+      float r2 = dot(p, p);
+      if (r2 > 1.0) discard;
+      float soft = pow(1.0 - r2, 2.2);
+      fragColor = vec4(vColor * soft * vAlpha * 1.5, soft * vAlpha);
+    }`;
+
+    const VS_QUAD = `#version 300 es
+    precision highp float;
+    layout(location = 0) in vec2 aPos;
+    out vec2 vUv;
+    void main() {
+      vUv = aPos * 0.5 + 0.5;
+      gl_Position = vec4(aPos, 0.0, 1.0);
+    }`;
+
+    const FS_BLOOM = `#version 300 es
+    precision highp float;
+    in vec2 vUv;
+    out vec4 fragColor;
+    uniform sampler2D uSceneTex;
+    uniform vec2 uTexelSize;
+
+    void main() {
+      vec3 sum = vec3(0.0);
+      float weights[5];
+      weights[0] = 0.227027;
+      weights[1] = 0.1945946;
+      weights[2] = 0.1216216;
+      weights[3] = 0.054054;
+      weights[4] = 0.016216;
+
+      vec3 c0 = max(texture(uSceneTex, vUv).rgb - vec3(0.45), vec3(0.0));
+      sum += c0 * weights[0];
+      for (int i = 1; i < 5; i++) {
+        vec2 off = vec2(float(i)) * uTexelSize * 2.2;
+        vec3 cp = max(texture(uSceneTex, clamp(vUv + off, 0.001, 0.999)).rgb - vec3(0.45), vec3(0.0));
+        vec3 cn = max(texture(uSceneTex, clamp(vUv - off, 0.001, 0.999)).rgb - vec3(0.45), vec3(0.0));
+        sum += (cp + cn) * weights[i];
+      }
+      fragColor = vec4(sum * 1.15, 1.0);
+    }`;
+
+    const FS_COMPOSITE = `#version 300 es
+    precision highp float;
+    in vec2 vUv;
+    out vec4 fragColor;
+    uniform sampler2D uSceneTex;
+    uniform sampler2D uBloomTex;
+
+    vec3 acesToneMap(vec3 x) {
+      float a = 2.51;
+      float b = 0.03;
+      float c = 2.43;
+      float d = 0.59;
+      float e = 0.14;
+      return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+    }
+
+    void main() {
+      vec3 sceneCol = texture(uSceneTex, vUv).rgb;
+      vec3 bloomCol = texture(uBloomTex, vUv).rgb;
+      vec3 hdr = sceneCol + bloomCol * 0.42;
+      vec3 ldr = acesToneMap(hdr);
+      ldr = pow(max(ldr, vec3(0.0)), vec3(1.0 / 2.2));
+      fragColor = vec4(ldr, 1.0);
+    }`;
+
+    function compileShader(glCtx, type, src) {
+      const sh = glCtx.createShader(type);
+      glCtx.shaderSource(sh, src);
+      glCtx.compileShader(sh);
+      if (!glCtx.getShaderParameter(sh, glCtx.COMPILE_STATUS)) {
+        const log = glCtx.getShaderInfoLog(sh);
+        glCtx.deleteShader(sh);
+        throw new Error("Shader-Fehler: " + log);
+      }
+      return sh;
+    }
+
+    function createProgram(glCtx, vsSrc, fsSrc) {
+      const vs = compileShader(glCtx, glCtx.VERTEX_SHADER, vsSrc);
+      const fs = compileShader(glCtx, glCtx.FRAGMENT_SHADER, fsSrc);
+      const prog = glCtx.createProgram();
+      glCtx.attachShader(prog, vs);
+      glCtx.attachShader(prog, fs);
+      glCtx.linkProgram(prog);
+      if (!glCtx.getProgramParameter(prog, glCtx.LINK_STATUS)) {
+        const log = glCtx.getProgramInfoLog(prog);
+        glCtx.deleteProgram(prog);
+        throw new Error("Program-Link-Fehler: " + log);
+      }
+      return prog;
+    }
+
+    let progOpaque, progFx, progParticles, progBloom, progComposite;
+    try {
+      progOpaque = createProgram(gl, VS_WORLD, FS_OPAQUE);
+      progFx = createProgram(gl, VS_FX, FS_FX);
+      progParticles = createProgram(gl, VS_PARTICLES, FS_PARTICLES);
+      progBloom = createProgram(gl, VS_QUAD, FS_BLOOM);
+      progComposite = createProgram(gl, VS_QUAD, FS_COMPOSITE);
+    } catch (e) {
+      showError(e.message);
+      return;
+    }
+
+    // --- World Population ---
+    function buildWorld() {
+      const valleyMesh = uploadStaticMesh(gl, buildValleyTerrainMesh());
+      const waterMesh = uploadStaticMesh(gl, buildWaterSurfaceMesh());
+      const skyDomeMesh = uploadStaticMesh(gl, buildSkyDomeMesh());
+      const cliffHousingMesh = uploadStaticMesh(gl, buildWaterfallCliffHousingMesh());
+      const mountainMesh = uploadStaticMesh(gl, buildFloatingMountainMesh());
+      const archMesh = uploadStaticMesh(gl, buildStoneArchMesh());
+      const waterfallMesh = uploadStaticMesh(gl, buildWaterfallRibbonMesh());
+      const plungeRippleMesh = uploadStaticMesh(gl, buildPlungeRippleMesh());
+      const shaftMesh = uploadStaticMesh(gl, buildLightShaftMesh());
+
+      const archZ = -168.0;
+      const archModel = Mat4.create();
+      Mat4.compose(archModel, [riverCenterX(archZ), 0.0, archZ], -riverSlopeX(archZ) * 0.65, 0, 0, [1.05, 1.0, 1.15]);
+
+      // Floating Hallelujah mountains
+      const floatingPeaks = [
+        { z: -92.0, offsetX: -14.5, y: 17.5, sx: 8.8, sy: 12.5, sz: 8.2, fallOffsetX: 1.8 },
+        { z: -215.0, offsetX: 15.5, y: 19.2, sx: 9.6, sy: 13.8, sz: 8.8, fallOffsetX: -1.9 },
+        { z: -312.0, offsetX: -12.0, y: 16.8, sx: 8.2, sy: 11.8, sz: 7.8, fallOffsetX: 1.6 }
+      ];
+
+      // Bank cliffs & waterfalls: water emerges inside the cliff niche (facing +Z toward river) and hits y=0
+      const waterfalls = [];
+      const bankCliffHousings = [];
+      const plungeRipples = [];
+      const bankFallZones = [-74.0, -86.0, -244.0, -256.0];
+
+      bankFallZones.forEach((fz, idx) => {
+        const side = idx % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(fz);
+        const hw = riverHalfWidth(fz);
+        const cliffX = cx + side * (hw + 1.8);
+        // Face inward toward river center
+        const yaw = side < 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
+        const cliffHeight = 9.0;
+
+        const dirX = Math.sin(yaw);
+        const dirZ = Math.cos(yaw);
+        const crestX = cliffX + dirX * 0.25;
+        const crestZ = fz + dirZ * 0.25;
+        const dropLen = cliffHeight - 0.55;
+        const splashX = crestX + dirX * 0.85;
+        const splashZ = crestZ + dirZ * 0.85;
+
+        bankCliffHousings.push({ x: cliffX, y: -0.6, z: fz, rotY: yaw, sx: 4.8, sy: cliffHeight + 1.2, sz: 3.4 });
+        waterfalls.push({
+          x: crestX,
+          y: cliffHeight - 0.55,
+          z: crestZ,
+          rotY: yaw,
+          sx: 2.9,
+          sy: dropLen,
+          sz: 1.8,
+          isSkyFall: false
+        });
+        plungeRipples.push({ x: splashX, y: 0.02, z: splashZ, sx: 3.4, sz: 3.0 });
+      });
+
+      // Sky waterfalls emerging from floating mountain lower ledges
+      floatingPeaks.forEach((pk, idx) => {
+        const baseX = riverCenterX(pk.z) + pk.offsetX;
+        const startY = pk.y - pk.sy * 0.12;
+        waterfalls.push({
+          x: baseX + pk.fallOffsetX,
+          y: startY,
+          z: pk.z + 1.6,
+          rotY: 0.0,
+          sx: 1.45,
+          sy: startY,
+          sz: 1.2,
+          isSkyFall: true,
+          peakIdx: idx,
+          baseY: startY
+        });
+      });
+
+      // Instanced flora & cliffs
+      const cliffMats = [], cliffTints = [];
+      const treeMats = [], treeTints = [];
+      const fernMats = [], fernTints = [];
+      const reedMats = [], reedTints = [];
+      const budMats = [], budTints = [];
+      const blossomMats = [], blossomTints = [];
+      const mushMats = [], mushTints = [];
+      const jellyMats = [], jellyTints = [];
+
+      function pushInst(mats, tints, pos, rotY, rotX, rotZ, scale, tint) {
+        const m = Mat4.create();
+        Mat4.compose(m, pos, rotY, rotX, rotZ, scale);
+        for (let i = 0; i < 16; i++) mats.push(m[i]);
+        tints.push(tint[0], tint[1], tint[2], tint[3]);
+      }
+
+      for (let i = 0; i < 72; i++) {
+        const t = i / 72;
+        const z = -t * LOOP_LENGTH;
+        const side = i % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        const dist = hw + 2.2 + hash2(i, 1.3) * 8.5;
+        const x = cx + side * dist;
+        const groundY = Math.pow(Math.max(0, dist - hw) / 16.0, 1.35) * 4.4 - 0.5;
+        const s = 3.2 + hash2(i, 2.7) * 5.6;
+        pushInst(cliffMats, cliffTints, [x, groundY, z], hash2(i, 3.1) * Math.PI * 2, 0, 0, [s, s * (0.75 + hash2(i, 4.9) * 0.7), s * 0.9], [0.9, 1.0, 1.15, 1]);
+      }
+
+      for (let i = 0; i < 64; i++) {
+        const t = i / 64;
+        const z = -t * LOOP_LENGTH;
+        const side = i % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        const dist = hw + 3.0 + hash2(i, 5.2) * 11.0;
+        const x = cx + side * dist;
+        const groundY = Math.pow(Math.max(0, dist - hw) / 16.0, 1.35) * 4.4 - 0.35;
+        const h = 7.5 + hash2(i, 6.4) * 6.5;
+        const r = 1.1 + hash2(i, 7.8) * 0.7;
+        const vineTint = i % 3 === 0 ? [0.18, 0.92, 0.96, 1] : [0.78, 0.28, 0.98, 1];
+        pushInst(treeMats, treeTints, [x, groundY, z], hash2(i, 8.1) * Math.PI * 2, 0, 0, [r, h, r], vineTint);
+      }
+
+      for (let i = 0; i < 240; i++) {
+        const t = i / 240;
+        const z = -t * LOOP_LENGTH;
+        const side = i % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        const dist = hw + 0.6 + hash2(i, 10.1) * 5.2;
+        const x = cx + side * dist;
+        const y = Math.pow(Math.max(0, dist - hw) / 16.0, 1.35) * 4.4 - 0.15;
+        const sc = 0.7 + hash2(i, 11.3) * 0.75;
+        pushInst(fernMats, fernTints, [x, y, z], hash2(i, 12.4) * Math.PI * 2, 0, 0, [sc, sc, sc], [0.12, 0.88, 0.82, 1]);
+      }
+
+      for (let i = 0; i < 180; i++) {
+        const t = i / 180;
+        const z = -t * LOOP_LENGTH;
+        const side = i % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        const dist = hw - 0.35 + hash2(i, 14.2) * 1.4;
+        const x = cx + side * dist;
+        const y = -0.05;
+        const sc = 0.75 + hash2(i, 15.6) * 0.7;
+        pushInst(reedMats, reedTints, [x, y, z], hash2(i, 16.7) * Math.PI * 2, 0, 0, [sc, sc, sc], [0.14, 0.92, 0.98, 1]);
+      }
+
+      for (let i = 0; i < 130; i++) {
+        const t = i / 130;
+        const z = -t * LOOP_LENGTH;
+        const side = i % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        const dist = hw + 0.5 + hash2(i, 18.1) * 3.4;
+        const x = cx + side * dist;
+        const y = Math.pow(Math.max(0, dist - hw) / 16.0, 1.35) * 4.4 - 0.1;
+        const sc = 0.65 + hash2(i, 19.5) * 0.65;
+        pushInst(budMats, budTints, [x, y, z], hash2(i, 20.2) * Math.PI * 2, 0, 0, [sc, sc, sc], [0.08, 0.92, 1.0, 1]);
+      }
+
+      for (let i = 0; i < 75; i++) {
+        const t = i / 75;
+        const z = -t * LOOP_LENGTH;
+        const side = i % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        const dist = hw + 1.2 + hash2(i, 22.1) * 4.5;
+        const x = cx + side * dist;
+        const y = Math.pow(Math.max(0, dist - hw) / 16.0, 1.35) * 4.4 - 0.1;
+        const sc = 0.7 + hash2(i, 23.4) * 0.6;
+        pushInst(blossomMats, blossomTints, [x, y, z], hash2(i, 24.8) * Math.PI * 2, 0, 0, [sc, sc, sc], [1.0, 0.52, 0.14, 1]);
+      }
+
+      for (let i = 0; i < 68; i++) {
+        const t = i / 68;
+        const z = -t * LOOP_LENGTH;
+        const side = i % 2 === 0 ? -1 : 1;
+        const cx = riverCenterX(z);
+        const hw = riverHalfWidth(z);
+        const dist = hw + 1.4 + hash2(i, 26.2) * 5.2;
+        const x = cx + side * dist;
+        const y = Math.pow(Math.max(0, dist - hw) / 16.0, 1.35) * 4.4 - 0.15;
+        const sc = 0.8 + hash2(i, 27.9) * 1.1;
+        const mTint = i % 2 === 0 ? [0.76, 0.24, 0.98, 1] : [0.16, 0.86, 0.98, 1];
+        pushInst(mushMats, mushTints, [x, y, z], hash2(i, 28.5) * Math.PI * 2, 0, 0, [sc, sc, sc], mTint);
+      }
+
+      // Canopy jellyfish floating overhead along the river corridor
+      for (let i = 0; i < 24; i++) {
+        const z = -18.0 - i * 14.5;
+        const cx = riverCenterX(z);
+        const x = cx + (hash2(i, 31.1) - 0.5) * 6.5;
+        const y = 6.2 + hash2(i, 32.4) * 2.8;
+        const sc = 1.15 + hash2(i, 33.7) * 0.85;
+        const jTint = i % 3 === 0 ? [0.24, 0.86, 1.0, 1] : [0.85, 0.26, 0.98, 1];
+        pushInst(jellyMats, jellyTints, [x, y, z], hash2(i, 34.2) * Math.PI * 2, 0, 0, [sc, sc, sc], jTint);
+      }
+
+      const lightShafts = [];
+      for (let i = 0; i < 28; i++) {
+        const z = -12.0 - i * 12.5;
+        const x = riverCenterX(z) + (hash2(i, 41.2) - 0.5) * 9.0;
+        const model = Mat4.create();
+        Mat4.compose(model, [x, 0.0, z], 0, 0, 0.16, [1.0, 1.0, 1.0]);
+        const col = i % 3 === 0 ? [0.68, 0.32, 1.0, 1] : [0.18, 0.85, 1.0, 1];
+        lightShafts.push({ model, color: col });
+      }
+
+      // Particles (woodsprites & mist spores)
+      const pCount = 650;
+      const pData = new Float32Array(pCount * 7);
+      for (let i = 0; i < pCount; i++) {
+        const s1 = hash2(i, 51.3);
+        const s2 = hash2(i, 52.7);
+        const s3 = hash2(i, 53.9);
+        const isViolet = s2 > 0.62;
+        const rCol = isViolet ? 0.85 : 0.22;
+        const gCol = isViolet ? 0.35 : 0.94;
+        const bCol = isViolet ? 1.0 : 1.0;
+        const size = 0.8 + s3 * 1.4;
+        const o = i * 7;
+        pData[o + 0] = s1;
+        pData[o + 1] = s2;
+        pData[o + 2] = s3;
+        pData[o + 3] = rCol;
+        pData[o + 4] = gCol;
+        pData[o + 5] = bCol;
+        pData[o + 6] = size;
+      }
+
+      const pVao = gl.createVertexArray();
+      gl.bindVertexArray(pVao);
+      const pBuf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, pBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, pData, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 28, 12);
+      gl.enableVertexAttribArray(2);
+      gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24);
+      gl.bindVertexArray(null);
+
+      return {
+        valleyMesh,
+        waterMesh,
+        skyDomeMesh,
+        archMesh,
+        archModel,
+        mountainMesh,
+        floatingPeaks,
+        cliffHousingMesh,
+        bankCliffHousings,
+        plungeRippleMesh,
+        plungeRipples,
+        waterfallMesh,
+        waterfalls,
+        shaftMesh,
+        lightShafts,
+        cliffs: uploadInstancedMesh(gl, buildRockCliffMesh(), new Float32Array(cliffMats), new Float32Array(cliffTints)),
+        trees: uploadInstancedMesh(gl, buildJungleTreeMesh(), new Float32Array(treeMats), new Float32Array(treeTints)),
+        ferns: uploadInstancedMesh(gl, buildFernRosetteMesh(), new Float32Array(fernMats), new Float32Array(fernTints)),
+        reeds: uploadInstancedMesh(gl, buildReedClusterMesh(), new Float32Array(reedMats), new Float32Array(reedTints)),
+        buds: uploadInstancedMesh(gl, buildGlowBudClusterMesh(), new Float32Array(budMats), new Float32Array(budTints)),
+        blossoms: uploadInstancedMesh(gl, buildGoldenBlossomMesh(), new Float32Array(blossomMats), new Float32Array(blossomTints)),
+        mushrooms: uploadInstancedMesh(gl, buildGiantMushroomMesh(), new Float32Array(mushMats), new Float32Array(mushTints)),
+        jellyfish: uploadInstancedMesh(gl, buildCanopyJellyfishMesh(), new Float32Array(jellyMats), new Float32Array(jellyTints)),
+        particleVao: pVao,
+        particleCount: pCount
+      };
+    }
+
+    const world = buildWorld();
+
+    // Fullscreen quad for post-processing
+    const quadVao = gl.createVertexArray();
+    gl.bindVertexArray(quadVao);
+    const quadBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
+    // Offscreen render targets
+    let rtWidth = 0, rtHeight = 0;
+    let sceneTex = null, sceneDepth = null, sceneFbo = null;
+    let bloomTex = null, bloomFbo = null;
+
+    function ensureRenderTargets(w, h) {
+      if (w === rtWidth && h === rtHeight) return;
+      rtWidth = w;
+      rtHeight = h;
+
+      if (sceneTex) gl.deleteTexture(sceneTex);
+      if (sceneDepth) gl.deleteRenderbuffer(sceneDepth);
+      if (sceneFbo) gl.deleteFramebuffer(sceneFbo);
+      if (bloomTex) gl.deleteTexture(bloomTex);
+      if (bloomFbo) gl.deleteFramebuffer(bloomFbo);
+
+      sceneTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      sceneDepth = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, sceneDepth);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+
+      sceneFbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneTex, 0);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, sceneDepth);
+
+      const bw = Math.max(1, Math.floor(w / 2));
+      const bh = Math.max(1, Math.floor(h / 2));
+
+      bloomTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, bw, bh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      bloomFbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bloomFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bloomTex, 0);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.0);
+      const w = Math.max(320, Math.floor(window.innerWidth * dpr));
+      const h = Math.max(200, Math.floor(window.innerHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      ensureRenderTargets(canvas.width, canvas.height);
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // --- Optional Web Audio ---
+    let audioCtx = null, masterGain = null, audioEnabled = false;
+    function initAudio() {
+      if (audioCtx) return;
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = new Ctx();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.0;
+      masterGain.connect(audioCtx.destination);
+
+      // Soft filtered pink/brown noise for river & waterfall ambiance
+      const bufSize = audioCtx.sampleRate * 3;
+      const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      let lastOut = 0.0;
+      for (let i = 0; i < bufSize; i++) {
+        const white = Math.random() * 2 - 1;
+        lastOut = (lastOut + 0.025 * white) / 1.025;
+        data[i] = lastOut * 2.8;
+      }
+      const noiseSrc = audioCtx.createBufferSource();
+      noiseSrc.buffer = noiseBuf;
+      noiseSrc.loop = true;
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = 420;
+      filter.Q.value = 0.65;
+
+      const waterGain = audioCtx.createGain();
+      waterGain.gain.value = 0.35;
+
+      noiseSrc.connect(filter);
+      filter.connect(waterGain);
+      waterGain.connect(masterGain);
+      noiseSrc.start();
+
+      // Gentle ambient drone
+      const osc = audioCtx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 110.0;
+      const oscGain = audioCtx.createGain();
+      oscGain.gain.value = 0.06;
+      osc.connect(oscGain);
+      oscGain.connect(masterGain);
+      osc.start();
+    }
+
+    function setAudio(enabled) {
+      audioEnabled = enabled;
+      if (enabled) {
+        initAudio();
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.45, audioCtx.currentTime, 0.25);
+        btnAudio.textContent = "Ton An";
+        btnAudio.classList.remove("muted");
+      } else {
+        if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.15);
+        btnAudio.textContent = "Ton Aus";
+        btnAudio.classList.add("muted");
+      }
+    }
+
+    // --- State & Controls ---
+    const state = {
+      running: true,
+      time: 0.0,
+      travelDist: 0.0,
+      lastFrame: performance.now()
+    };
+
+    function toggleRun() {
+      state.running = !state.running;
+      btnToggle.textContent = state.running ? "Stop" : "Start";
+      state.lastFrame = performance.now();
+    }
+
+    btnToggle.addEventListener("click", toggleRun);
+    btnAudio.addEventListener("click", () => setAudio(!audioEnabled));
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        toggleRun();
+      } else if (e.key === "m" || e.key === "M") {
+        setAudio(!audioEnabled);
+      }
+    });
+
+    function updateChapterLabel(zMod) {
+      let label = "Schlucht der Leuchtenden Wasserfälle";
+      if (zMod > 120 && zMod <= 240) {
+        label = "Kronendach der Violetten Quallenpilze";
+      } else if (zMod > 240) {
+        label = "Lagune der Schwebenden Hallelujah-Berge";
+      }
+      if (chapterEl.textContent !== label) {
+        chapterEl.textContent = label;
+      }
+    }
+
+    // --- Render Loop ---
+    const viewMat = Mat4.create();
+    const projMat = Mat4.create();
+    const viewProjMat = Mat4.create();
+    const identityMat = Mat4.create();
+    const tempModelMat = Mat4.create();
+
+    function bindOpaqueUniforms(modelMat, tint, instanced) {
+      gl.uniformMatrix4fv(gl.getUniformLocation(progOpaque, "uViewProj"), false, viewProjMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progOpaque, "uModel"), false, modelMat);
+      gl.uniform4fv(gl.getUniformLocation(progOpaque, "uTint"), tint);
+      gl.uniform1f(gl.getUniformLocation(progOpaque, "uTime"), state.time);
+      gl.uniform3f(gl.getUniformLocation(progOpaque, "uCamPos"), camEye[0], camEye[1], camEye[2]);
+      gl.uniform1f(gl.getUniformLocation(progOpaque, "uInstanced"), instanced);
+    }
+
+    function bindFxUniforms(modelMat, tint) {
+      gl.uniformMatrix4fv(gl.getUniformLocation(progFx, "uViewProj"), false, viewProjMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progFx, "uModel"), false, modelMat);
+      gl.uniform4fv(gl.getUniformLocation(progFx, "uTint"), tint);
+      gl.uniform1f(gl.getUniformLocation(progFx, "uTime"), state.time);
+      gl.uniform3f(gl.getUniformLocation(progFx, "uCamPos"), camEye[0], camEye[1], camEye[2]);
+    }
+
+    const camEye = [0, 2.2, 0];
+    const camTarget = [0, 2.4, -14];
+
+    function render(now) {
+      const dt = Math.min((now - state.lastFrame) * 0.001, 0.05);
+      state.lastFrame = now;
+      if (state.running) {
+        state.time += dt;
+        state.travelDist += dt * 4.6;
+      }
+
+      const zCur = -state.travelDist;
+      const zMod = ((state.travelDist % LOOP_LENGTH) + LOOP_LENGTH) % LOOP_LENGTH;
+      updateChapterLabel(zMod);
+
+      const swayX = Math.sin(state.time * 0.45) * 1.35;
+      const bobY = 2.15 + Math.sin(state.time * 0.85) * 0.16;
+      camEye[0] = riverCenterX(zCur) + swayX;
+      camEye[1] = bobY;
+      camEye[2] = zCur;
+
+      const lookZ = zCur - 16.0;
+      const lookSway = Math.cos(state.time * 0.32) * 2.2;
+      const lookY = 2.55 + Math.sin(state.time * 0.38) * 0.75;
+      camTarget[0] = riverCenterX(lookZ) + lookSway;
+      camTarget[1] = lookY;
+      camTarget[2] = lookZ;
+
+      const aspect = canvas.width / Math.max(canvas.height, 1);
+      Mat4.perspective(projMat, (56 * Math.PI) / 180, aspect, 0.2, 340.0);
+      Mat4.lookAt(viewMat, camEye, camTarget, [0, 1, 0]);
+      Mat4.multiply(viewProjMat, projMat, viewMat);
+
+      // 1. Scene Pass into offscreen target
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0.01, 0.02, 0.045, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+
+      gl.useProgram(progOpaque);
+
+      // Sky dome
+      gl.depthMask(false);
+      gl.bindVertexArray(world.skyDomeMesh.vao);
+      bindOpaqueUniforms(identityMat, [1, 1, 1, 1], 0.0);
+      gl.drawElements(gl.TRIANGLES, world.skyDomeMesh.indexCount, gl.UNSIGNED_INT, 0);
+      gl.depthMask(true);
+
+      // Valley terrain & water
+      gl.bindVertexArray(world.valleyMesh.vao);
+      bindOpaqueUniforms(identityMat, [1, 1, 1, 1], 0.0);
+      gl.drawElements(gl.TRIANGLES, world.valleyMesh.indexCount, gl.UNSIGNED_INT, 0);
+
+      gl.bindVertexArray(world.waterMesh.vao);
+      bindOpaqueUniforms(identityMat, [1, 1, 1, 1], 0.0);
+      gl.drawElements(gl.TRIANGLES, world.waterMesh.indexCount, gl.UNSIGNED_INT, 0);
+
+      // Stone arch
+      gl.bindVertexArray(world.archMesh.vao);
+      bindOpaqueUniforms(world.archModel, [0.92, 1.0, 1.12, 1], 0.0);
+      gl.drawElements(gl.TRIANGLES, world.archMesh.indexCount, gl.UNSIGNED_INT, 0);
+
+      // Bank waterfall cliff housings
+      gl.bindVertexArray(world.cliffHousingMesh.vao);
+      for (const ch of world.bankCliffHousings) {
+        Mat4.compose(tempModelMat, [ch.x, ch.y, ch.z], ch.rotY, 0, 0, [ch.sx, ch.sy, ch.sz]);
+        bindOpaqueUniforms(tempModelMat, [0.88, 0.98, 1.14, 1], 0.0);
+        gl.drawElements(gl.TRIANGLES, world.cliffHousingMesh.indexCount, gl.UNSIGNED_INT, 0);
+      }
+
+      // Floating Hallelujah mountains
+      gl.bindVertexArray(world.mountainMesh.vao);
+      world.floatingPeaks.forEach((pk, idx) => {
+        const bob = Math.sin(state.time * 0.55 + idx * 2.1) * 0.45;
+        const bx = riverCenterX(pk.z) + pk.offsetX;
+        Mat4.compose(tempModelMat, [bx, pk.y + bob, pk.z], idx * 1.4, 0, 0, [pk.sx, pk.sy, pk.sz]);
+        bindOpaqueUniforms(tempModelMat, [0.92, 1.0, 1.15, 1], 0.0);
+        gl.drawElements(gl.TRIANGLES, world.mountainMesh.indexCount, gl.UNSIGNED_INT, 0);
+      });
+
+      // Instanced flora & cliffs
+      const instGroups = [
+        world.cliffs,
+        world.trees,
+        world.ferns,
+        world.reeds,
+        world.buds,
+        world.blossoms,
+        world.mushrooms,
+        world.jellyfish
+      ];
+      for (const grp of instGroups) {
+        gl.bindVertexArray(grp.vao);
+        bindOpaqueUniforms(identityMat, [1, 1, 1, 1], 1.0);
+        gl.drawElementsInstanced(gl.TRIANGLES, grp.indexCount, gl.UNSIGNED_INT, 0, grp.instanceCount);
+      }
+
+      // Additive FX: Waterfalls, Plunge Ripples, Light Shafts & Particles
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.depthMask(false);
+
+      gl.useProgram(progFx);
+      gl.bindVertexArray(world.waterfallMesh.vao);
+      for (const wf of world.waterfalls) {
+        const bob = wf.isSkyFall ? Math.sin(state.time * 0.55 + wf.peakIdx * 2.1) * 0.45 : 0.0;
+        const curY = wf.y + bob;
+        const curScaleY = wf.isSkyFall ? Math.max(0.5, wf.baseY + bob) : wf.sy;
+        Mat4.compose(tempModelMat, [wf.x, curY, wf.z], wf.rotY, 0, 0, [wf.sx, curScaleY, wf.sz]);
+        bindFxUniforms(tempModelMat, [0.35, 0.92, 1.0, 1.0]);
+        gl.drawElements(gl.TRIANGLES, world.waterfallMesh.indexCount, gl.UNSIGNED_INT, 0);
+      }
+
+      gl.bindVertexArray(world.plungeRippleMesh.vao);
+      for (const rp of world.plungeRipples) {
+        Mat4.compose(tempModelMat, [rp.x, rp.y, rp.z], 0, 0, 0, [rp.sx, 1.0, rp.sz]);
+        bindFxUniforms(tempModelMat, [0.3, 0.92, 1.0, 1.0]);
+        gl.drawElements(gl.TRIANGLES, world.plungeRippleMesh.indexCount, gl.UNSIGNED_INT, 0);
+      }
+
+      gl.bindVertexArray(world.shaftMesh.vao);
+      for (const sh of world.lightShafts) {
+        bindFxUniforms(sh.model, sh.color);
+        gl.drawElements(gl.TRIANGLES, world.shaftMesh.indexCount, gl.UNSIGNED_INT, 0);
+      }
+
+      // Particles
+      gl.useProgram(progParticles);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progParticles, "uViewProj"), false, viewProjMat);
+      gl.uniform1f(gl.getUniformLocation(progParticles, "uTime"), state.time);
+      gl.uniform3f(gl.getUniformLocation(progParticles, "uCamPos"), camEye[0], camEye[1], camEye[2]);
+      gl.uniform1f(gl.getUniformLocation(progParticles, "uPixelRatio"), Math.min(window.devicePixelRatio || 1, 2.0));
+      gl.bindVertexArray(world.particleVao);
+      gl.drawArrays(gl.POINTS, 0, world.particleCount);
+
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+      gl.disable(gl.DEPTH_TEST);
+
+      // 2. Bloom Pass
+      const bw = Math.max(1, Math.floor(canvas.width / 2));
+      const bh = Math.max(1, Math.floor(canvas.height / 2));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bloomFbo);
+      gl.viewport(0, 0, bw, bh);
+      gl.useProgram(progBloom);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+      gl.uniform1i(gl.getUniformLocation(progBloom, "uSceneTex"), 0);
+      gl.uniform2f(gl.getUniformLocation(progBloom, "uTexelSize"), 1.0 / bw, 1.0 / bh);
+      gl.bindVertexArray(quadVao);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // 3. Composite Pass to Screen
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(progComposite);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+      gl.uniform1i(gl.getUniformLocation(progComposite, "uSceneTex"), 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, bloomTex);
+      gl.uniform1i(gl.getUniformLocation(progComposite, "uBloomTex"), 1);
+      gl.bindVertexArray(quadVao);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      gl.bindVertexArray(null);
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  })();
+  </script>
+</body>
+</html>

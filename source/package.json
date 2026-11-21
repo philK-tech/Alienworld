@@ -1,0 +1,9 @@
+{
+  "name": "pandora-themepark",
+  "private": true,
+  "description": "EYWA // Pandora Night Ride: prozedurale WebGL2-Fahrt, gebündelt in eine HTML-Datei",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
