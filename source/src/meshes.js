@@ -94,18 +94,22 @@ function buildRockCliffMesh() {
   const sectors = 32;
   for (let ir = 0; ir <= rings; ir++) {
     const v = ir / rings;
-    const strata = 1.0 + 0.17 * Math.sin(v * Math.PI * 8.0) + 0.08 * Math.cos(v * Math.PI * 16.0);
-    const radius = (1.0 - Math.pow(v, 1.45) * 0.64) * strata;
+    // runder, zerklüfteter Felsblock mit geschlossener Kuppe und leicht überhängender Mitte
+    const dome = Math.pow(Math.max(0.0, 1.0 - Math.pow(v, 2.4)), 0.55);
+    const bulge = 1.0 + 0.18 * Math.sin(v * Math.PI * 0.9);
+    const radius = dome * bulge;
     const y = v * 1.0;
     for (let is = 0; is <= sectors; is++) {
       const u = is / sectors;
       const ang = u * Math.PI * 2.0;
-      const nA = fbm2(Math.cos(ang) * 2.5 + v * 4.0, Math.sin(ang) * 2.5 + 3.7, 5);
-      const jag = 0.72 + 0.44 * nA;
-      const rx = Math.cos(ang) * radius * jag;
-      const rz = Math.sin(ang) * radius * jag * 0.88;
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const nA = fbm2(ca * 1.7 + v * 2.2, sa * 1.7 + v * 1.4 + 3.7, 5);
+      const nB = fbm2(ca * 5.0 + v * 7.0, sa * 5.0 - v * 5.0, 3);
+      const jag = 0.62 + 0.6 * nA + (nB - 0.5) * 0.12 + 0.03 * Math.sin(v * 40.0 + nA * 8.0);
+      const rx = ca * radius * jag;
+      const rz = sa * radius * jag * 0.88;
       const ao = clamp01(0.32 + 0.68 * v);
-      const glow = smoothstep(0.45, 0.88, Math.sin(v * Math.PI * 6.0)) * (1.0 - v * 0.8) * 0.55;
+      const glow = smoothstep(0.55, 0.8, nB) * 0.5;
       b.pushVertex(rx, y, rz, rx, 0.3, rz, u * 3.0, v * 3.0, ao, glow, 0.0, 2);
     }
   }

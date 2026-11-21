@@ -5,6 +5,17 @@ Eine nächtliche Fahrt durch eine leuchtende Schlucht mit Wasserfällen, Riesenp
 ## Ausprobieren
 
 `index.html` im Browser öffnen. Leertaste hält die Fahrt an, `M` schaltet den Ton ein oder aus.
+Mit `index.html#t=60` startet die Fahrt 60 Sekunden später, praktisch zum Testen einer bestimmten Stelle.
+
+## Grafik
+
+Die Kamera fährt fest auf einer Strecke. Statt einer frei begehbaren Welt steckt die Rechenleistung deshalb in der Bildqualität:
+
+- HDR-Rendering mit 4-facher Kantenglättung (MSAA) und mehrstufigem Bloom
+- der Fluss spiegelt die Szene in einem eigenen Renderdurchgang
+- Biolumineszenz als Punktmuster auf Moos, Rinde und Blättern, die aufleuchtet, wenn das Boot vorbeifährt
+- Höhennebel mit treibenden Schwaden, Sternenhimmel mit Gasriese und zwei Monden
+- die Strecke ist eine nahtlose Schleife von gut 100 Sekunden; gezeichnet wird nur der Abschnitt in Sichtweite
 
 ## Quellcode
 
@@ -25,10 +36,10 @@ Dafür reicht Node.js 18 oder neuer, Pakete müssen nicht installiert werden.
 | `source/src/math.js` | Hilfsfunktionen, Noise, Flussverlauf, Mat4 |
 | `source/src/geometry.js` | Geometrie-Builder und Upload auf die GPU |
 | `source/src/meshes.js` | Prozedurale Meshes: Terrain, Felsen, Wasserfälle, Bäume, Pilze, Quallen |
-| `source/src/shaders.js` | GLSL-Shader und Programmerstellung |
+| `source/src/shaders.js` | GLSL-Shader: Materialien, Himmel, Nebel, Wasser, Bloom und Tonemapping |
 | `source/src/world.js` | Platzierung aller Objekte entlang der Strecke |
-| `source/src/renderer.js` | Fullscreen-Quad, Render-Targets, Canvas-Größe |
+| `source/src/renderer.js` | Render-Targets: HDR mit MSAA, Spiegelbild, Bloom-Kette |
 | `source/src/audio.js` | Klangkulisse mit Web Audio |
-| `source/src/main.js` | Zustand, Steuerung und Render-Loop |
+| `source/src/main.js` | Zustand, Steuerung, Kamerafahrt und Render-Loop |
 
 Die Dateien in `src` werden in der Reihenfolge aus `build.mjs` aneinandergehängt und laufen in einer gemeinsamen Funktion. Variablen aus früheren Dateien sind in späteren direkt verfügbar.

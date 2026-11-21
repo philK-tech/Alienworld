@@ -95,7 +95,7 @@ vec3 skyColor(vec3 dir, float t) {
   // Gasriese mit Bändern, Wirbeln und Atmosphärensaum
   float cosA = dot(dir, GIANT_DIR);
   float ang = acos(clamp(cosA, -1.0, 1.0));
-  float R = 0.30;
+  float R = 0.22;
   if (ang < R * 1.25) {
     vec3 up = vec3(0.0, 1.0, 0.0);
     vec3 ax = normalize(cross(GIANT_DIR, up));
@@ -107,8 +107,8 @@ vec3 skyColor(vec3 dir, float t) {
       float lat = n.y * 0.92 + n.x * 0.25;
       float turb = fbm(vec2(lat * 9.0, n.x * 3.0) + vec2(t * 0.004, 0.0));
       float bands = 0.5 + 0.5 * sin(lat * 26.0 + turb * 4.5);
-      vec3 col = mix(vec3(0.05, 0.16, 0.32), vec3(0.22, 0.52, 0.72), bands);
-      col = mix(col, vec3(0.65, 0.85, 0.95), smoothstep(0.75, 0.95, turb) * 0.5);
+      vec3 col = mix(vec3(0.03, 0.10, 0.24), vec3(0.14, 0.38, 0.58), bands);
+      col = mix(col, vec3(0.45, 0.70, 0.85), smoothstep(0.75, 0.95, turb) * 0.35);
       float spot = exp(-dot(q - vec2(0.3, -0.25), q - vec2(0.3, -0.25)) * 60.0);
       col = mix(col, vec3(0.6, 0.85, 1.0), spot * 0.6);
       // Beleuchtung durch die ferne Sonne: Sichel mit weichem Terminator
@@ -375,7 +375,7 @@ void main() {
     // Pilze: gepunkteter Hut, Lamellen leuchten
     vec2 d1 = dotField(vUv * vec2(14.0, 6.0), 0.25, 0.6);
     base = vec3(0.03, 0.02, 0.05) * (0.6 + tex);
-    emissive += vTint.rgb * (glowMask * 0.35 + d1.x * 1.5 + smoothstep(0.2, -0.6, N.y) * 0.9);
+    emissive += vTint.rgb * (glowMask * 0.08 + d1.x * 1.2 + smoothstep(0.2, -0.6, N.y) * 0.6);
   } else if (matId == 12) {
     // schwebende Quallen
     base = vec3(0.02, 0.04, 0.07);
@@ -579,13 +579,13 @@ void main() {
   if (uMirror > 0.5 && wp.y < 0.0) wp.y = -1000.0;
   float dist = length(wp - uCamPos);
   float rideD = length((wp - uRidePos) * vec3(1.0, 0.6, 1.0));
-  float react = 1.0 + 2.5 * exp(-rideD * 0.18);
+  float react = 1.0 + 1.6 * exp(-rideD * 0.18);
   float seed = fract(aPos.x * 0.731 + aPos.z * 0.317);
   float pulse = 0.55 + 0.45 * sin(uTime * (0.7 + seed * 1.3) + seed * 50.0 + aPos.z * 0.08);
   float fade = exp(-max(dist - 20.0, 0.0) * 0.025);
   vColor = aColor * pulse * react * fade;
   gl_Position = uViewProj * vec4(wp, 1.0);
-  gl_PointSize = clamp(aSize * uPixelRatio * 9.0 / max(dist, 1.0), 1.0, 7.0);
+  gl_PointSize = clamp(aSize * uPixelRatio * 7.0 / max(dist, 1.0), 1.0, 5.0);
 }`;
 
 const FS_GLOWDOTS = `#version 300 es
@@ -596,7 +596,7 @@ void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
   if (r2 > 1.0) discard;
-  fragColor = vec4(vColor * exp(-r2 * 4.0) * 1.8, 0.0);
+  fragColor = vec4(vColor * exp(-r2 * 4.0) * 0.9, 0.0);
 }`;
 
 const VS_QUAD = `#version 300 es
