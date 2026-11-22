@@ -1,22 +1,24 @@
 // world.js: Welt: Platzierung aller Objekte entlang der Strecke
 // --- World Population ---
-// Stellen der Strecke, an denen Tiere auftauchen (z in Weltkoordinaten der Schleife), siehe creatures.js
-const EVENTS = {
-  flocks: [{ z: -345, side: 1 }, { z: -398, side: -1 }, { z: -452, side: 1 }],   // Himmelsinseln
-  fish: [-176, -199, -223, -247, -271, -296],                                     // Pilzwald
-  wolves: [{ z: -42, side: 1 }, { z: -96, side: -1 }, { z: -140, side: 1 }]      // Nebeltal
-};
-// Platz eines Wolfs im Rudel, dort wo das Rudel stehen bleibt
-function wolfSpot(ev, i) {
-  const z = ev.z + i * 2.6 - 2.6;
-  const x = riverCenterX(z) + ev.side * (riverHalfWidth(ev.z) + 3.0 + (i % 2) * 1.6);
-  return { x, z, y: terrainHeight(x, z) - 0.05 };
+// Inszenierte Szenen, je Zone genau eine. Kommt das Boot auf `trigger` Einheiten heran, wird es langsamer,
+// die Kamera richtet sich fest auf das Geschehen und die Szene läuft `dur` Sekunden (siehe creatures.js, main.js).
+const SCENES = [
+  { type: "wolf", z: -100, side: 1, dur: 14, trigger: 15, zoom: 1.0 },    // Nebeltal: ein Wolf tritt aus dem Wald und heult
+  { type: "fish", z: -236, side: 1, dur: 10, trigger: 22, zoom: 0.55 },    // Pilzwald: ein großer Leuchtfisch springt über den Fluss
+  { type: "flock", z: -396, side: 1, dur: 13, trigger: 30, zoom: 0.3 }    // Himmelsinseln: Gleiterschwarm stürzt herab und steigt wieder auf
+];
+// Felsen am Ufer, auf dem der Wolf stehen bleibt, und sein Ausgangspunkt zwischen den Bäumen
+function wolfRock(sc) {
+  const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 1.4);
+  return { x, z: sc.z, y: terrainHeight(x, sc.z) + 1.0 };
 }
-// Lichtungen am Ufer, wo die Wölfe laufen: dort wachsen keine Bäume, Felsen oder großen Pflanzen
-const CLEARINGS = EVENTS.wolves.map((ev) => {
-  const a = wolfSpot(ev, 1);
-  return { x: a.x, z: a.z };
-});
+function wolfDen(sc, k) {
+  const z = sc.z - 3.0 + k * 4.0;
+  const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 13.0 + (k % 2) * 2.5);
+  return { x, z, y: terrainHeight(x, z) };
+}
+// freie Stellen: dort wachsen keine großen Pflanzen (Felsen des Wolfs, Weg aus dem Wald)
+const CLEARINGS = [wolfRock(SCENES[0]), { x: (wolfRock(SCENES[0]).x + wolfDen(SCENES[0], 0).x) / 2, z: SCENES[0].z - 1.5 }];
 function inClearing(x, z, r) {
   for (const c of CLEARINGS) {
     const dz = Math.abs(z - c.z);
@@ -68,6 +70,7 @@ function buildWorld() {
 
   // Uferklippen mit Wasserfällen im Nebeltal: das Wasser tritt in der Nische aus und fällt bis y=0
   const waterfalls = [];
+  const lightShaftsExtra = [];
   const bankCliffHousings = [];
   const plungeRipples = [];
   const bankFalls = [{ z: -22, side: -1 }, { z: -60, side: 1 }, { z: -73, side: -1 }, { z: -118, side: -1 }];
@@ -164,7 +167,7 @@ function buildWorld() {
   // Zone 1: Nadelbäume, nah am Ufer kleiner (die unteren Zweige dürfen nicht in die Fahrrinne ragen)
   for (let i = 0; i < 700; i++) {
     const p = bankSpot(i, 5.0, 2.5, 34.0, 1.0);
-    if (inClearing(p.x, p.z, 10.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.4)) continue;
+    if (inClearing(p.x, p.z, 3.5) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.4)) continue;
     const h = Math.min(9.0 + hash2(i, 6.4) * 10.0, p.reach / 0.3);
     if (h < 5.0) continue;
     pushInst("pines", [p.x, p.y - 0.2, p.z], rot(i, 8.1), 0, 0, [h, h, h], CYAN);
@@ -204,20 +207,46 @@ function buildWorld() {
 
   // --- Bauwerke, Ruinen und Besonderheiten je Zone ---
   const STONE_A = [0.30, 0.29, 0.33, 1], STONE_B = [0.22, 0.22, 0.28, 1], MARBLE = [0.86, 0.84, 0.79, 1];
-  // Nebeltal: Burgruinen auf fernen Hügeln, verfallene Mauern und Torbögen, Laternen am Ufer
-  [{ z: -55, side: -1, d: 85 }, { z: -125, side: 1, d: 100 }].forEach((c, k) => {
-    const x = riverCenterX(c.z) + c.side * (riverHalfWidth(c.z) + c.d);
-    const s = 34 + k * 6;
-    pushInst("castles", [x, terrainHeight(x, c.z) - 1.0, c.z], rot(k, 120.0), 0, 0, [s, s, s], STONE_A);
-  });
-  for (let i = 0; i < 40; i++) {
-    const p = bankSpot(i, 125.0, 3.0, 35.0, 1.2);
-    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 0.6, 0.6, 0.0, hash2(i, 125.7))) continue;
+  // Nebeltal: eine Burgruine auf einem Felsen im Hintergrund, mit Wasserfall und Nebel
+  const crag = { z: -150, side: 1, d: 30 };
+  {
+    const x = riverCenterX(crag.z) + crag.side * (riverHalfWidth(crag.z) + crag.d);
+    const gy = terrainHeight(x, crag.z);
+    const s = 20.0, h = 30.0;
+    pushInst("cliffs", [x, gy - 3.0, crag.z], 0.8, 0, 0, [s, h, s * 0.85], [0.75, 0.75, 0.85, 1]);
+    const topY = gy - 3.0 + h * 0.93;
+    pushInst("castles", [x, topY - 1.5, crag.z], 0.4, 0, 0, [17, 19, 17], STONE_A);
+    // Wasserfall an der Flussseite des Felsens
+    const fx = x - crag.side * s * 0.55;
+    waterfalls.push({ x: fx, y: topY - 6.0, z: crag.z + 2.0, rotY: -crag.side * Math.PI * 0.5, sx: 3.0, sy: topY - 6.0 - gy, sz: 2.0, isSkyFall: false });
+    plungeRipples.push({ x: fx - crag.side * 1.5, y: gy + 0.05, z: crag.z + 2.0, sx: 4.0, sz: 3.5 });
+    lightShaftsExtra.push([fx, gy, crag.z]);
+  }
+  // der Felsen des Wolfs und dichte Nadelbäume rund um seinen Ausgangspunkt
+  {
+    const r = wolfRock(SCENES[0]);
+    pushInst("cliffs", [r.x, r.y - 1.4, r.z], 0.3, 0, 0, [1.9, 1.4, 1.7], [0.9, 0.9, 0.95, 1]);
+    // Gegenlicht: ein heller Lichtstrahl im Nebel hinter dem Felsen, damit sich der Wolf abhebt
+    const bx = r.x + SCENES[0].side * 7.0;
+    lightShaftsExtra.push([bx, terrainHeight(bx, r.z - 2.0), r.z - 2.0]);
+    for (let k = 0; k < 26; k++) {
+      const z = SCENES[0].z - 14 + hash2(k, 200.0) * 28;
+      const bank = 6.0 + hash2(k, 201.0) * 18.0;
+      const x = riverCenterX(z) + SCENES[0].side * (riverHalfWidth(z) + bank);
+      if (Math.hypot(x - wolfDen(SCENES[0], 0).x, z - wolfDen(SCENES[0], 0).z) < 3.0) continue;
+      if (Math.abs(z - (SCENES[0].z - 1.0)) < 4.0 && bank < 14.0) continue; // Sichtachse zum Gegenlicht freihalten
+      const h = 11.0 + hash2(k, 202.0) * 9.0;
+      pushInst("pines", [x, terrainHeight(x, z) - 0.2, z], rot(k, 203.0), 0, 0, [h, h, h], CYAN);
+    }
+  }
+  for (let i = 0; i < 12; i++) {
+    const p = bankSpot(i, 125.0, 3.0, 25.0, 1.2);
+    if (!zoneChance(p.z, 0.0, 0.6, 0.0, hash2(i, 125.7))) continue;
     zoneWeights(p.z, zw);
     const s = 5.0 + hash2(i, 126.0) * 6.0;
     pushInst("ruinArches", [p.x, p.y - 0.15, p.z], rot(i, 127.0), 0, (hash2(i, 128.0) - 0.5) * 0.06, [s, s, s], zw[0] > zw[1] ? STONE_A : STONE_B);
   }
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 36; i++) {
     const p = bankSpot(i, 130.0, 0.8, 2.2, 1.0);
     if (inClearing(p.x, p.z, 5.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 130.7))) continue;
     const h = 2.1 + hash2(i, 131.0) * 0.5;
@@ -225,16 +254,20 @@ function buildWorld() {
     pushInst("lanterns", [p.x, p.y - 0.05, p.z], p.side > 0 ? Math.PI : 0, 0, 0, [h, h, h], [1, 1, 1, 1]);
   }
   // Pilzwald: Tentakel in Gruppen, leuchtende Glaskugeln
-  for (let g = 0; g < 26; g++) {
-    const c = bankSpot(g, 135.0, 1.5, 24.0, 1.3);
-    if (!zoneChance(c.z, 0.0, 1.0, 0.0, hash2(g, 135.7))) continue;
-    const n = 2 + Math.floor(hash2(g, 136.0) * 4);
+  // Tentakel: gleichmäßig entlang des Flusses, dicht am Wasser, zum Fluss hin geneigt
+  for (let g = 0; g < 24; g++) {
+    const z0 = -170.0 - g * 6.0 - hash2(g, 135.0) * 3.0;
+    const side = (g % 2 === 0 ? 1 : -1) * (hash2(g, 136.0) < 0.25 ? -1 : 1);
+    const n = 1 + Math.floor(hash2(g, 137.0) * 3);
     for (let k = 0; k < n; k++) {
-      const a = hash2(g * 9 + k, 137.0) * Math.PI * 2, r = 1.0 + hash2(g * 9 + k, 138.0) * 3.0;
-      const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
-      if (Math.abs(x - riverCenterX(z)) < riverHalfWidth(z) + 0.5) continue;
-      const h = 3.5 + hash2(g * 9 + k, 139.0) * 6.0;
-      pushInst("tentacles", [x, terrainHeight(x, z) - 0.3, z], rot(g * 9 + k, 140.0), (hash2(g * 9 + k, 141.0) - 0.5) * 0.3, (hash2(g * 9 + k, 142.0) - 0.5) * 0.3,
+      const z = z0 + (k - 1) * 1.8;
+      const hw = riverHalfWidth(z);
+      const bank = 0.4 + hash2(g * 9 + k, 138.0) * 3.5;
+      const x = riverCenterX(z) + side * (hw + bank);
+      // die eingerollte Spitze darf nicht in die Fahrrinne ragen
+      const h = Math.min(3.5 + hash2(g * 9 + k, 139.0) * 6.0, (hw + bank - 2.6) / 0.55);
+      const yaw = (side > 0 ? Math.PI : 0.0) + (hash2(g * 9 + k, 140.0) - 0.5) * 1.0;
+      pushInst("tentacles", [x, terrainHeight(x, z) - 0.3, z], yaw, (hash2(g * 9 + k, 141.0) - 0.5) * 0.2, -0.22,
         [h, h, h], hash2(g * 9 + k, 143.0) < 0.6 ? VIOLET : CYAN);
     }
   }
@@ -245,16 +278,16 @@ function buildWorld() {
     pushInst("orbs", [p.x, p.y + r * 0.8, p.z], 0, 0, 0, [r, r, r], hash2(i, 147.0) < 0.5 ? CYAN : hash2(i, 147.0) < 0.8 ? VIOLET : [1.0, 0.55, 0.2, 1]);
   }
   // Himmelsinseln: weiße Türme auf den Inseln und am Ufer, schwebende Felsbrocken, Felsen im Fluss
-  floatingPeaks.forEach((pk, k) => {
-    if (hash2(k, 150.0) > 0.55) return;
-    const h = pk.sx * (0.9 + hash2(k, 151.0) * 0.8);
-    pushInst("spires", [pk.x + (hash2(k, 152.0) - 0.5) * pk.sx * 0.4, pk.y + pk.sy * 0.32 - 0.5, pk.z], rot(k, 153.0), 0, 0, [h, h, h], MARBLE);
-  });
-  for (let i = 0; i < 30; i++) {
-    const p = bankSpot(i, 155.0, 12.0, 90.0, 1.0);
-    if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 155.7))) continue;
-    const h = 16.0 + hash2(i, 156.0) * 18.0;
-    pushInst("spires", [p.x, p.y - 0.5, p.z], rot(i, 157.0), 0, 0, [h, h, h], MARBLE);
+  // Himmelsinseln: drei verschiedene Bauwerke statt vieler gleicher Türme
+  {
+    // Kuppeltempel am Ufer
+    const z = -352, x = riverCenterX(z) - (riverHalfWidth(z) + 12.0);
+    pushInst("temple", [x, terrainHeight(x, z) - 0.3, z], 1.2, 0, 0, [11, 11, 11], MARBLE);
+    // Kathedrale auf der größten nahen Insel, schlanker Turm auf einer anderen
+    const big = floatingPeaks.slice(0, 7).reduce((a, b) => (b.sx > a.sx ? b : a));
+    pushInst("cathedral", [big.x, big.y + big.sy * 0.3 - 0.6, big.z], 0.5, 0, 0, [big.sx * 1.3, big.sx * 1.3, big.sx * 1.3], MARBLE);
+    const other = floatingPeaks.slice(0, 7).find((pk) => pk !== big && pk.z < -420) || floatingPeaks[5];
+    pushInst("spires", [other.x, other.y + other.sy * 0.32 - 0.5, other.z], 0.3, 0, 0, [other.sx * 1.4, other.sx * 1.4, other.sx * 1.4], MARBLE);
   }
   for (let i = 0; i < 55; i++) {
     const z = -330.0 - hash2(i, 160.0) * 140.0;
@@ -311,8 +344,8 @@ function buildWorld() {
     const z = -(i / 40) * L - hash2(i, 45.0) * 8.0;
     if (!zoneChance(z, 0.0, 1.0, 0.0, hash2(i, 45.5))) continue;
     const x = riverCenterX(z) + (hash2(i, 46.1) - 0.5) * 12.0;
-    const y = 7.5 + hash2(i, 47.4) * 4.0;
-    const sc = 0.55 + hash2(i, 48.7) * 0.55;
+    const y = 15.0 + hash2(i, 47.4) * 10.0;
+    const sc = 1.6 + hash2(i, 48.7) * 1.5;
     pushInst("jellyfish", [x, y, z], rot(i, 49.2), 0, 0, [sc, sc, sc], hash2(i, 50.0) < 0.6 ? [0.2, 0.75, 1.0, 1] : [0.7, 0.3, 1.0, 1]);
   }
 
@@ -325,6 +358,11 @@ function buildWorld() {
     Mat4.compose(model, [x, terrainHeight(x, z), z], 0, 0.12, 0.2, [1.0, 1.0, 1.0]);
     lightShafts.push({ model, z, color: [0.35, 0.6, 1.0, 1] });
   }
+  lightShaftsExtra.forEach(([x, y, z]) => {
+    const model = Mat4.create();
+    Mat4.compose(model, [x, y, z], 0, 0.1, 0.15, [2.5, 1.6, 2.5]);
+    lightShafts.push({ model, z, color: [0.35, 0.6, 1.0, 3.0] });
+  });
 
   // Leuchtpunkte am Waldboden, in Flecken gehäuft, nach z sortiert
   const dots = [];
@@ -401,7 +439,9 @@ function buildWorld() {
       inst("lanterns", buildLanternPostMesh(), 2.0),
       inst("tentacles", buildTentacleMesh(), 4.0),
       inst("orbs", buildOrbMesh(), 2.0),
-      inst("spires", buildSpireTowerMesh(), 12.0)
+      inst("spires", buildSpireTowerMesh(), 12.0),
+      inst("temple", buildTempleMesh(), 10.0),
+      inst("cathedral", buildCathedralMesh(), 16.0)
     ],
     dotVao, dotZ, dotCount: dots.length,
     particleVao: pVao,

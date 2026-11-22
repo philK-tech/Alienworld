@@ -897,3 +897,49 @@ function buildLanternPostMesh() {
   addBox(b, [0.25, 0.80, 0], [0.13, 0.025, 0.13], 0, 0, 31);
   return b;
 }
+
+// Kuppeltempel (Himmelsinseln): achteckiger Sockel, Säulenkranz, Rundbau mit leuchtenden Fenstern, Kuppel mit Kristall. Höhe ~1.
+function buildTempleMesh() {
+  const b = createGeometryBuilder();
+  addLathe(b, 2, 8, (t) => [0, t * 0.08, 0], () => [0.62, 0.62], 36, () => [0.9, 0.0, 0.0]);
+  addLathe(b, 2, 8, (t) => [0, 0.08 + t * 0.05, 0], () => [0.54, 0.54], 36, () => [0.9, 0.0, 0.0]);
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    addLathe(b, 3, 8, (t) => [Math.cos(a) * 0.46, 0.13 + t * 0.4, Math.sin(a) * 0.46], (t) => [0.032 - t * 0.006, 0.032 - t * 0.006], 36, () => [0.85, 0.0, 0.0]);
+  }
+  addLathe(b, 2, 16, (t) => [0, 0.53 + t * 0.05, 0], () => [0.52, 0.52], 36, () => [0.9, 0.0, 0.0]);
+  addLathe(b, 4, 16, (t) => [0, 0.13 + t * 0.42, 0], () => [0.34, 0.34], 36, () => [0.8, 0.0, 0.0]);
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2 + 0.2;
+    addBox(b, [Math.cos(a) * 0.345, 0.32, Math.sin(a) * 0.345], [0.012, 0.2, 0.09], -a, 0, 38);
+  }
+  addLathe(b, 10, 20, (t) => [0, 0.58 + Math.sin(t * Math.PI * 0.5) * 0.3, 0], (t) => { const r = Math.cos(t * Math.PI * 0.5) * 0.4 + 0.004; return [r, r]; }, 36, (t) => [0.95, t, 0.0]);
+  addLathe(b, 3, 8, (t) => [0, 0.87 + t * 0.06, 0], () => [0.05, 0.05], 36, () => [0.9, 0.0, 0.0]);
+  addLathe(b, 6, 6, (t) => [0, 0.93 + t * 0.16, 0], (t) => { const r = Math.sin(t * Math.PI) * 0.045 + 0.002; return [r, r]; }, 35, () => [1.0, 1.0, 0.0]);
+  return b;
+}
+
+// Kathedrale (Himmelsinseln): Langhaus mit Spitzbogenfenstern, fünf Spitztürme unterschiedlicher Höhe. Höhe ~1.
+function buildCathedralMesh() {
+  const b = createGeometryBuilder();
+  addBox(b, [0, 0.16, 0], [0.32, 0.32, 0.7], 0, 0, 36);
+  // Satteldach aus zwei schrägen Platten
+  addBox(b, [0.085, 0.37, 0], [0.2, 0.02, 0.72], 0, -0.7, 37);
+  addBox(b, [-0.085, 0.37, 0], [0.2, 0.02, 0.72], 0, 0.7, 37);
+  for (let k = 0; k < 4; k++) {
+    for (const sx of [-1, 1]) addBox(b, [sx * 0.162, 0.17, -0.24 + k * 0.16], [0.01, 0.16, 0.05], 0, 0, 38);
+  }
+  addBox(b, [0, 0.2, -0.352], [0.1, 0.2, 0.01], 0, 0, 38);
+  const spire = (x, z, h, r) => {
+    addLathe(b, 6, 8, (t) => [x, t * h * 0.68, z], (t) => { const rr = r * (1.0 - t * 0.15); return [rr, rr]; }, 36, (t) => [0.6 + 0.4 * t, 0.0, 0.0]);
+    addLathe(b, 2, 8, (t) => [x, h * 0.68 + t * 0.02, z], () => [r * 1.3, r * 1.3], 36, () => [0.9, 0.0, 0.0]);
+    addBox(b, [x, h * 0.5, z - r * 0.98], [r * 0.5, h * 0.12, 0.008], 0, 0, 38);
+    addLathe(b, 6, 8, (t) => [x, h * 0.7 + t * h * 0.3, z], (t) => { const rr = r * 1.2 * Math.pow(1.0 - t, 1.6) + 0.002; return [rr, rr]; }, 37, (t) => [0.9, t, 0.0]);
+  };
+  spire(0, -0.42, 1.0, 0.075);
+  spire(-0.15, -0.34, 0.78, 0.06);
+  spire(0.15, -0.34, 0.82, 0.06);
+  spire(-0.13, 0.36, 0.6, 0.05);
+  spire(0.13, 0.36, 0.55, 0.05);
+  return b;
+}

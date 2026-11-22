@@ -62,3 +62,46 @@ function setAudio(enabled) {
     btnAudio.classList.add("muted");
   }
 }
+
+// Wolfsgeheul: zwei leicht verstimmte Töne, die auf- und absteigen, mit Vibrato und Echo
+function playHowl() {
+  if (!audioCtx || !audioEnabled) return;
+  const now = audioCtx.currentTime;
+  const out = audioCtx.createGain();
+  out.gain.setValueAtTime(0.0, now);
+  out.gain.linearRampToValueAtTime(0.16, now + 0.4);
+  out.gain.setValueAtTime(0.16, now + 2.2);
+  out.gain.linearRampToValueAtTime(0.0, now + 3.4);
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 1400;
+  const echo = audioCtx.createDelay(1.0);
+  echo.delayTime.value = 0.42;
+  const fb = audioCtx.createGain();
+  fb.gain.value = 0.35;
+  out.connect(lp);
+  lp.connect(masterGain);
+  lp.connect(echo);
+  echo.connect(fb);
+  fb.connect(echo);
+  echo.connect(masterGain);
+  const vib = audioCtx.createOscillator();
+  vib.frequency.value = 5.5;
+  const vibGain = audioCtx.createGain();
+  vibGain.gain.value = 9;
+  vib.connect(vibGain);
+  for (const det of [0, 7]) {
+    const o = audioCtx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(330 + det, now);
+    o.frequency.exponentialRampToValueAtTime(560 + det, now + 0.9);
+    o.frequency.setValueAtTime(560 + det, now + 2.0);
+    o.frequency.exponentialRampToValueAtTime(380 + det, now + 3.4);
+    vibGain.connect(o.frequency);
+    o.connect(out);
+    o.start(now);
+    o.stop(now + 3.6);
+  }
+  vib.start(now);
+  vib.stop(now + 3.6);
+}

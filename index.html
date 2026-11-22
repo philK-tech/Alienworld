@@ -1428,6 +1428,52 @@
       return b;
     }
 
+    // Kuppeltempel (Himmelsinseln): achteckiger Sockel, Säulenkranz, Rundbau mit leuchtenden Fenstern, Kuppel mit Kristall. Höhe ~1.
+    function buildTempleMesh() {
+      const b = createGeometryBuilder();
+      addLathe(b, 2, 8, (t) => [0, t * 0.08, 0], () => [0.62, 0.62], 36, () => [0.9, 0.0, 0.0]);
+      addLathe(b, 2, 8, (t) => [0, 0.08 + t * 0.05, 0], () => [0.54, 0.54], 36, () => [0.9, 0.0, 0.0]);
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2;
+        addLathe(b, 3, 8, (t) => [Math.cos(a) * 0.46, 0.13 + t * 0.4, Math.sin(a) * 0.46], (t) => [0.032 - t * 0.006, 0.032 - t * 0.006], 36, () => [0.85, 0.0, 0.0]);
+      }
+      addLathe(b, 2, 16, (t) => [0, 0.53 + t * 0.05, 0], () => [0.52, 0.52], 36, () => [0.9, 0.0, 0.0]);
+      addLathe(b, 4, 16, (t) => [0, 0.13 + t * 0.42, 0], () => [0.34, 0.34], 36, () => [0.8, 0.0, 0.0]);
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + 0.2;
+        addBox(b, [Math.cos(a) * 0.345, 0.32, Math.sin(a) * 0.345], [0.012, 0.2, 0.09], -a, 0, 38);
+      }
+      addLathe(b, 10, 20, (t) => [0, 0.58 + Math.sin(t * Math.PI * 0.5) * 0.3, 0], (t) => { const r = Math.cos(t * Math.PI * 0.5) * 0.4 + 0.004; return [r, r]; }, 36, (t) => [0.95, t, 0.0]);
+      addLathe(b, 3, 8, (t) => [0, 0.87 + t * 0.06, 0], () => [0.05, 0.05], 36, () => [0.9, 0.0, 0.0]);
+      addLathe(b, 6, 6, (t) => [0, 0.93 + t * 0.16, 0], (t) => { const r = Math.sin(t * Math.PI) * 0.045 + 0.002; return [r, r]; }, 35, () => [1.0, 1.0, 0.0]);
+      return b;
+    }
+
+    // Kathedrale (Himmelsinseln): Langhaus mit Spitzbogenfenstern, fünf Spitztürme unterschiedlicher Höhe. Höhe ~1.
+    function buildCathedralMesh() {
+      const b = createGeometryBuilder();
+      addBox(b, [0, 0.16, 0], [0.32, 0.32, 0.7], 0, 0, 36);
+      // Satteldach aus zwei schrägen Platten
+      addBox(b, [0.085, 0.37, 0], [0.2, 0.02, 0.72], 0, -0.7, 37);
+      addBox(b, [-0.085, 0.37, 0], [0.2, 0.02, 0.72], 0, 0.7, 37);
+      for (let k = 0; k < 4; k++) {
+        for (const sx of [-1, 1]) addBox(b, [sx * 0.162, 0.17, -0.24 + k * 0.16], [0.01, 0.16, 0.05], 0, 0, 38);
+      }
+      addBox(b, [0, 0.2, -0.352], [0.1, 0.2, 0.01], 0, 0, 38);
+      const spire = (x, z, h, r) => {
+        addLathe(b, 6, 8, (t) => [x, t * h * 0.68, z], (t) => { const rr = r * (1.0 - t * 0.15); return [rr, rr]; }, 36, (t) => [0.6 + 0.4 * t, 0.0, 0.0]);
+        addLathe(b, 2, 8, (t) => [x, h * 0.68 + t * 0.02, z], () => [r * 1.3, r * 1.3], 36, () => [0.9, 0.0, 0.0]);
+        addBox(b, [x, h * 0.5, z - r * 0.98], [r * 0.5, h * 0.12, 0.008], 0, 0, 38);
+        addLathe(b, 6, 8, (t) => [x, h * 0.7 + t * h * 0.3, z], (t) => { const rr = r * 1.2 * Math.pow(1.0 - t, 1.6) + 0.002; return [rr, rr]; }, 37, (t) => [0.9, t, 0.0]);
+      };
+      spire(0, -0.42, 1.0, 0.075);
+      spire(-0.15, -0.34, 0.78, 0.06);
+      spire(0.15, -0.34, 0.82, 0.06);
+      spire(-0.13, 0.36, 0.6, 0.05);
+      spire(0.13, 0.36, 0.55, 0.05);
+      return b;
+    }
+
     // --- Shaders ---
     // Gemeinsamer GLSL-Code: Rauschen, leuchtende Punktmuster, Himmel und Nebel.
     // Wird vor die Fragment-Shader gehängt, die ihn brauchen.
@@ -1765,10 +1811,18 @@
         p.x += (sin(uTime * 0.55 + ph) * 0.22 + sin(uTime * 1.3 + ph * 2.0) * 0.06) * w;
         p.z += cos(uTime * 0.45 + ph * 1.3) * 0.18 * w;
         p.y -= (1.0 - cos(uTime * 0.5 + ph)) * 0.04 * w;
-      } else if (matId == 23) {
+      } else if (matId == 23 || matId == 24) {
         // Wolf: Laufzyklus der Beine (uAnim.y = wie stark er läuft), leichtes Atmen im Stehen
         float swing = sin(uTime * 7.0 + uAnim.x) * 0.5 * uAnim.y;
         p.z += swing * aExtra.z;
+        if (matId == 24) {
+          // Kopf um das Nackengelenk heben oder senken (uAnim.w)
+          vec3 pivot = vec3(0.0, 0.74, -0.42);
+          float c = cos(uAnim.w), s = sin(uAnim.w);
+          vec3 r = p - pivot;
+          p = pivot + vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
+          nrm = vec3(nrm.x, nrm.y * c - nrm.z * s, nrm.y * s + nrm.z * c);
+        }
         p.y += abs(sin(uTime * 7.0 + uAnim.x)) * 0.03 * uAnim.y + sin(uTime * 1.6 + uAnim.x) * 0.006;
       }
 
@@ -2112,13 +2166,13 @@
         base = vec3(0.03, 0.05, 0.08);
         emissive += vTint.rgb * (side * 1.6 + glowMask * 0.9 + 0.08);
         wet = 1.0;
-      } else if (matId == 23) {
-        // Wolf: fast schwarzer Schemen, die Fellkontur nimmt die Farbe des Nebels an, Augen glühen
-        float rimW = pow(1.0 - abs(dot(N, V)), 2.0);
-        base = vec3(0.015, 0.014, 0.02);
-        albA = albC = vec3(0.035, 0.032, 0.04) * (0.8 + 0.4 * fine);
-        emissive += skyHaze(-V) * rimW * 0.22;
-        emissive += vTint.rgb * step(2.0, glowMask) * 6.0;
+      } else if (matId == 23 || matId == 24) {
+        // Wolf: fast schwarzer Schemen, nur ein feiner Saum in der Farbe des Nebels, Augen glühen
+        float rimW = pow(1.0 - abs(dot(N, V)), 3.0);
+        base = vec3(0.008, 0.008, 0.012);
+        albA = albC = vec3(0.012, 0.011, 0.015) * (0.8 + 0.4 * fine);
+        emissive += (skyHaze(-V) * 0.6 + vec3(0.25, 0.2, 0.3)) * rimW * 0.35;
+        emissive += vTint.rgb * step(2.0, glowMask) * 12.0;
         emissive /= max(emScale, 0.3);
       }
 
@@ -2257,7 +2311,7 @@
         float viewFade = pow(abs(dot(N, V)), 2.0);
         float verticalFade = sin(clamp(vUv.y, 0.0, 1.0) * 3.14159) * smoothstep(0.0, 0.4, vUv.y);
         float shimmer = 0.6 + 0.4 * vnoise(vec2(vUv.x * 10.0 + uTime * 0.15, vUv.y * 3.0 - uTime * 0.1));
-        float alpha = viewFade * verticalFade * shimmer * 0.035 * distFade * (zw.x * 3.0 + zw.y);
+        float alpha = viewFade * verticalFade * shimmer * 0.035 * distFade * (zw.x * 3.0 + zw.y) * vTint.a;
         vec3 shaftCol = mix(vTint.rgb, vec3(1.0, 0.65, 0.5), zw.x);
         fragColor = vec4(shaftCol * alpha, alpha);
       }
@@ -2505,23 +2559,25 @@
     }
 
     // --- World Population ---
-    // Stellen der Strecke, an denen Tiere auftauchen (z in Weltkoordinaten der Schleife), siehe creatures.js
-    const EVENTS = {
-      flocks: [{ z: -345, side: 1 }, { z: -398, side: -1 }, { z: -452, side: 1 }],   // Himmelsinseln
-      fish: [-176, -199, -223, -247, -271, -296],                                     // Pilzwald
-      wolves: [{ z: -42, side: 1 }, { z: -96, side: -1 }, { z: -140, side: 1 }]      // Nebeltal
-    };
-    // Platz eines Wolfs im Rudel, dort wo das Rudel stehen bleibt
-    function wolfSpot(ev, i) {
-      const z = ev.z + i * 2.6 - 2.6;
-      const x = riverCenterX(z) + ev.side * (riverHalfWidth(ev.z) + 3.0 + (i % 2) * 1.6);
-      return { x, z, y: terrainHeight(x, z) - 0.05 };
+    // Inszenierte Szenen, je Zone genau eine. Kommt das Boot auf `trigger` Einheiten heran, wird es langsamer,
+    // die Kamera richtet sich fest auf das Geschehen und die Szene läuft `dur` Sekunden (siehe creatures.js, main.js).
+    const SCENES = [
+      { type: "wolf", z: -100, side: 1, dur: 14, trigger: 15, zoom: 1.0 },    // Nebeltal: ein Wolf tritt aus dem Wald und heult
+      { type: "fish", z: -236, side: 1, dur: 10, trigger: 22, zoom: 0.55 },    // Pilzwald: ein großer Leuchtfisch springt über den Fluss
+      { type: "flock", z: -396, side: 1, dur: 13, trigger: 30, zoom: 0.3 }    // Himmelsinseln: Gleiterschwarm stürzt herab und steigt wieder auf
+    ];
+    // Felsen am Ufer, auf dem der Wolf stehen bleibt, und sein Ausgangspunkt zwischen den Bäumen
+    function wolfRock(sc) {
+      const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 1.4);
+      return { x, z: sc.z, y: terrainHeight(x, sc.z) + 1.0 };
     }
-    // Lichtungen am Ufer, wo die Wölfe laufen: dort wachsen keine Bäume, Felsen oder großen Pflanzen
-    const CLEARINGS = EVENTS.wolves.map((ev) => {
-      const a = wolfSpot(ev, 1);
-      return { x: a.x, z: a.z };
-    });
+    function wolfDen(sc, k) {
+      const z = sc.z - 3.0 + k * 4.0;
+      const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 13.0 + (k % 2) * 2.5);
+      return { x, z, y: terrainHeight(x, z) };
+    }
+    // freie Stellen: dort wachsen keine großen Pflanzen (Felsen des Wolfs, Weg aus dem Wald)
+    const CLEARINGS = [wolfRock(SCENES[0]), { x: (wolfRock(SCENES[0]).x + wolfDen(SCENES[0], 0).x) / 2, z: SCENES[0].z - 1.5 }];
     function inClearing(x, z, r) {
       for (const c of CLEARINGS) {
         const dz = Math.abs(z - c.z);
@@ -2573,6 +2629,7 @@
 
       // Uferklippen mit Wasserfällen im Nebeltal: das Wasser tritt in der Nische aus und fällt bis y=0
       const waterfalls = [];
+      const lightShaftsExtra = [];
       const bankCliffHousings = [];
       const plungeRipples = [];
       const bankFalls = [{ z: -22, side: -1 }, { z: -60, side: 1 }, { z: -73, side: -1 }, { z: -118, side: -1 }];
@@ -2669,7 +2726,7 @@
       // Zone 1: Nadelbäume, nah am Ufer kleiner (die unteren Zweige dürfen nicht in die Fahrrinne ragen)
       for (let i = 0; i < 700; i++) {
         const p = bankSpot(i, 5.0, 2.5, 34.0, 1.0);
-        if (inClearing(p.x, p.z, 10.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.4)) continue;
+        if (inClearing(p.x, p.z, 3.5) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.4)) continue;
         const h = Math.min(9.0 + hash2(i, 6.4) * 10.0, p.reach / 0.3);
         if (h < 5.0) continue;
         pushInst("pines", [p.x, p.y - 0.2, p.z], rot(i, 8.1), 0, 0, [h, h, h], CYAN);
@@ -2709,20 +2766,46 @@
 
       // --- Bauwerke, Ruinen und Besonderheiten je Zone ---
       const STONE_A = [0.30, 0.29, 0.33, 1], STONE_B = [0.22, 0.22, 0.28, 1], MARBLE = [0.86, 0.84, 0.79, 1];
-      // Nebeltal: Burgruinen auf fernen Hügeln, verfallene Mauern und Torbögen, Laternen am Ufer
-      [{ z: -55, side: -1, d: 85 }, { z: -125, side: 1, d: 100 }].forEach((c, k) => {
-        const x = riverCenterX(c.z) + c.side * (riverHalfWidth(c.z) + c.d);
-        const s = 34 + k * 6;
-        pushInst("castles", [x, terrainHeight(x, c.z) - 1.0, c.z], rot(k, 120.0), 0, 0, [s, s, s], STONE_A);
-      });
-      for (let i = 0; i < 40; i++) {
-        const p = bankSpot(i, 125.0, 3.0, 35.0, 1.2);
-        if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 0.6, 0.6, 0.0, hash2(i, 125.7))) continue;
+      // Nebeltal: eine Burgruine auf einem Felsen im Hintergrund, mit Wasserfall und Nebel
+      const crag = { z: -150, side: 1, d: 30 };
+      {
+        const x = riverCenterX(crag.z) + crag.side * (riverHalfWidth(crag.z) + crag.d);
+        const gy = terrainHeight(x, crag.z);
+        const s = 20.0, h = 30.0;
+        pushInst("cliffs", [x, gy - 3.0, crag.z], 0.8, 0, 0, [s, h, s * 0.85], [0.75, 0.75, 0.85, 1]);
+        const topY = gy - 3.0 + h * 0.93;
+        pushInst("castles", [x, topY - 1.5, crag.z], 0.4, 0, 0, [17, 19, 17], STONE_A);
+        // Wasserfall an der Flussseite des Felsens
+        const fx = x - crag.side * s * 0.55;
+        waterfalls.push({ x: fx, y: topY - 6.0, z: crag.z + 2.0, rotY: -crag.side * Math.PI * 0.5, sx: 3.0, sy: topY - 6.0 - gy, sz: 2.0, isSkyFall: false });
+        plungeRipples.push({ x: fx - crag.side * 1.5, y: gy + 0.05, z: crag.z + 2.0, sx: 4.0, sz: 3.5 });
+        lightShaftsExtra.push([fx, gy, crag.z]);
+      }
+      // der Felsen des Wolfs und dichte Nadelbäume rund um seinen Ausgangspunkt
+      {
+        const r = wolfRock(SCENES[0]);
+        pushInst("cliffs", [r.x, r.y - 1.4, r.z], 0.3, 0, 0, [1.9, 1.4, 1.7], [0.9, 0.9, 0.95, 1]);
+        // Gegenlicht: ein heller Lichtstrahl im Nebel hinter dem Felsen, damit sich der Wolf abhebt
+        const bx = r.x + SCENES[0].side * 7.0;
+        lightShaftsExtra.push([bx, terrainHeight(bx, r.z - 2.0), r.z - 2.0]);
+        for (let k = 0; k < 26; k++) {
+          const z = SCENES[0].z - 14 + hash2(k, 200.0) * 28;
+          const bank = 6.0 + hash2(k, 201.0) * 18.0;
+          const x = riverCenterX(z) + SCENES[0].side * (riverHalfWidth(z) + bank);
+          if (Math.hypot(x - wolfDen(SCENES[0], 0).x, z - wolfDen(SCENES[0], 0).z) < 3.0) continue;
+          if (Math.abs(z - (SCENES[0].z - 1.0)) < 4.0 && bank < 14.0) continue; // Sichtachse zum Gegenlicht freihalten
+          const h = 11.0 + hash2(k, 202.0) * 9.0;
+          pushInst("pines", [x, terrainHeight(x, z) - 0.2, z], rot(k, 203.0), 0, 0, [h, h, h], CYAN);
+        }
+      }
+      for (let i = 0; i < 12; i++) {
+        const p = bankSpot(i, 125.0, 3.0, 25.0, 1.2);
+        if (!zoneChance(p.z, 0.0, 0.6, 0.0, hash2(i, 125.7))) continue;
         zoneWeights(p.z, zw);
         const s = 5.0 + hash2(i, 126.0) * 6.0;
         pushInst("ruinArches", [p.x, p.y - 0.15, p.z], rot(i, 127.0), 0, (hash2(i, 128.0) - 0.5) * 0.06, [s, s, s], zw[0] > zw[1] ? STONE_A : STONE_B);
       }
-      for (let i = 0; i < 70; i++) {
+      for (let i = 0; i < 36; i++) {
         const p = bankSpot(i, 130.0, 0.8, 2.2, 1.0);
         if (inClearing(p.x, p.z, 5.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 130.7))) continue;
         const h = 2.1 + hash2(i, 131.0) * 0.5;
@@ -2730,16 +2813,20 @@
         pushInst("lanterns", [p.x, p.y - 0.05, p.z], p.side > 0 ? Math.PI : 0, 0, 0, [h, h, h], [1, 1, 1, 1]);
       }
       // Pilzwald: Tentakel in Gruppen, leuchtende Glaskugeln
-      for (let g = 0; g < 26; g++) {
-        const c = bankSpot(g, 135.0, 1.5, 24.0, 1.3);
-        if (!zoneChance(c.z, 0.0, 1.0, 0.0, hash2(g, 135.7))) continue;
-        const n = 2 + Math.floor(hash2(g, 136.0) * 4);
+      // Tentakel: gleichmäßig entlang des Flusses, dicht am Wasser, zum Fluss hin geneigt
+      for (let g = 0; g < 24; g++) {
+        const z0 = -170.0 - g * 6.0 - hash2(g, 135.0) * 3.0;
+        const side = (g % 2 === 0 ? 1 : -1) * (hash2(g, 136.0) < 0.25 ? -1 : 1);
+        const n = 1 + Math.floor(hash2(g, 137.0) * 3);
         for (let k = 0; k < n; k++) {
-          const a = hash2(g * 9 + k, 137.0) * Math.PI * 2, r = 1.0 + hash2(g * 9 + k, 138.0) * 3.0;
-          const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
-          if (Math.abs(x - riverCenterX(z)) < riverHalfWidth(z) + 0.5) continue;
-          const h = 3.5 + hash2(g * 9 + k, 139.0) * 6.0;
-          pushInst("tentacles", [x, terrainHeight(x, z) - 0.3, z], rot(g * 9 + k, 140.0), (hash2(g * 9 + k, 141.0) - 0.5) * 0.3, (hash2(g * 9 + k, 142.0) - 0.5) * 0.3,
+          const z = z0 + (k - 1) * 1.8;
+          const hw = riverHalfWidth(z);
+          const bank = 0.4 + hash2(g * 9 + k, 138.0) * 3.5;
+          const x = riverCenterX(z) + side * (hw + bank);
+          // die eingerollte Spitze darf nicht in die Fahrrinne ragen
+          const h = Math.min(3.5 + hash2(g * 9 + k, 139.0) * 6.0, (hw + bank - 2.6) / 0.55);
+          const yaw = (side > 0 ? Math.PI : 0.0) + (hash2(g * 9 + k, 140.0) - 0.5) * 1.0;
+          pushInst("tentacles", [x, terrainHeight(x, z) - 0.3, z], yaw, (hash2(g * 9 + k, 141.0) - 0.5) * 0.2, -0.22,
             [h, h, h], hash2(g * 9 + k, 143.0) < 0.6 ? VIOLET : CYAN);
         }
       }
@@ -2750,16 +2837,16 @@
         pushInst("orbs", [p.x, p.y + r * 0.8, p.z], 0, 0, 0, [r, r, r], hash2(i, 147.0) < 0.5 ? CYAN : hash2(i, 147.0) < 0.8 ? VIOLET : [1.0, 0.55, 0.2, 1]);
       }
       // Himmelsinseln: weiße Türme auf den Inseln und am Ufer, schwebende Felsbrocken, Felsen im Fluss
-      floatingPeaks.forEach((pk, k) => {
-        if (hash2(k, 150.0) > 0.55) return;
-        const h = pk.sx * (0.9 + hash2(k, 151.0) * 0.8);
-        pushInst("spires", [pk.x + (hash2(k, 152.0) - 0.5) * pk.sx * 0.4, pk.y + pk.sy * 0.32 - 0.5, pk.z], rot(k, 153.0), 0, 0, [h, h, h], MARBLE);
-      });
-      for (let i = 0; i < 30; i++) {
-        const p = bankSpot(i, 155.0, 12.0, 90.0, 1.0);
-        if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 155.7))) continue;
-        const h = 16.0 + hash2(i, 156.0) * 18.0;
-        pushInst("spires", [p.x, p.y - 0.5, p.z], rot(i, 157.0), 0, 0, [h, h, h], MARBLE);
+      // Himmelsinseln: drei verschiedene Bauwerke statt vieler gleicher Türme
+      {
+        // Kuppeltempel am Ufer
+        const z = -352, x = riverCenterX(z) - (riverHalfWidth(z) + 12.0);
+        pushInst("temple", [x, terrainHeight(x, z) - 0.3, z], 1.2, 0, 0, [11, 11, 11], MARBLE);
+        // Kathedrale auf der größten nahen Insel, schlanker Turm auf einer anderen
+        const big = floatingPeaks.slice(0, 7).reduce((a, b) => (b.sx > a.sx ? b : a));
+        pushInst("cathedral", [big.x, big.y + big.sy * 0.3 - 0.6, big.z], 0.5, 0, 0, [big.sx * 1.3, big.sx * 1.3, big.sx * 1.3], MARBLE);
+        const other = floatingPeaks.slice(0, 7).find((pk) => pk !== big && pk.z < -420) || floatingPeaks[5];
+        pushInst("spires", [other.x, other.y + other.sy * 0.32 - 0.5, other.z], 0.3, 0, 0, [other.sx * 1.4, other.sx * 1.4, other.sx * 1.4], MARBLE);
       }
       for (let i = 0; i < 55; i++) {
         const z = -330.0 - hash2(i, 160.0) * 140.0;
@@ -2816,8 +2903,8 @@
         const z = -(i / 40) * L - hash2(i, 45.0) * 8.0;
         if (!zoneChance(z, 0.0, 1.0, 0.0, hash2(i, 45.5))) continue;
         const x = riverCenterX(z) + (hash2(i, 46.1) - 0.5) * 12.0;
-        const y = 7.5 + hash2(i, 47.4) * 4.0;
-        const sc = 0.55 + hash2(i, 48.7) * 0.55;
+        const y = 15.0 + hash2(i, 47.4) * 10.0;
+        const sc = 1.6 + hash2(i, 48.7) * 1.5;
         pushInst("jellyfish", [x, y, z], rot(i, 49.2), 0, 0, [sc, sc, sc], hash2(i, 50.0) < 0.6 ? [0.2, 0.75, 1.0, 1] : [0.7, 0.3, 1.0, 1]);
       }
 
@@ -2830,6 +2917,11 @@
         Mat4.compose(model, [x, terrainHeight(x, z), z], 0, 0.12, 0.2, [1.0, 1.0, 1.0]);
         lightShafts.push({ model, z, color: [0.35, 0.6, 1.0, 1] });
       }
+      lightShaftsExtra.forEach(([x, y, z]) => {
+        const model = Mat4.create();
+        Mat4.compose(model, [x, y, z], 0, 0.1, 0.15, [2.5, 1.6, 2.5]);
+        lightShafts.push({ model, z, color: [0.35, 0.6, 1.0, 3.0] });
+      });
 
       // Leuchtpunkte am Waldboden, in Flecken gehäuft, nach z sortiert
       const dots = [];
@@ -2906,7 +2998,9 @@
           inst("lanterns", buildLanternPostMesh(), 2.0),
           inst("tentacles", buildTentacleMesh(), 4.0),
           inst("orbs", buildOrbMesh(), 2.0),
-          inst("spires", buildSpireTowerMesh(), 12.0)
+          inst("spires", buildSpireTowerMesh(), 12.0),
+          inst("temple", buildTempleMesh(), 10.0),
+          inst("cathedral", buildCathedralMesh(), 16.0)
         ],
         dotVao, dotZ, dotCount: dots.length,
         particleVao: pVao,
@@ -3099,7 +3193,7 @@
     // Drei Arten, alle prozedural:
     //   Gleiter (Material 21): Schwärme mit leuchtenden Schwingen, die über den Fluss segeln
     //   Springfische (Material 22): springen kurz vor dem Boot aus dem Wasser
-    //   Wölfe (Material 23): dunkle Schemen im Nebeltal, laufen am Ufer und bleiben stehen, wenn das Boot kommt
+    //   Wolf (Material 23/24): tritt im Nebeltal aus dem Wald, steigt auf einen Felsen und heult
     // Jedes Auftauchen ist an eine Stelle der Strecke gebunden und wird über den Abstand des Boots ausgelöst.
 
     function buildGliderMesh() {
@@ -3166,13 +3260,14 @@
         return [shag(t, a, r * 0.8), shag(t, a, r * 1.15)];
       }, 23, (t) => [0.6, 0.0, 0.0]);
       // Hals, Kopf und Schnauze
-      addLathe(b, 8, 10, (t) => [0, 0.76 + t * 0.12, -0.48 - t * 0.28], (t, a) => [shag(t, a, 0.12 - t * 0.03), shag(t, a, 0.14 - t * 0.04)], 23, () => [0.7, 0.0, 0.0]);
-      addLathe(b, 8, 10, (t) => [0, 0.87 - t * 0.07, -0.74 - t * 0.3], (t) => { const r = 0.085 * (1.0 - t * 0.6) + 0.01; return [r, r * 0.9]; }, 23, () => [0.8, 0.0, 0.0]);
+      // Hals, Kopf, Ohren und Augen haben Material 24: sie drehen sich im Shader um das Nackengelenk (Heulen)
+      addLathe(b, 8, 10, (t) => [0, 0.72 + t * 0.12, -0.46 - t * 0.28], (t, a) => [shag(t, a, 0.13 - t * 0.03), shag(t, a, 0.15 - t * 0.04)], 24, () => [0.7, 0.0, 0.0]);
+      addLathe(b, 8, 10, (t) => [0, 0.83 - t * 0.07, -0.72 - t * 0.3], (t) => { const r = 0.09 * (1.0 - t * 0.6) + 0.01; return [r, r * 0.9]; }, 24, () => [0.8, 0.0, 0.0]);
       // Ohren
       for (const sx of [-1, 1]) {
-        addLathe(b, 3, 4, (t) => [sx * (0.05 + t * 0.015), 0.95 + t * 0.1, -0.7 + t * 0.02], (t) => { const r = 0.035 * (1 - t) + 0.003; return [r, r * 0.5]; }, 23, () => [0.8, 0.0, 0.0]);
+        addLathe(b, 3, 4, (t) => [sx * (0.05 + t * 0.015), 0.91 + t * 0.1, -0.68 + t * 0.02], (t) => { const r = 0.035 * (1 - t) + 0.003; return [r, r * 0.5]; }, 24, () => [0.8, 0.0, 0.0]);
         // Augen
-        addBox(b, [sx * 0.05, 0.9, -0.86], [0.03, 0.018, 0.02], 0, 0, 23, 3.0);
+        addBox(b, [sx * 0.05, 0.86, -0.84], [0.04, 0.024, 0.02], 0, 0, 24, 3.0);
       }
       // Beine mit Phase für den Laufzyklus (diagonal gleich)
       [[-0.09, -0.38, 1], [0.09, -0.38, -1], [-0.09, 0.42, -1], [0.09, 0.42, 1]].forEach(([x, z, ph]) => {
@@ -3193,10 +3288,8 @@
 
     // Vogelschwärme (tint.a = 0 bedeutet: keine Leuchtzeichnung, Farbe aus tint)
     const BIRD_FLOCKS = [
-      { z: -30, offX: 22, y: 20, r: 18, dir: 1, tint: [0.03, 0.03, 0.04, 0] },
-      { z: -110, offX: -30, y: 26, r: 22, dir: -1, tint: [0.03, 0.03, 0.04, 0] },
-      { z: -360, offX: -25, y: 24, r: 20, dir: 1, tint: [0.95, 0.95, 0.92, 0] },
-      { z: -430, offX: 28, y: 30, r: 24, dir: -1, tint: [0.95, 0.95, 0.92, 0] }
+      { z: -40, offX: 22, y: 22, r: 18, dir: 1, tint: [0.03, 0.03, 0.04, 0] },        // Raben im Nebeltal
+      { z: -440, offX: 28, y: 30, r: 24, dir: -1, tint: [0.95, 0.95, 0.92, 0] }      // weiße Vögel bei den Inseln
     ];
 
     // Abstand entlang der Strecke vom Boot zum Ereignis, positiv = liegt noch voraus (berücksichtigt die Schleife)
@@ -3214,45 +3307,35 @@
     const ripplePool = Array.from({ length: 12 }, () => ({ x: 0, z: 0, a: 0 }));
     const rippleDraws = [];
 
-    function updateCreatures(camZ, t) {
+    // Laufende Szene: vom Programm gesetzt (index in SCENES, Zeit seit Beginn, oder -1)
+    const sceneFocus = [0, 0, 0];
+    let sceneFocusOn = false;
+
+    // sanfter Verlauf von a nach b zwischen den Zeiten t0 und t1
+    const ease = (t, t0, t1) => smoothstep(t0, t1, t);
+
+    function updateCreatures(camZ, t, sceneIdx, sceneT) {
       creatureDraws.length = 0;
       pois.length = 0;
       rippleDraws.length = 0;
+      sceneFocusOn = false;
       let k = 0;
       const take = (mesh, tint) => {
         const d = drawPool[k++];
         d.mesh = mesh;
         d.tint[0] = tint[0]; d.tint[1] = tint[1]; d.tint[2] = tint[2]; d.tint[3] = tint.length > 3 ? tint[3] : 1;
-        d.anim[2] = 0;
+        d.anim[0] = 0; d.anim[1] = 0; d.anim[2] = 0; d.anim[3] = 0;
         creatureDraws.push(d);
         return d;
       };
+      const ripple = (x, z, a) => {
+        const r = ripplePool[rippleDraws.length % ripplePool.length];
+        r.x = x; r.z = z; r.a = a;
+        rippleDraws.push(r);
+      };
+      const focus = (x, y, z) => { sceneFocus[0] = x; sceneFocus[1] = y; sceneFocus[2] = z; sceneFocusOn = true; };
 
-      // Gleiterschwärme: queren den Fluss, während das Boot von 90 auf 0 Einheiten herankommt
-      EVENTS.flocks.forEach((ev, ei) => {
-        const d = aheadDist(camZ, ev.z);
-        if (d > 95 || d < -15) return;
-        const p = (95 - d) / 110;
-        const zEv = camZ - d;
-        const cx = riverCenterX(zEv);
-        for (let i = 0; i < 7; i++) {
-          const lag = i * 0.035;
-          const q = p - lag;
-          const x = cx + ev.side * lerp(-55, 55, q) + Math.sin(i * 2.3) * 3.0;
-          const y = 9.0 + Math.sin(q * Math.PI) * 4.0 + Math.cos(i * 1.7) * 1.8 + Math.sin(t * 0.8 + i) * 0.4;
-          const z = zEv - 6.0 + Math.sin(i * 4.1) * 5.0 + q * 10.0;
-          const g = take(creatureMeshes.glider, i % 3 === 0 ? [0.75, 0.3, 1.0] : [0.15, 0.8, 1.0]);
-          const yaw = ev.side > 0 ? -Math.PI * 0.5 + 0.25 : Math.PI * 0.5 - 0.25;
-          const bank = Math.sin(t * 0.6 + i) * 0.15;
-          const s = 1.5 + (i % 3) * 0.25;
-          Mat4.compose(g.model, [x, y, z], yaw, Math.sin(t * 0.9 + i) * 0.05, bank, [s, s, s]);
-          g.anim[0] = i * 1.3 + ei;
-          g.anim[1] = 0;
-          if (i === 3) pois.push({ x, y, z, w: 1.6 });
-        }
-      });
-
-      // Vogelschwärme, die über einer Stelle kreisen: Krähen im Nebeltal, weiße Vögel bei den Himmelsinseln
+      // Vogelschwärme, die über einer Stelle kreisen
       BIRD_FLOCKS.forEach((fl, fi) => {
         const d = aheadDist(camZ, fl.z);
         if (d > 170 || d < -60) return;
@@ -3271,57 +3354,80 @@
         }
       });
 
-      // Springfische: drei Fische springen nacheinander quer über den Fluss
-      EVENTS.fish.forEach((zf, ei) => {
-        const d = aheadDist(camZ, zf);
-        if (d > 26 || d < 2) return;
-        const zEv = camZ - d;
-        const cx = riverCenterX(zEv);
-        const side = ei % 2 === 0 ? 1 : -1;
-        for (let i = 0; i < 3; i++) {
-          const p = (26 - d) / 9 - i * 0.55;
-          const x0 = cx + side * (3.2 - i * 0.6), x1 = cx - side * (0.2 + i * 0.5);
-          if (p > -0.05 && p < 0.25 || p > 0.9 && p < 1.4) {
-            // Ringwellen beim Auftauchen und Eintauchen
-            const r = ripplePool[rippleDraws.length % ripplePool.length];
-            r.x = p < 0.5 ? x0 : x1;
-            r.z = zEv - i * 1.5;
-            r.a = p < 0.5 ? 1.0 - Math.abs(p - 0.1) * 4.0 : 1.0 - (p - 0.9) * 2.0;
-            rippleDraws.push(r);
-          }
-          if (p < 0 || p > 1) continue;
-          const x = lerp(x0, x1, p);
-          const y = -0.25 + Math.sin(p * Math.PI) * (2.0 + i * 0.3);
-          const z = zEv - i * 1.5;
-          const f = take(creatureMeshes.fish, i === 1 ? [1.0, 0.55, 0.2] : [0.15, 0.85, 1.0]);
-          const yaw = side > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
-          const pitch = Math.cos(p * Math.PI) * 0.9;
-          Mat4.compose(f.model, [x, y, z], yaw, pitch, 0, [1.0, 1.0, 1.0]);
-          f.anim[0] = ei * 3.0 + i;
-          if (i === 0) pois.push({ x, y, z, w: 1.4 });
-        }
-      });
+      SCENES.forEach((sc, si) => {
+        const d = aheadDist(camZ, sc.z);
+        if (d > 160 || d < -60) return;
+        const zOff = (camZ - d) - sc.z; // Versatz, falls die Szene in einer anderen Runde der Schleife liegt
+        const active = si === sceneIdx;
+        // vor der Szene: Ausgangslage, nach der Szene: Endlage
+        const st = active ? sceneT : d > 0 ? 0 : sc.dur;
 
-      // Wolfsrudel im Nebeltal: läuft dem Boot am Ufer entgegen, bleibt in ~25 Einheiten stehen und schaut herüber
-      EVENTS.wolves.forEach((ev, ei) => {
-        const d = aheadDist(camZ, ev.z);
-        if (d > 150 || d < -40) return;
-        const zEv = camZ - d;
-        const walk = smoothstep(22, 32, d);
-        for (let i = 0; i < 3; i++) {
-          const spot = wolfSpot(ev, i);
-          const z = zEv + (spot.z - ev.z) - Math.max(d - 26 - i * 3, 0) * 0.45;
-          const x = riverCenterX(z) + (spot.x - riverCenterX(spot.z));
-          const y = terrainHeight(x, z) - 0.05;
-          const g = take(creatureMeshes.wolf, [1.0, 0.7, 0.25]);
-          // im Laufen zum Boot hin (+z), im Stehen zum Fluss gedreht
-          const yawWalk = Math.PI, yawStand = ev.side * Math.PI * 0.5 + ev.side * 0.35 * (i - 1);
-          const yaw = lerp(yawStand, yawWalk, walk);
-          const s = 2.3 - i * 0.2;
-          Mat4.compose(g.model, [x, y, z], yaw, 0, 0, [s, s, s]);
-          g.anim[0] = ei * 2.0 + i * 1.3;
-          g.anim[1] = walk;
-          if (i === 1 && d < 55 && d > -5) pois.push({ x, y: y + 1.0, z, w: 1.3 });
+        if (sc.type === "wolf") {
+          const rock = wolfRock(sc), den = wolfDen(sc, 0);
+          // Weg: aus dem Wald zum Felsen
+          const walkT = ease(st, 2.5, 7.0);
+          const x = lerp(den.x, rock.x, walkT), z = lerp(den.z, rock.z, walkT) + zOff;
+          const y = lerp(den.y, rock.y, ease(walkT, 0.75, 1.0)) + (walkT > 0.75 && walkT < 1 ? 0.25 * Math.sin((walkT - 0.75) * 4 * Math.PI) : 0);
+          const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
+          const yawWalk = Math.atan2(-(rock.x - den.x), -(rock.z - den.z));
+          const toBoat = Math.atan2(-(riverCenterX(camZ) - rock.x), -(camZ - (rock.z + zOff)));
+          const yaw = st < 7.2 ? yawWalk : lerp(yawWalk, toBoat, ease(st, 7.2, 8.2));
+          Mat4.compose(g.model, [x, y, z], yaw, 0, 0, [2.4, 2.4, 2.4]);
+          g.anim[0] = 1.0;
+          g.anim[1] = st > 2.5 && st < 7.0 ? 1.0 : 0.0;
+          // Kopf: gesenkt, dann Heulen (hoch), dann wieder auf das Boot gerichtet
+          g.anim[3] = -0.25 + 1.0 * (ease(st, 8.6, 9.4) - ease(st, 11.6, 12.4)) + 0.15 * ease(st, 12.4, 13.0);
+          if (active && st > 8.8 && st < 9.0 && !sc.howled) { sc.howled = true; if (typeof playHowl === "function") playHowl(); }
+          if (!active) sc.howled = false;
+          // zwei weitere Wölfe bleiben im Dunkel zwischen den Bäumen
+          for (let i = 1; i <= 2; i++) {
+            const p = wolfDen(sc, i);
+            const w = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
+            Mat4.compose(w.model, [p.x, p.y, p.z + zOff], toBoat + (i - 1.5) * 0.5, 0, 0, [2.1, 2.1, 2.1]);
+            w.anim[0] = i * 2.0;
+            w.anim[3] = -0.1 + 0.08 * Math.sin(t * 0.6 + i);
+          }
+          if (active) focus(x, y + 1.6, z);
+          else if (d < 60 && d > -5) pois.push({ x, y: y + 1.5, z, w: 1.0 });
+        } else if (sc.type === "fish") {
+          // ein großer Leuchtfisch springt zweimal in langsamen Bögen vor dem Boot über den Fluss
+          const zJ = sc.z + 7.0 + zOff, cx = riverCenterX(zJ);
+          const jumps = [[2.0, 4.6, sc.side * 5.5, -sc.side * 4.0, 4.2], [6.0, 8.0, -sc.side * 3.0, sc.side * 2.0, 2.6]];
+          let shown = false;
+          jumps.forEach(([t0, t1, xa, xb, hgt], ji) => {
+            if (st > t0 - 0.8 && st < t0 + 0.4) ripple(cx + xa, zJ, 1.0 - Math.abs(st - t0 + 0.2) * 1.5);
+            if (st > t1 - 0.2 && st < t1 + 1.2) ripple(cx + xb, zJ, 1.0 - (st - t1) * 0.8);
+            if (st < t0 || st > t1) return;
+            const p = (st - t0) / (t1 - t0);
+            const x = cx + lerp(xa, xb, p), y = -0.4 + Math.sin(p * Math.PI) * hgt;
+            const f = take(creatureMeshes.fish, [1.0, 0.55, 0.15]);
+            const dir = Math.sign(xb - xa);
+            Mat4.compose(f.model, [x, y, zJ], dir > 0 ? -Math.PI * 0.5 : Math.PI * 0.5, Math.cos(p * Math.PI) * 0.9, 0, [2.6, 2.6, 2.6]);
+            f.anim[0] = 3.0;
+            if (active) focus(x, Math.max(y, 0.5), zJ);
+            shown = true;
+          });
+          if (active && !shown) focus(cx + (st < 5 ? jumps[0][2] : jumps[1][2]) * 0.5, 0.6, zJ);
+        } else if (sc.type === "flock") {
+          // Gleiterschwarm: von den Inseln herab, tief über den Fluss vor dem Boot, auf der anderen Seite wieder hinauf
+          const zF = sc.z + 6.0 + zOff, cx = riverCenterX(zF);
+          for (let i = 0; i < 7; i++) {
+            const q = clamp01((st - 1.0 - i * 0.25) / 10.5);
+            if (q <= 0 || q >= 1) continue;
+            const ox = Math.sin(i * 2.3) * 3.0, oz = Math.cos(i * 1.7) * 4.0;
+            // Bezierkurve: oben seitlich -> tief über dem Fluss -> oben auf der anderen Seite
+            const P0 = [cx + sc.side * 50 + ox, 34 + i, zF - 35 + oz], P1 = [cx + sc.side * 15 + ox, -4, zF - 10 + oz];
+            const P2 = [cx - sc.side * 15 + ox, -2, zF + 2 + oz], P3 = [cx - sc.side * 55 + ox, 38 + i, zF - 20 + oz];
+            const bez = (u, k2) => { const v = 1 - u; return v * v * v * P0[k2] + 3 * v * v * u * P1[k2] + 3 * v * u * u * P2[k2] + u * u * u * P3[k2]; };
+            const x = bez(q, 0), y = Math.max(bez(q, 1), 4.0 + i * 0.4), z = bez(q, 2);
+            const q2 = Math.min(q + 0.01, 1.0);
+            const vx = bez(q2, 0) - x, vy = bez(q2, 1) - bez(q, 1), vz = bez(q2, 2) - z;
+            const g = take(creatureMeshes.glider, i % 3 === 0 ? [0.75, 0.3, 1.0] : [0.15, 0.8, 1.0]);
+            const s = 1.8 + (i % 3) * 0.3;
+            Mat4.compose(g.model, [x, y, z], Math.atan2(-vx, -vz), Math.atan2(vy, Math.hypot(vx, vz)) * 0.8, -sc.side * 0.3 * Math.sin(q * Math.PI), [s, s, s]);
+            g.anim[0] = i * 1.3;
+            if (active && i === 3) focus(x, y, z);
+          }
         }
       });
     }
@@ -3390,6 +3496,49 @@
       }
     }
 
+    // Wolfsgeheul: zwei leicht verstimmte Töne, die auf- und absteigen, mit Vibrato und Echo
+    function playHowl() {
+      if (!audioCtx || !audioEnabled) return;
+      const now = audioCtx.currentTime;
+      const out = audioCtx.createGain();
+      out.gain.setValueAtTime(0.0, now);
+      out.gain.linearRampToValueAtTime(0.16, now + 0.4);
+      out.gain.setValueAtTime(0.16, now + 2.2);
+      out.gain.linearRampToValueAtTime(0.0, now + 3.4);
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 1400;
+      const echo = audioCtx.createDelay(1.0);
+      echo.delayTime.value = 0.42;
+      const fb = audioCtx.createGain();
+      fb.gain.value = 0.35;
+      out.connect(lp);
+      lp.connect(masterGain);
+      lp.connect(echo);
+      echo.connect(fb);
+      fb.connect(echo);
+      echo.connect(masterGain);
+      const vib = audioCtx.createOscillator();
+      vib.frequency.value = 5.5;
+      const vibGain = audioCtx.createGain();
+      vibGain.gain.value = 9;
+      vib.connect(vibGain);
+      for (const det of [0, 7]) {
+        const o = audioCtx.createOscillator();
+        o.type = "sine";
+        o.frequency.setValueAtTime(330 + det, now);
+        o.frequency.exponentialRampToValueAtTime(560 + det, now + 0.9);
+        o.frequency.setValueAtTime(560 + det, now + 2.0);
+        o.frequency.exponentialRampToValueAtTime(380 + det, now + 3.4);
+        vibGain.connect(o.frequency);
+        o.connect(out);
+        o.start(now);
+        o.stop(now + 3.6);
+      }
+      vib.start(now);
+      vib.stop(now + 3.6);
+    }
+
     // --- State & Controls ---
     const state = {
       running: true,
@@ -3397,10 +3546,14 @@
       travelDist: 0.0,
       lastFrame: performance.now()
     };
-    // Testhilfe: index.html#t=30 startet 30 Sekunden in der Fahrt
+    // Testhilfe: index.html#t=30 startet 30 Sekunden in der Fahrt, #t=14&s=8 zusätzlich 8 Sekunden in die nächste Szene
+    let debugSceneT = 0;
+    let snapFrames = location.hash ? 6 : 0;
     {
       const m = /t=([\d.]+)/.exec(location.hash);
       if (m) { state.time = +m[1]; state.travelDist = +m[1] * 4.6; }
+      const ms = /s=([\d.]+)/.exec(location.hash);
+      if (ms) debugSceneT = +ms[1];
     }
 
     function toggleRun() {
@@ -3678,12 +3831,36 @@
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
+    // Szenen (siehe SCENES in world.js): Boot bremst ab, Kamera richtet sich fest auf das Geschehen
+    const scene = { idx: -1, t: 0, lap: -1, done: SCENES.map(() => false), speed: 1.0, zoom: 0.0 };
+    function updateScene(dt) {
+      const lap = Math.floor(state.travelDist / LOOP_LENGTH);
+      if (lap !== scene.lap) { scene.lap = lap; scene.done.fill(false); }
+      const zNow = -(((state.travelDist % LOOP_LENGTH) + LOOP_LENGTH) % LOOP_LENGTH);
+      if (scene.idx < 0) {
+        SCENES.forEach((sc, i) => {
+          if (scene.idx >= 0 || scene.done[i]) return;
+          const d = aheadDist(zNow, sc.z);
+          if (d > 0 && d < sc.trigger) { scene.idx = i; scene.t = debugSceneT; scene.done[i] = true; debugSceneT = 0; }
+        });
+      } else {
+        scene.t += dt;
+        if (scene.t > SCENES[scene.idx].dur) scene.idx = -1;
+      }
+      const slow = scene.idx >= 0 && scene.t < SCENES[scene.idx].dur - 1.5;
+      scene.speed += ((slow ? 0.08 : 1.0) - scene.speed) * (1.0 - Math.exp(-dt * 1.2));
+      // langsames Heranzoomen während der Szene
+      const zoomTarget = slow && scene.t > 1.0 ? SCENES[scene.idx].zoom : 0.0;
+      scene.zoom += (zoomTarget - scene.zoom) * (1.0 - Math.exp(-dt * (snapFrames > 0 ? 50.0 : 0.7)));
+    }
+
     function render(now) {
       const dt = Math.min((now - state.lastFrame) * 0.001, 0.05);
       state.lastFrame = now;
       if (state.running) {
         state.time += dt;
-        state.travelDist += dt * 4.6;
+        updateScene(dt);
+        state.travelDist += dt * 4.6 * scene.speed;
       }
 
       const zMod = ((state.travelDist % LOOP_LENGTH) + LOOP_LENGTH) % LOOP_LENGTH;
@@ -3698,7 +3875,7 @@
       placeBoat(bx, zCur, heading, t, camEye);
       boatHeading = heading;
       ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
-      updateCreatures(zCur, t);
+      updateCreatures(zCur, t, scene.idx, scene.t);
 
       // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten
       let tYaw = Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12;
@@ -3722,7 +3899,14 @@
         tYaw = best.rel;
         tPitch = Math.max(-0.35, Math.min(0.75, best.pitch));
       }
-      const ease = 1.0 - Math.exp(-dt * (best ? 1.3 : 0.6));
+      // während einer Szene: Blick fest auf das Geschehen
+      if (sceneFocusOn) {
+        const dx = sceneFocus[0] - camEye[0], dy = sceneFocus[1] - camEye[1], dz = sceneFocus[2] - camEye[2];
+        tYaw = wrapAngle(Math.atan2(-dx, -dz) - heading);
+        tPitch = Math.max(-0.4, Math.min(0.9, Math.atan2(dy, Math.hypot(dx, dz))));
+      }
+      // bei Testsprüngen (#t=...) rastet der Blick in den ersten Bildern sofort ein
+      const ease = snapFrames-- > 0 ? 1.0 : 1.0 - Math.exp(-dt * (sceneFocusOn ? 2.2 : best ? 1.3 : 0.6));
       gaze.yaw += wrapAngle(tYaw - gaze.yaw) * ease;
       gaze.pitch += (tPitch - gaze.pitch) * ease;
       // eigener Blick klingt nach 2,5 Sekunden ohne Bewegung wieder ab
@@ -3742,7 +3926,7 @@
       camMirror[2] = camEye[2];
 
       const aspect = canvas.width / Math.max(canvas.height, 1);
-      Mat4.perspective(projMat, ((aspect < 1 ? 74 : 62) * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
+      Mat4.perspective(projMat, (((aspect < 1 ? 74 : 62) - 26 * scene.zoom) * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
       Mat4.lookAt(viewMat, camEye, camTarget, [0, 1, 0]);
       Mat4.multiply(viewProjMat, projMat, viewMat);
       Mat4.multiply(reflViewProj, viewProjMat, mirrorMat);

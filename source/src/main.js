@@ -6,10 +6,14 @@ const state = {
   travelDist: 0.0,
   lastFrame: performance.now()
 };
-// Testhilfe: index.html#t=30 startet 30 Sekunden in der Fahrt
+// Testhilfe: index.html#t=30 startet 30 Sekunden in der Fahrt, #t=14&s=8 zusätzlich 8 Sekunden in die nächste Szene
+let debugSceneT = 0;
+let snapFrames = location.hash ? 6 : 0;
 {
   const m = /t=([\d.]+)/.exec(location.hash);
   if (m) { state.time = +m[1]; state.travelDist = +m[1] * 4.6; }
+  const ms = /s=([\d.]+)/.exec(location.hash);
+  if (ms) debugSceneT = +ms[1];
 }
 
 function toggleRun() {
@@ -287,12 +291,36 @@ function fullscreenPass(fbo, w, h) {
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
+// Szenen (siehe SCENES in world.js): Boot bremst ab, Kamera richtet sich fest auf das Geschehen
+const scene = { idx: -1, t: 0, lap: -1, done: SCENES.map(() => false), speed: 1.0, zoom: 0.0 };
+function updateScene(dt) {
+  const lap = Math.floor(state.travelDist / LOOP_LENGTH);
+  if (lap !== scene.lap) { scene.lap = lap; scene.done.fill(false); }
+  const zNow = -(((state.travelDist % LOOP_LENGTH) + LOOP_LENGTH) % LOOP_LENGTH);
+  if (scene.idx < 0) {
+    SCENES.forEach((sc, i) => {
+      if (scene.idx >= 0 || scene.done[i]) return;
+      const d = aheadDist(zNow, sc.z);
+      if (d > 0 && d < sc.trigger) { scene.idx = i; scene.t = debugSceneT; scene.done[i] = true; debugSceneT = 0; }
+    });
+  } else {
+    scene.t += dt;
+    if (scene.t > SCENES[scene.idx].dur) scene.idx = -1;
+  }
+  const slow = scene.idx >= 0 && scene.t < SCENES[scene.idx].dur - 1.5;
+  scene.speed += ((slow ? 0.08 : 1.0) - scene.speed) * (1.0 - Math.exp(-dt * 1.2));
+  // langsames Heranzoomen während der Szene
+  const zoomTarget = slow && scene.t > 1.0 ? SCENES[scene.idx].zoom : 0.0;
+  scene.zoom += (zoomTarget - scene.zoom) * (1.0 - Math.exp(-dt * (snapFrames > 0 ? 50.0 : 0.7)));
+}
+
 function render(now) {
   const dt = Math.min((now - state.lastFrame) * 0.001, 0.05);
   state.lastFrame = now;
   if (state.running) {
     state.time += dt;
-    state.travelDist += dt * 4.6;
+    updateScene(dt);
+    state.travelDist += dt * 4.6 * scene.speed;
   }
 
   const zMod = ((state.travelDist % LOOP_LENGTH) + LOOP_LENGTH) % LOOP_LENGTH;
@@ -307,7 +335,7 @@ function render(now) {
   placeBoat(bx, zCur, heading, t, camEye);
   boatHeading = heading;
   ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
-  updateCreatures(zCur, t);
+  updateCreatures(zCur, t, scene.idx, scene.t);
 
   // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten
   let tYaw = Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12;
@@ -331,7 +359,14 @@ function render(now) {
     tYaw = best.rel;
     tPitch = Math.max(-0.35, Math.min(0.75, best.pitch));
   }
-  const ease = 1.0 - Math.exp(-dt * (best ? 1.3 : 0.6));
+  // während einer Szene: Blick fest auf das Geschehen
+  if (sceneFocusOn) {
+    const dx = sceneFocus[0] - camEye[0], dy = sceneFocus[1] - camEye[1], dz = sceneFocus[2] - camEye[2];
+    tYaw = wrapAngle(Math.atan2(-dx, -dz) - heading);
+    tPitch = Math.max(-0.4, Math.min(0.9, Math.atan2(dy, Math.hypot(dx, dz))));
+  }
+  // bei Testsprüngen (#t=...) rastet der Blick in den ersten Bildern sofort ein
+  const ease = snapFrames-- > 0 ? 1.0 : 1.0 - Math.exp(-dt * (sceneFocusOn ? 2.2 : best ? 1.3 : 0.6));
   gaze.yaw += wrapAngle(tYaw - gaze.yaw) * ease;
   gaze.pitch += (tPitch - gaze.pitch) * ease;
   // eigener Blick klingt nach 2,5 Sekunden ohne Bewegung wieder ab
@@ -351,7 +386,7 @@ function render(now) {
   camMirror[2] = camEye[2];
 
   const aspect = canvas.width / Math.max(canvas.height, 1);
-  Mat4.perspective(projMat, ((aspect < 1 ? 74 : 62) * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
+  Mat4.perspective(projMat, (((aspect < 1 ? 74 : 62) - 26 * scene.zoom) * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
   Mat4.lookAt(viewMat, camEye, camTarget, [0, 1, 0]);
   Mat4.multiply(viewProjMat, projMat, viewMat);
   Mat4.multiply(reflViewProj, viewProjMat, mirrorMat);

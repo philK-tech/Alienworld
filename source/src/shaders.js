@@ -336,10 +336,18 @@ void main() {
     p.x += (sin(uTime * 0.55 + ph) * 0.22 + sin(uTime * 1.3 + ph * 2.0) * 0.06) * w;
     p.z += cos(uTime * 0.45 + ph * 1.3) * 0.18 * w;
     p.y -= (1.0 - cos(uTime * 0.5 + ph)) * 0.04 * w;
-  } else if (matId == 23) {
+  } else if (matId == 23 || matId == 24) {
     // Wolf: Laufzyklus der Beine (uAnim.y = wie stark er läuft), leichtes Atmen im Stehen
     float swing = sin(uTime * 7.0 + uAnim.x) * 0.5 * uAnim.y;
     p.z += swing * aExtra.z;
+    if (matId == 24) {
+      // Kopf um das Nackengelenk heben oder senken (uAnim.w)
+      vec3 pivot = vec3(0.0, 0.74, -0.42);
+      float c = cos(uAnim.w), s = sin(uAnim.w);
+      vec3 r = p - pivot;
+      p = pivot + vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
+      nrm = vec3(nrm.x, nrm.y * c - nrm.z * s, nrm.y * s + nrm.z * c);
+    }
     p.y += abs(sin(uTime * 7.0 + uAnim.x)) * 0.03 * uAnim.y + sin(uTime * 1.6 + uAnim.x) * 0.006;
   }
 
@@ -683,13 +691,13 @@ void main() {
     base = vec3(0.03, 0.05, 0.08);
     emissive += vTint.rgb * (side * 1.6 + glowMask * 0.9 + 0.08);
     wet = 1.0;
-  } else if (matId == 23) {
-    // Wolf: fast schwarzer Schemen, die Fellkontur nimmt die Farbe des Nebels an, Augen glühen
-    float rimW = pow(1.0 - abs(dot(N, V)), 2.0);
-    base = vec3(0.015, 0.014, 0.02);
-    albA = albC = vec3(0.035, 0.032, 0.04) * (0.8 + 0.4 * fine);
-    emissive += skyHaze(-V) * rimW * 0.22;
-    emissive += vTint.rgb * step(2.0, glowMask) * 6.0;
+  } else if (matId == 23 || matId == 24) {
+    // Wolf: fast schwarzer Schemen, nur ein feiner Saum in der Farbe des Nebels, Augen glühen
+    float rimW = pow(1.0 - abs(dot(N, V)), 3.0);
+    base = vec3(0.008, 0.008, 0.012);
+    albA = albC = vec3(0.012, 0.011, 0.015) * (0.8 + 0.4 * fine);
+    emissive += (skyHaze(-V) * 0.6 + vec3(0.25, 0.2, 0.3)) * rimW * 0.35;
+    emissive += vTint.rgb * step(2.0, glowMask) * 12.0;
     emissive /= max(emScale, 0.3);
   }
 
@@ -828,7 +836,7 @@ void main() {
     float viewFade = pow(abs(dot(N, V)), 2.0);
     float verticalFade = sin(clamp(vUv.y, 0.0, 1.0) * 3.14159) * smoothstep(0.0, 0.4, vUv.y);
     float shimmer = 0.6 + 0.4 * vnoise(vec2(vUv.x * 10.0 + uTime * 0.15, vUv.y * 3.0 - uTime * 0.1));
-    float alpha = viewFade * verticalFade * shimmer * 0.035 * distFade * (zw.x * 3.0 + zw.y);
+    float alpha = viewFade * verticalFade * shimmer * 0.035 * distFade * (zw.x * 3.0 + zw.y) * vTint.a;
     vec3 shaftCol = mix(vTint.rgb, vec3(1.0, 0.65, 0.5), zw.x);
     fragColor = vec4(shaftCol * alpha, alpha);
   }
