@@ -252,6 +252,8 @@ uniform vec3 uRidePos;
 uniform float uClip;
 uniform sampler2D uReflTex;
 uniform sampler2D uBoatTex;
+uniform vec4 uBoat;      // x, z, Kurswinkel, 1 = Boot vorhanden
+uniform vec2 uBoatScale; // Skalierung des Bootsmodells in x und z
 uniform vec2 uScreen;
 ` + GLSL_COMMON + `
 
@@ -276,6 +278,14 @@ void main() {
 
   if (matId == 1) {
     // Fluss: dunkler Spiegel mit Reflexionen, treibendem Plankton und leuchtendem Ufersaum
+    // Im Inneren des Boots gibt es kein Wasser (der Rumpfboden liegt unter der Wasserlinie)
+    if (uBoat.w > 0.5) {
+      vec2 d = vWorldPos.xz - uBoat.xy;
+      float sy = sin(uBoat.z), cy = cos(uBoat.z);
+      float bz = dot(d, vec2(sy, cy)) / uBoatScale.y;
+      float bx = dot(d, vec2(cy, -sy)) / uBoatScale.x;
+      if (abs(bz) < 0.82 && abs(bx) < 0.28 * (1.0 - bz * bz)) discard;
+    }
     vec2 q = lp.xz;
     vec2 flow = vec2(0.0, t * 0.55);
     float e = 0.15;

@@ -134,13 +134,6 @@ const creatureMeshes = {
   longneck: uploadStaticMesh(gl, buildLongneckMesh())
 };
 
-// Stellen der Strecke, an denen etwas passiert (z in Weltkoordinaten der Schleife)
-const EVENTS = {
-  flocks: [{ z: -55, side: 1 }, { z: -215, side: -1 }, { z: -372, side: 1 }],
-  fish: [-28, -132, -168, -248, -300, -345, -440],
-  longnecks: [{ z: -100, side: -1 }, { z: -282, side: 1 }, { z: -418, side: -1 }]
-};
-
 // Abstand entlang der Strecke vom Boot zum Ereignis, positiv = liegt noch voraus (berücksichtigt die Schleife)
 function aheadDist(camZ, z) {
   let d = (camZ - z) % LOOP_LENGTH;
@@ -229,13 +222,13 @@ function updateCreatures(camZ, t) {
     const d = aheadDist(camZ, ev.z);
     if (d > 160 || d < -40) return;
     const zEv = camZ - d;
-    const hw = riverHalfWidth(zEv);
     const lift = smoothstep(32, 16, d) * (1.0 - smoothstep(-5, -25, d));
     for (let i = 0; i < 2; i++) {
       const s = i === 0 ? 1.25 : 0.7;
-      const z = zEv + i * 4.5;
-      const x = riverCenterX(z) + ev.side * (hw + 2.6 + i * 1.5);
-      const y = terrainHeight(x, z) - 0.1;
+      const spot = longneckSpot(ev, i);
+      const z = zEv + (spot.z - ev.z);
+      const x = spot.x;
+      const y = spot.y;
       const g = take(creatureMeshes.longneck, i === 0 ? [0.15, 0.75, 1.0] : [0.55, 0.35, 1.0]);
       const yaw = ev.side * Math.PI * 0.5 + (i === 0 ? 0.15 : -0.3) * ev.side;
       Mat4.compose(g.model, [x, y, z], yaw, 0, 0, [s, s, s]);

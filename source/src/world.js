@@ -1,5 +1,30 @@
 // world.js: Welt: Platzierung aller Objekte entlang der Strecke
 // --- World Population ---
+// Stellen der Strecke, an denen Tiere auftauchen (z in Weltkoordinaten der Schleife), siehe creatures.js
+const EVENTS = {
+  flocks: [{ z: -55, side: 1 }, { z: -215, side: -1 }, { z: -372, side: 1 }],
+  fish: [-28, -132, -168, -248, -300, -345, -440],
+  longnecks: [{ z: -100, side: -1 }, { z: -282, side: 1 }, { z: -418, side: -1 }]
+};
+// Standort eines Langhalses (i = 0 erwachsenes Tier, i = 1 Jungtier)
+function longneckSpot(ev, i) {
+  const z = ev.z + i * 4.5;
+  const x = riverCenterX(z) + ev.side * (riverHalfWidth(ev.z) + 2.6 + i * 1.5);
+  return { x, z, y: terrainHeight(x, z) - 0.1 };
+}
+// Lichtungen um die Langhälse: dort wachsen keine Bäume, Felsen oder großen Pflanzen
+const CLEARINGS = EVENTS.longnecks.map((ev) => {
+  const a = longneckSpot(ev, 0), b = longneckSpot(ev, 1);
+  return { x: (a.x + b.x) * 0.5, z: (a.z + b.z) * 0.5 };
+});
+function inClearing(x, z, r) {
+  for (const c of CLEARINGS) {
+    const dz = Math.abs(z - c.z);
+    if (Math.hypot(x - c.x, Math.min(dz, LOOP_LENGTH - dz)) < r) return true;
+  }
+  return false;
+}
+
 // Alle Positionen liegen in z zwischen 0 und -LOOP_LENGTH. Beim Zeichnen wird die Welt
 // vor und hinter der Kamera wiederholt, dadurch ist die Fahrt eine nahtlose Schleife.
 function buildWorld() {
@@ -95,6 +120,7 @@ function buildWorld() {
 
   for (let i = 0; i < 130; i++) {
     const p = bankSpot(i, 1.0, -0.8, 22.0, 1.3);
+    if (inClearing(p.x, p.z, 9.0)) continue;
     // Felsen dürfen nicht in die Fahrrinne ragen: Radius kleiner als Abstand zur Flussmitte minus 3,5
     const free = Math.abs(p.x - riverCenterX(p.z)) - 3.5;
     const s = Math.min(2.0 + hash2(i, 2.7) * 6.0, free / 1.25);
@@ -103,23 +129,27 @@ function buildWorld() {
   }
   for (let i = 0; i < 230; i++) {
     const p = bankSpot(i, 5.0, 2.6, 16.0, 1.2);
+    if (inClearing(p.x, p.z, 11.0)) continue;
     const h = 9.0 + hash2(i, 6.4) * 7.0;
     const r = 1.0 + hash2(i, 7.8) * 0.7;
     pushInst("trees", [p.x, p.y - 0.2, p.z], hash2(i, 8.1) * Math.PI * 2, 0, 0, [r, h, r], pickTint(hash2(i, 9.0)));
   }
   for (let i = 0; i < 150; i++) {
     const p = bankSpot(i, 10.0, 16.0, 75.0, 1.1);
+    if (inClearing(p.x, p.z, 9.0)) continue;
     const h = 20.0 + hash2(i, 11.4) * 16.0;
     const r = 2.3 + hash2(i, 12.8) * 1.8;
     pushInst("giants", [p.x, p.y - 0.3, p.z], hash2(i, 13.1) * Math.PI * 2, 0, 0, [r, h, r], pickTint(hash2(i, 14.0)));
   }
   for (let i = 0; i < 1100; i++) {
     const p = bankSpot(i, 15.0, 0.3, 16.0, 1.6);
+    if (inClearing(p.x, p.z, 3.5)) continue;
     const sc = 0.7 + hash2(i, 16.3) * 0.9;
     pushInst("ferns", [p.x, p.y - 0.05, p.z], hash2(i, 17.4) * Math.PI * 2, 0, 0, [sc, sc, sc], hash2(i, 18.0) < 0.8 ? CYAN : BLUE);
   }
   for (let i = 0; i < 800; i++) {
     const p = bankSpot(i, 20.0, 0.6, 18.0, 1.5);
+    if (inClearing(p.x, p.z, 5.0)) continue;
     const sc = 0.8 + hash2(i, 21.3) * 1.2;
     pushInst("broadleaves", [p.x, p.y - 0.05, p.z], hash2(i, 22.4) * Math.PI * 2, 0, 0, [sc, sc, sc], pickTint(hash2(i, 23.0)));
   }
@@ -140,6 +170,7 @@ function buildWorld() {
   }
   for (let i = 0; i < 150; i++) {
     const p = bankSpot(i, 40.0, 1.0, 12.0, 1.3);
+    if (inClearing(p.x, p.z, 6.0)) continue;
     const big = hash2(i, 41.0) < 0.2;
     const sc = big ? 2.2 + hash2(i, 42.9) * 1.5 : 0.7 + hash2(i, 42.9) * 1.0;
     pushInst("mushrooms", [p.x, p.y - 0.1, p.z], hash2(i, 43.5) * Math.PI * 2, 0, 0, [sc, sc, sc], hash2(i, 44.0) < 0.5 ? VIOLET : CYAN);

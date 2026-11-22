@@ -75,6 +75,7 @@ const identityMat = Mat4.create();
 const tempModelMat = Mat4.create();
 const camEye = [0, 2.2, 0];
 const ridePos = [0, 0, 0];
+let boatHeading = 0;
 const gaze = { yaw: 0, pitch: 0.05 };
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 // feste Blickziele entlang der Strecke: Wasserfälle und die nahen schwebenden Berge
@@ -111,6 +112,8 @@ function drawScene(pass) {
   gl.uniform3fv(u.uRidePos, ridePos);
   gl.uniform4f(u.uAnim, 0, 0, 0, 0);
   gl.uniform1i(u.uBoatTex, 1);
+  gl.uniform4f(u.uBoat, ridePos[0], ridePos[2], boatHeading, boat.mesh ? 1.0 : 0.0);
+  gl.uniform2f(u.uBoatScale, BOAT_SCALE[0], BOAT_SCALE[2]);
   gl.uniform1f(u.uClip, pass.reflect ? 1.0 : 0.0);
   gl.uniform2f(u.uScreen, canvas.width, canvas.height);
   gl.uniform1i(u.uReflTex, 0);
@@ -305,6 +308,7 @@ function render(now) {
   const bx = riverCenterX(zCur) + Math.sin(t * 0.21) * 0.9;
   const heading = Math.atan2(riverSlopeX(zCur - 3.0) + Math.cos(t * 0.21) * 0.04, 1.0);
   placeBoat(bx, zCur, heading, t, camEye);
+  boatHeading = heading;
   ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
   updateCreatures(zCur, t);
 
