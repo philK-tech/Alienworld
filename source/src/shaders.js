@@ -386,7 +386,7 @@ void main() {
   } else if (matId == 9) {
     base = vec3(0.02, 0.05, 0.08);
     float rings = 0.6 + 0.4 * sin(vUv.y * 30.0);
-    emissive += vTint.rgb * (0.25 + glowMask * 1.6 * rings);
+    emissive += vTint.rgb * (0.12 + glowMask * 0.8 * rings);
   } else if (matId == 10) {
     // goldene Blüten
     base = vec3(0.05, 0.02, 0.02);
@@ -438,7 +438,7 @@ void main() {
     vec2 d1 = dotField(vUv * vec2(14.0, 18.0), 0.28, 0.6);
     float stripes = smoothstep(0.7, 0.95, sin(vUv.y * 40.0 + vUv.x * 6.0) * 0.5 + 0.5);
     base = mix(vec3(0.020, 0.025, 0.045), vec3(0.04, 0.05, 0.08), fine);
-    emissive += vTint.rgb * (d1.x * glowMask * 1.6 + stripes * 0.12 + max(glowMask - 1.0, 0.0) * 1.2);
+    emissive += vTint.rgb * (d1.x * glowMask * 1.8 + stripes * 0.03 + max(glowMask - 1.0, 0.0) * 1.2);
     wet = 0.2;
   }
 
@@ -645,7 +645,7 @@ void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
   if (r2 > 1.0) discard;
-  fragColor = vec4(vColor * exp(-r2 * 4.0) * 0.5, 0.0);
+  fragColor = vec4(vColor * exp(-r2 * 4.0) * 0.35, 0.0);
 }`;
 
 const VS_QUAD = `#version 300 es
