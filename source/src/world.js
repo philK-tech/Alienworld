@@ -4,18 +4,18 @@
 const EVENTS = {
   flocks: [{ z: -345, side: 1 }, { z: -398, side: -1 }, { z: -452, side: 1 }],   // Himmelsinseln
   fish: [-176, -199, -223, -247, -271, -296],                                     // Pilzwald
-  longnecks: [{ z: -40, side: 1 }, { z: -92, side: -1 }, { z: -140, side: 1 }]   // Nebeltal
+  wolves: [{ z: -42, side: 1 }, { z: -96, side: -1 }, { z: -140, side: 1 }]      // Nebeltal
 };
-// Standort eines Langhalses (i = 0 erwachsenes Tier, i = 1 Jungtier)
-function longneckSpot(ev, i) {
-  const z = ev.z + i * 4.5;
-  const x = riverCenterX(z) + ev.side * (riverHalfWidth(ev.z) + 2.6 + i * 1.5);
-  return { x, z, y: terrainHeight(x, z) - 0.1 };
+// Platz eines Wolfs im Rudel, dort wo das Rudel stehen bleibt
+function wolfSpot(ev, i) {
+  const z = ev.z + i * 2.6 - 2.6;
+  const x = riverCenterX(z) + ev.side * (riverHalfWidth(ev.z) + 3.0 + (i % 2) * 1.6);
+  return { x, z, y: terrainHeight(x, z) - 0.05 };
 }
-// Lichtungen um die Langhälse: dort wachsen keine Bäume, Felsen oder großen Pflanzen
-const CLEARINGS = EVENTS.longnecks.map((ev) => {
-  const a = longneckSpot(ev, 0), b = longneckSpot(ev, 1);
-  return { x: (a.x + b.x) * 0.5, z: (a.z + b.z) * 0.5 };
+// Lichtungen am Ufer, wo die Wölfe laufen: dort wachsen keine Bäume, Felsen oder großen Pflanzen
+const CLEARINGS = EVENTS.wolves.map((ev) => {
+  const a = wolfSpot(ev, 1);
+  return { x: a.x, z: a.z };
 });
 function inClearing(x, z, r) {
   for (const c of CLEARINGS) {
@@ -202,6 +202,75 @@ function buildWorld() {
     }
   });
 
+  // --- Bauwerke, Ruinen und Besonderheiten je Zone ---
+  const STONE_A = [0.30, 0.29, 0.33, 1], STONE_B = [0.22, 0.22, 0.28, 1], MARBLE = [0.86, 0.84, 0.79, 1];
+  // Nebeltal: Burgruinen auf fernen Hügeln, verfallene Mauern und Torbögen, Laternen am Ufer
+  [{ z: -55, side: -1, d: 85 }, { z: -125, side: 1, d: 100 }].forEach((c, k) => {
+    const x = riverCenterX(c.z) + c.side * (riverHalfWidth(c.z) + c.d);
+    const s = 34 + k * 6;
+    pushInst("castles", [x, terrainHeight(x, c.z) - 1.0, c.z], rot(k, 120.0), 0, 0, [s, s, s], STONE_A);
+  });
+  for (let i = 0; i < 40; i++) {
+    const p = bankSpot(i, 125.0, 3.0, 35.0, 1.2);
+    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 0.6, 0.6, 0.0, hash2(i, 125.7))) continue;
+    zoneWeights(p.z, zw);
+    const s = 5.0 + hash2(i, 126.0) * 6.0;
+    pushInst("ruinArches", [p.x, p.y - 0.15, p.z], rot(i, 127.0), 0, (hash2(i, 128.0) - 0.5) * 0.06, [s, s, s], zw[0] > zw[1] ? STONE_A : STONE_B);
+  }
+  for (let i = 0; i < 70; i++) {
+    const p = bankSpot(i, 130.0, 0.8, 2.2, 1.0);
+    if (inClearing(p.x, p.z, 5.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 130.7))) continue;
+    const h = 2.1 + hash2(i, 131.0) * 0.5;
+    // die Laterne zeigt zum Fluss
+    pushInst("lanterns", [p.x, p.y - 0.05, p.z], p.side > 0 ? Math.PI : 0, 0, 0, [h, h, h], [1, 1, 1, 1]);
+  }
+  // Pilzwald: Tentakel in Gruppen, leuchtende Glaskugeln
+  for (let g = 0; g < 26; g++) {
+    const c = bankSpot(g, 135.0, 1.5, 24.0, 1.3);
+    if (!zoneChance(c.z, 0.0, 1.0, 0.0, hash2(g, 135.7))) continue;
+    const n = 2 + Math.floor(hash2(g, 136.0) * 4);
+    for (let k = 0; k < n; k++) {
+      const a = hash2(g * 9 + k, 137.0) * Math.PI * 2, r = 1.0 + hash2(g * 9 + k, 138.0) * 3.0;
+      const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+      if (Math.abs(x - riverCenterX(z)) < riverHalfWidth(z) + 0.5) continue;
+      const h = 3.5 + hash2(g * 9 + k, 139.0) * 6.0;
+      pushInst("tentacles", [x, terrainHeight(x, z) - 0.3, z], rot(g * 9 + k, 140.0), (hash2(g * 9 + k, 141.0) - 0.5) * 0.3, (hash2(g * 9 + k, 142.0) - 0.5) * 0.3,
+        [h, h, h], hash2(g * 9 + k, 143.0) < 0.6 ? VIOLET : CYAN);
+    }
+  }
+  for (let i = 0; i < 120; i++) {
+    const p = bankSpot(i, 145.0, 0.3, 14.0, 1.5);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 145.7))) continue;
+    const r = 0.25 + Math.pow(hash2(i, 146.0), 2.0) * 0.9;
+    pushInst("orbs", [p.x, p.y + r * 0.8, p.z], 0, 0, 0, [r, r, r], hash2(i, 147.0) < 0.5 ? CYAN : hash2(i, 147.0) < 0.8 ? VIOLET : [1.0, 0.55, 0.2, 1]);
+  }
+  // Himmelsinseln: weiße Türme auf den Inseln und am Ufer, schwebende Felsbrocken, Felsen im Fluss
+  floatingPeaks.forEach((pk, k) => {
+    if (hash2(k, 150.0) > 0.55) return;
+    const h = pk.sx * (0.9 + hash2(k, 151.0) * 0.8);
+    pushInst("spires", [pk.x + (hash2(k, 152.0) - 0.5) * pk.sx * 0.4, pk.y + pk.sy * 0.32 - 0.5, pk.z], rot(k, 153.0), 0, 0, [h, h, h], MARBLE);
+  });
+  for (let i = 0; i < 30; i++) {
+    const p = bankSpot(i, 155.0, 12.0, 90.0, 1.0);
+    if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 155.7))) continue;
+    const h = 16.0 + hash2(i, 156.0) * 18.0;
+    pushInst("spires", [p.x, p.y - 0.5, p.z], rot(i, 157.0), 0, 0, [h, h, h], MARBLE);
+  }
+  for (let i = 0; i < 55; i++) {
+    const z = -330.0 - hash2(i, 160.0) * 140.0;
+    const side = hash2(i, 161.0) < 0.5 ? -1 : 1;
+    const x = riverCenterX(z) + side * (18.0 + hash2(i, 162.0) * 70.0);
+    const y = 14.0 + hash2(i, 163.0) * 40.0;
+    const s = 0.6 + Math.pow(hash2(i, 164.0), 2.0) * 3.5;
+    pushInst("cliffs", [x, y, z], rot(i, 165.0), Math.PI, 0, [s, s * 1.4, s], [1.05, 0.95, 0.85, 1]);
+  }
+  for (let i = 0; i < 90; i++) {
+    const p = bankSpot(i, 170.0, -2.0, -0.4, 1.0);
+    if (!zoneChance(p.z, 0.6, 0.2, 1.0, hash2(i, 170.7))) continue;
+    const s = 0.4 + hash2(i, 171.0) * 0.5;
+    pushInst("cliffs", [p.x, -0.35, p.z], rot(i, 172.0), 0, 0, [s, s * 0.6, s], [0.95, 0.95, 1.0, 1]);
+  }
+
   for (let i = 0; i < 1100; i++) {
     const p = bankSpot(i, 15.0, 0.3, 16.0, 1.6);
     if (inClearing(p.x, p.z, 3.5) || !zoneChance(p.z, 0.8, 1.0, 0.15, hash2(i, 15.9))) continue;
@@ -326,7 +395,13 @@ function buildWorld() {
       inst("buds", buildGlowBudClusterMesh(), 2.0),
       inst("blossoms", buildGoldenBlossomMesh(), 2.0),
       inst("mushrooms", buildGiantMushroomMesh(), 4.0),
-      inst("jellyfish", buildCanopyJellyfishMesh(), 3.0)
+      inst("jellyfish", buildCanopyJellyfishMesh(), 3.0),
+      inst("castles", buildCastleRuinMesh(), 40.0),
+      inst("ruinArches", buildRuinArchMesh(), 12.0),
+      inst("lanterns", buildLanternPostMesh(), 2.0),
+      inst("tentacles", buildTentacleMesh(), 4.0),
+      inst("orbs", buildOrbMesh(), 2.0),
+      inst("spires", buildSpireTowerMesh(), 12.0)
     ],
     dotVao, dotZ, dotCount: dots.length,
     particleVao: pVao,

@@ -324,18 +324,23 @@ void main() {
   vec3 nrm = aNormal;
   if (matId == 21) {
     // Gleiter: Flügelschlag, außen stärker
-    float flap = sin(uTime * 3.4 + uAnim.x) * 0.6 + sin(uTime * 1.1 + uAnim.x) * 0.15;
+    float flap = sin(uTime * 3.4 * (1.0 + uAnim.z) + uAnim.x) * 0.6 + sin(uTime * 1.1 + uAnim.x) * 0.15;
     p.y += flap * pow(aExtra.z, 1.3) * 0.75;
   } else if (matId == 22) {
     // Springfisch: Schwanzschlag
     p.x += sin(uTime * 16.0 + uAnim.x - aExtra.z * 5.0) * 0.09 * aExtra.z;
-  } else if (matId == 23 && aExtra.z > 0.5) {
-    // Langhals: Hals und Kopf drehen sich um das Halsgelenk (uAnim.y = Winkel)
-    vec3 pivot = vec3(0.0, 2.65, -1.45);
-    float c = cos(uAnim.y), s = sin(uAnim.y);
-    vec3 r = p - pivot;
-    p = pivot + vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
-    nrm = vec3(nrm.x, nrm.y * c - nrm.z * s, nrm.y * s + nrm.z * c);
+  } else if (matId == 34) {
+    // Tentakel: schwingt langsam, die Spitze stärker als der Ansatz
+    float ph = origin.x * 0.31 + origin.z * 0.17;
+    float w = aExtra.z * aExtra.z;
+    p.x += (sin(uTime * 0.55 + ph) * 0.22 + sin(uTime * 1.3 + ph * 2.0) * 0.06) * w;
+    p.z += cos(uTime * 0.45 + ph * 1.3) * 0.18 * w;
+    p.y -= (1.0 - cos(uTime * 0.5 + ph)) * 0.04 * w;
+  } else if (matId == 23) {
+    // Wolf: Laufzyklus der Beine (uAnim.y = wie stark er läuft), leichtes Atmen im Stehen
+    float swing = sin(uTime * 7.0 + uAnim.x) * 0.5 * uAnim.y;
+    p.z += swing * aExtra.z;
+    p.y += abs(sin(uTime * 7.0 + uAnim.x)) * 0.03 * uAnim.y + sin(uTime * 1.6 + uAnim.x) * 0.006;
   }
 
   vec4 wp = modelMat * vec4(p, 1.0);
@@ -605,6 +610,50 @@ void main() {
     emissive += vTint.rgb * (mid * 1.0 + veins * 0.55 + edge * 0.45) * on * (0.4 + 0.6 * smoothstep(0.0, 0.4, vUv.y));
     wet = 0.6;
     foliage = true;
+  } else if (matId == 34) {
+    // Tentakel: dunkel glänzende Haut, an der Innenseite Reihen leuchtender Saugnäpfe, leuchtende Spitze
+    float inner = smoothstep(0.55, 0.9, cos((vUv.x - 0.5) * 6.28318));
+    vec2 d1 = dotField(vec2(vUv.x * 6.0, vUv.y * 46.0), 0.32, 0.9);
+    base = mix(vec3(0.02, 0.015, 0.035), vec3(0.06, 0.03, 0.08), tex);
+    albA = albC = base * 6.0;
+    emissive += vTint.rgb * (d1.x * inner * 1.8 + smoothstep(0.85, 1.0, vUv.y) * 1.5 + 0.03);
+    wet = 0.9;
+  } else if (matId == 35) {
+    // Glaskugel: Rand leuchtet, im Inneren ein pulsierender Kern
+    float fres2 = pow(1.0 - abs(dot(N, V)), 2.5);
+    float core = pow(max(dot(N, V), 0.0), 6.0);
+    base = vec3(0.02, 0.03, 0.06);
+    albA = albC = vec3(0.1, 0.12, 0.2);
+    emissive += vTint.rgb * (fres2 * 1.4 + core * (0.8 + 0.4 * sin(t * 1.5 + vSeed * 20.0)) + 0.08);
+    wet = 1.0;
+  } else if (matId == 36) {
+    // Mauerwerk (Ruinen, Türme): Steinblöcke, oben bemoost; Farbe aus der Instanz (weiß bis dunkelgrau)
+    vec3 q = lp * vec3(1.0, 2.6, 1.0);
+    float row = floor(q.y);
+    vec2 bp = vec2((abs(N.x) > abs(N.z) ? q.z : q.x) * 1.3 + row * 0.5, q.y);
+    vec2 f = fract(bp);
+    float joint = smoothstep(0.0, 0.06, f.x) * smoothstep(1.0, 0.94, f.x) * smoothstep(0.0, 0.08, f.y) * smoothstep(1.0, 0.92, f.y);
+    if (abs(N.y) > 0.7) joint = 1.0;
+    float blockVar = 0.85 + 0.3 * hash21(floor(bp) + vSeed * 13.0);
+    vec3 stone = vTint.rgb * blockVar * (0.55 + 0.45 * joint) * (0.8 + 0.4 * tex);
+    float moss = smoothstep(0.55, 0.85, N.y + (fine - 0.5) * 0.5);
+    vec3 mossC = zw.y > 0.5 ? vec3(0.04, 0.10, 0.08) : vec3(0.22, 0.30, 0.08);
+    albA = albC = mix(stone, mossC, moss * 0.85);
+    base = albA * 0.14;
+    vec2 d1 = dotField(lp.xz * 3.0 + lp.y, 0.2, 0.35);
+    emissive += bioColor(d1.y) * d1.x * moss * 1.2;
+  } else if (matId == 37) {
+    // Turmdach: Kupfergrün, zur Spitze golden
+    vec3 roof = mix(vec3(0.10, 0.32, 0.34), vec3(0.75, 0.55, 0.18), smoothstep(0.8, 0.98, glowMask));
+    albA = albC = roof;
+    base = roof * 0.14;
+    wet = 0.7;
+  } else if (matId == 38) {
+    // warmes Laternen- und Fensterlicht, leuchtet in allen Zonen gleich stark
+    base = vec3(0.2, 0.12, 0.05);
+    albA = albC = vec3(0.6, 0.45, 0.25);
+    float flick = 0.85 + 0.15 * sin(t * 9.0 + vSeed * 40.0) * sin(t * 5.3 + vSeed * 11.0);
+    emissive += vec3(1.0, 0.55, 0.18) * 3.0 * flick / max(emScale, 0.3);
   } else if (matId == 20) {
     // Boot: Holz aus der Textur, die türkisen Einlagen leuchten
     vec3 tc = texture(uBoatTex, vUv).rgb;
@@ -621,7 +670,13 @@ void main() {
     float edge = smoothstep(0.82, 1.0, vUv.y) + smoothstep(0.9, 1.0, vUv.x);
     vec2 d1 = dotField(vUv * vec2(10.0, 4.0), 0.25, 0.55);
     base = vec3(0.02, 0.02, 0.05);
-    emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
+    if (vTint.a < 0.5) {
+      // Vogel: einfarbig, ohne Leuchtzeichnung
+      base = vTint.rgb * 0.15;
+      albA = albC = vTint.rgb;
+    } else {
+      emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
+    }
   } else if (matId == 22) {
     // Springfisch: leuchtendes Seitenband
     float side = exp(-pow((vUv.x - 0.25) * 10.0, 2.0)) + exp(-pow((vUv.x - 0.75) * 10.0, 2.0));
@@ -629,12 +684,13 @@ void main() {
     emissive += vTint.rgb * (side * 1.6 + glowMask * 0.9 + 0.08);
     wet = 1.0;
   } else if (matId == 23) {
-    // Langhals: dunkle, fein gemusterte Haut, Leuchtflecken auf dem Rücken, leuchtende Augen und Fühler
-    vec2 d1 = dotField(vUv * vec2(14.0, 18.0), 0.28, 0.6);
-    float stripes = smoothstep(0.7, 0.95, sin(vUv.y * 40.0 + vUv.x * 6.0) * 0.5 + 0.5);
-    base = mix(vec3(0.020, 0.025, 0.045), vec3(0.04, 0.05, 0.08), fine);
-    emissive += vTint.rgb * (d1.x * glowMask * 1.8 + stripes * 0.03 + max(glowMask - 1.0, 0.0) * 1.2);
-    wet = 0.2;
+    // Wolf: fast schwarzer Schemen, die Fellkontur nimmt die Farbe des Nebels an, Augen glühen
+    float rimW = pow(1.0 - abs(dot(N, V)), 2.0);
+    base = vec3(0.015, 0.014, 0.02);
+    albA = albC = vec3(0.035, 0.032, 0.04) * (0.8 + 0.4 * fine);
+    emissive += skyHaze(-V) * rimW * 0.9;
+    emissive += vTint.rgb * step(2.0, glowMask) * 6.0;
+    emissive /= max(emScale, 0.3);
   }
 
   // Pflanzen in den Tagzonen: Blattfarbe statt der dunklen Nachtfarbe

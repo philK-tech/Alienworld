@@ -105,7 +105,7 @@ function buildRockCliffMesh() {
       const ca = Math.cos(ang), sa = Math.sin(ang);
       const nA = fbm2(ca * 1.7 + v * 2.2, sa * 1.7 + v * 1.4 + 3.7, 5);
       const nB = fbm2(ca * 5.0 + v * 7.0, sa * 5.0 - v * 5.0, 3);
-      const jag = 0.62 + 0.6 * nA + (nB - 0.5) * 0.12 + 0.03 * Math.sin(v * 40.0 + nA * 8.0);
+      const jag = 0.62 + 0.6 * nA + (nB - 0.5) * 0.12;
       const rx = ca * radius * jag;
       const rz = sa * radius * jag * 0.88;
       const ao = clamp01(0.32 + 0.68 * v);
@@ -765,5 +765,135 @@ function buildRoundTreeMesh() {
     }
   });
   b.computeSmoothNormals();
+  return b;
+}
+
+// Quader mit eigenen (flachen) Normalen, gedreht um z (rotZ) und dann um y (rotY)
+function addBox(b, c, size, rotY, rotZ, matId, extraY = 0.0) {
+  const [hx, hy, hz] = [size[0] / 2, size[1] / 2, size[2] / 2];
+  const cy = Math.cos(rotY), sy = Math.sin(rotY), cz = Math.cos(rotZ), sz = Math.sin(rotZ);
+  const tr = (x, y, z) => {
+    const x1 = x * cz - y * sz, y1 = x * sz + y * cz;
+    return [x1 * cy + z * sy, y1, -x1 * sy + z * cy];
+  };
+  const faces = [
+    [[1, 0, 0], [[1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1]]],
+    [[-1, 0, 0], [[-1, -1, 1], [-1, 1, 1], [-1, 1, -1], [-1, -1, -1]]],
+    [[0, 1, 0], [[-1, 1, -1], [-1, 1, 1], [1, 1, 1], [1, 1, -1]]],
+    [[0, -1, 0], [[-1, -1, 1], [-1, -1, -1], [1, -1, -1], [1, -1, 1]]],
+    [[0, 0, 1], [[1, -1, 1], [1, 1, 1], [-1, 1, 1], [-1, -1, 1]]],
+    [[0, 0, -1], [[-1, -1, -1], [-1, 1, -1], [1, 1, -1], [1, -1, -1]]]
+  ];
+  for (const [n, corners] of faces) {
+    const base = b.positions.length / 3;
+    const nn = tr(n[0], n[1], n[2]);
+    corners.forEach(([x, y, z], k) => {
+      const p = tr(x * hx, y * hy, z * hz);
+      b.pushVertex(c[0] + p[0], c[1] + p[1], c[2] + p[2], nn[0], nn[1], nn[2], k === 0 || k === 3 ? 0 : 1, k < 2 ? 0 : 1, 0.85, extraY, 0.0, matId);
+    });
+    b.pushQuad(base, base + 1, base + 2, base + 3);
+  }
+}
+
+// Tentakel (Pilzwald): wächst aus dem Boden und rollt sich oben ein. Höhe 1.
+// extra.z = Position entlang des Tentakels (für die Bewegung im Shader)
+function buildTentacleMesh() {
+  const b = createGeometryBuilder();
+  const center = (t) => {
+    const s = Math.sin(t * 2.4) * 0.12;
+    if (t < 0.62) return [s, t, 0];
+    const f = (t - 0.62) / 0.38;
+    const ang = f * 4.2, r = 0.16 * (1.0 - f * 0.6);
+    return [Math.sin(0.62 * 2.4) * 0.12 + Math.sin(ang) * r, 0.62 + (1.0 - Math.cos(ang)) * r * 0.9 + f * 0.05, 0];
+  };
+  addLathe(b, 40, 14, center, (t) => { const r = 0.075 * Math.pow(1.0 - t, 0.8) + 0.006; return [r, r]; },
+    34, (t) => [0.45 + 0.55 * t, 1.0, t]);
+  return b;
+}
+
+// leuchtende Glaskugel (Pilzwald), Radius 1
+function buildOrbMesh() {
+  const b = createGeometryBuilder();
+  addLathe(b, 14, 18, (t) => [0, -1 + t * 2, 0], (t) => { const r = Math.sin(t * Math.PI) + 0.001; return [r, r]; }, 35, () => [1.0, 1.0, 0.0]);
+  return b;
+}
+
+// verfallener Torbogen: zwei Pfeiler, ein gebrochener Bogen, herabgefallene Steine. Höhe ~1.
+function buildRuinArchMesh() {
+  const b = createGeometryBuilder();
+  const w = 0.16;
+  addBox(b, [-0.55, 0.32, 0], [w, 0.64, w * 1.2], 0, 0, 36);
+  addBox(b, [0.55, 0.26, 0], [w, 0.52, w * 1.2], 0, 0.03, 36);
+  addBox(b, [-0.55, 0.66, 0], [w * 1.3, 0.05, w * 1.5], 0, 0, 36);
+  const segs = 11;
+  for (let i = 0; i < segs; i++) {
+    if (i === 7 || i === 8 || i === 10) continue; // gebrochen
+    const a = Math.PI * (1 - (i + 0.5) / segs);
+    const x = Math.cos(a) * 0.55, y = 0.66 + Math.sin(a) * 0.5;
+    addBox(b, [x, y, 0], [0.16, 0.13, w * 1.1], 0, a - Math.PI / 2, 36);
+  }
+  [[0.75, 0.05, 0.3, 0.6], [0.4, 0.04, -0.35, 1.9], [0.95, 0.06, -0.15, 0.3]].forEach(([x, y, z, r]) => addBox(b, [x, y, z], [0.15, 0.1, 0.13], r, 0.2, 36));
+  return b;
+}
+
+// schlanker weißer Turm mit Balkonringen und spitzem Dach (Himmelsinseln). Höhe 1.
+function buildSpireTowerMesh() {
+  const b = createGeometryBuilder();
+  const tower = (ox, oz, h, r) => {
+    addLathe(b, 8, 12, (t) => [ox, t * h * 0.72, oz], (t) => { const rr = r * (1.0 - t * 0.25); return [rr, rr]; }, 36, (t) => [0.6 + 0.4 * t, 0.0, 0.0]);
+    for (const f of [0.35, 0.72]) {
+      addLathe(b, 2, 12, (t) => [ox, h * f - 0.01 + t * 0.02, oz], () => [r * 1.35, r * 1.35], 36, () => [0.9, 0.0, 0.0]);
+    }
+    // Fenster als leuchtende Schlitze
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI * 0.5 + 0.4;
+      addBox(b, [ox + Math.cos(a) * r * 0.92, h * 0.55, oz + Math.sin(a) * r * 0.92], [0.012, 0.06, 0.02], -a, 0, 38);
+    }
+    addLathe(b, 6, 12, (t) => [ox, h * 0.72 + t * h * 0.28, oz], (t) => { const rr = r * 1.15 * Math.pow(1.0 - t, 1.3) + 0.002; return [rr, rr]; }, 37, (t) => [0.9, t, 0.0]);
+  };
+  tower(0, 0, 1.0, 0.07);
+  tower(0.12, 0.05, 0.62, 0.045);
+  tower(-0.09, -0.08, 0.48, 0.04);
+  return b;
+}
+
+// Burgruine (Nebeltal, als Silhouette auf einem fernen Hügel). Grundfläche ~1 x 1.
+function buildCastleRuinMesh() {
+  const b = createGeometryBuilder();
+  const towers = [[-0.45, -0.4, 0.55, 0.11], [0.45, -0.38, 0.42, 0.1], [0.4, 0.42, 0.3, 0.1], [-0.42, 0.4, 0.62, 0.12], [0.0, 0.0, 0.85, 0.14]];
+  towers.forEach(([x, z, h, r], k) => {
+    addLathe(b, 6, 10, (t) => [x, t * h, z], () => [r, r], 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
+    // Zinnen, bei manchen Türmen teilweise abgebrochen
+    for (let i = 0; i < 8; i++) {
+      if ((i + k) % 3 === 0 && k !== 4) continue;
+      const a = (i / 8) * Math.PI * 2;
+      addBox(b, [x + Math.cos(a) * r * 0.9, h + 0.025, z + Math.sin(a) * r * 0.9], [r * 0.4, 0.05, r * 0.3], -a, 0, 36);
+    }
+    if (k === 4) addLathe(b, 4, 10, (t) => [x, h + 0.05 + t * 0.2, z], (t) => { const rr = r * 1.1 * (1 - t) + 0.003; return [rr, rr]; }, 37, (t) => [0.8, t, 0.0]);
+    addBox(b, [x + r * 0.95, h * 0.6, z], [0.01, 0.04, 0.02], 0, 0, 38);
+  });
+  // Mauern zwischen den Türmen, oben ausgebrochen
+  const walls = [[0, 1], [1, 2], [2, 3], [3, 0]];
+  walls.forEach(([a, c], k) => {
+    const [x0, z0] = towers[a], [x1, z1] = towers[c];
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+      const f = (i + 0.5) / n;
+      const h = 0.18 + 0.1 * Math.abs(Math.sin(i * 2.7 + k)) - (k === 2 && i > 2 ? 0.12 : 0);
+      const x = lerp(x0, x1, f), z = lerp(z0, z1, f);
+      addBox(b, [x, h / 2, z], [Math.hypot(x1 - x0, z1 - z0) / n + 0.01, h, 0.06], Math.atan2(-(z1 - z0), x1 - x0), 0, 36);
+    }
+  });
+  return b;
+}
+
+// Laternenpfahl (Nebeltal): Pfahl, Arm und eine warm leuchtende Laterne. Höhe ~1.
+function buildLanternPostMesh() {
+  const b = createGeometryBuilder();
+  addBox(b, [0, 0.5, 0], [0.05, 1.0, 0.05], 0, 0.04, 31);
+  addBox(b, [0.13, 0.95, 0], [0.28, 0.03, 0.03], 0, 0, 31);
+  addBox(b, [0.25, 0.84, 0], [0.03, 0.14, 0.03], 0, 0, 31);
+  addBox(b, [0.25, 0.72, 0], [0.11, 0.13, 0.11], 0, 0, 38);
+  addBox(b, [0.25, 0.80, 0], [0.13, 0.025, 0.13], 0, 0, 31);
   return b;
 }

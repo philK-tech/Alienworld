@@ -15,9 +15,9 @@ Die Fahrt führt durch drei Zonen mit eigenem Licht, eigenem gemaltem Himmel und
 
 | Zone | Stimmung | Landschaft | Tiere |
 |---|---|---|---|
-| Tal der Nebelfälle | Dämmerung in Lila und Rosa, dichter Dunst | Nadelbäume, Steinsäulen, Wasserfälle an Felskanten, Schneegipfel im Hintergrund | Langhälse am Ufer |
-| Pilzwald im Sternenlicht | Nacht mit Gasriese und Sternen, starke Biolumineszenz | Riesenpilze mit orange leuchtenden Flecken, leuchtende Blüten, Quallen | Springfische |
-| Die Himmelsinseln | heller Tag mit Wolken und Schlieren | schwebende Inseln mit Bäumen und Wasserfällen, runde Bäume, Wiesenblumen, Felsnadeln | Gleiterschwärme |
+| Tal der Nebelfälle | Dämmerung in Lila und Rosa, Dunst | Nadelbäume, Steinsäulen, Wasserfälle an Felskanten, Burgruinen auf fernen Hügeln, verfallene Torbögen, Laternen am Ufer, Schneegipfel im Hintergrund | Wolfsrudel als dunkle Schemen, Rabenschwärme |
+| Pilzwald im Sternenlicht | Nacht mit Gasriese und Sternen, starke Biolumineszenz | Riesenpilze mit Leuchtflecken, Tentakel mit leuchtenden Saugnäpfen, Glaskugeln, überwachsene Ruinen, Quallen | Springfische |
+| Die Himmelsinseln | heller Tag mit Wolken und Schlieren | schwebende Inseln mit Bäumen, weißen Türmen und Wasserfällen, schwebende Felsbrocken, Felsberge, Wiesenblumen | Gleiterschwärme, weiße Vögel |
 
 Welche Zone wo liegt, steht in `zoneWeights` (`source/src/math.js`). Was in welcher Zone wächst, steht in `source/src/world.js`.
 

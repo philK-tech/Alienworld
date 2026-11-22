@@ -2,7 +2,7 @@
 // Drei Arten, alle prozedural:
 //   Gleiter (Material 21): Schwärme mit leuchtenden Schwingen, die über den Fluss segeln
 //   Springfische (Material 22): springen kurz vor dem Boot aus dem Wasser
-//   Langhälse (Material 23): große Grasende am Ufer, heben den Kopf, wenn das Boot kommt
+//   Wölfe (Material 23): dunkle Schemen im Nebeltal, laufen am Ufer und bleiben stehen, wenn das Boot kommt
 // Jedes Auftauchen ist an eine Stelle der Strecke gebunden und wird über den Abstand des Boots ausgelöst.
 
 function buildGliderMesh() {
@@ -58,45 +58,49 @@ function buildFishMesh() {
   return b;
 }
 
-// Langhals: Kopf zeigt nach -z. Hals und Kopf haben extra.z = 1 und werden im Shader um das Halsgelenk gedreht.
-const NECK_PIVOT = [0, 2.65, -1.45];
-function buildLongneckMesh() {
+// Wolf (Nebeltal): dunkler Schemen mit zottigem Fell und leuchtenden Augen. Schaut nach -z, Schulterhöhe ~0.8.
+// Beine: extra.z = Seite der Schrittphase (+1/-1) mal Abstand von der Hüfte, für den Laufzyklus im Shader.
+function buildWolfMesh() {
   const b = createGeometryBuilder();
-  const body = (t, a) => [0.8 * Math.sin(Math.PI * t) + 0.05, 0.85 * Math.sin(Math.PI * t) + 0.05];
-  addLathe(b, 18, 16, (t) => [0, 2.35 + Math.sin(t * Math.PI) * 0.1, 1.9 - t * 3.8], body, 23, (t, a) => {
-    const back = Math.max(0.0, -Math.sin(a));
-    return [0.75, back > 0.7 ? 1.0 : 0.0, 0.0];
-  });
-  // vier Beine mit leichtem Knick
-  for (const [lx, lz] of [[-0.45, 1.15], [0.45, 1.15], [-0.42, -1.05], [0.42, -1.05]]) {
-    addLathe(b, 8, 8, (t) => [lx * (1.0 + t * 0.12), 2.0 * (1.0 - t), lz + Math.sin(t * Math.PI) * 0.18],
-      (t) => { const r = lerp(0.17, 0.08, t); return [r, r]; }, 23, (t) => [0.4 + 0.6 * (1.0 - t), t > 0.85 ? 1.0 : 0.0, 0.0]);
-  }
-  // Schwanz
-  addLathe(b, 8, 6, (t) => [0, 2.45 - t * 1.1, 1.85 + t * 1.0 + t * t * 0.3], (t) => { const r = lerp(0.18, 0.03, t); return [r, r]; },
-    23, (t) => [0.7, t > 0.5 ? 0.6 : 0.0, 0.0]);
-  // Hals bis zum Kopf (dreht sich mit)
-  const [px, py, pz] = NECK_PIVOT;
-  addLathe(b, 12, 10, (t) => [px, py + t * 2.0 + Math.sin(t * Math.PI) * 0.15, pz - t * 1.6],
-    (t) => { const r = lerp(0.36, 0.2, t); return [r, r]; }, 23, (t, a) => [0.8, Math.sin(a) > 0.75 ? 0.8 : 0.0, 1.0]);
-  // Kopf
-  addLathe(b, 10, 10, (t) => [px, py + 2.05 - t * 0.25, pz - 1.55 - t * 0.85],
-    (t) => { const r = 0.27 * Math.pow(Math.sin(Math.min(t * 1.15, 1.0) * Math.PI), 0.6) + 0.04; return [r * 0.85, r]; },
-    23, (t, a) => [0.85, (t > 0.25 && t < 0.35 && Math.abs(Math.cos(a)) > 0.85) ? 3.0 : 0.0, 1.0]);
-  // zwei leuchtende Fühler
+  const shag = (t, a, base) => base * (1.0 + 0.16 * Math.abs(Math.sin(a * 7.0 + t * 23.0)) * Math.sin(a * 3.0 + t * 11.0));
+  // Rumpf: vorne hoch und kräftig, hinten schmal
+  addLathe(b, 16, 14, (t) => [0, 0.62 + 0.08 * Math.sin(t * Math.PI) + 0.06 * t, 0.55 - t * 1.05], (t, a) => {
+    const r = 0.11 + 0.09 * Math.sin(Math.min(t * 1.2, 1.0) * Math.PI) + 0.05 * t;
+    return [shag(t, a, r * 0.8), shag(t, a, r * 1.15)];
+  }, 23, (t) => [0.6, 0.0, 0.0]);
+  // Hals, Kopf und Schnauze
+  addLathe(b, 8, 10, (t) => [0, 0.76 + t * 0.12, -0.48 - t * 0.28], (t, a) => [shag(t, a, 0.12 - t * 0.03), shag(t, a, 0.14 - t * 0.04)], 23, () => [0.7, 0.0, 0.0]);
+  addLathe(b, 8, 10, (t) => [0, 0.87 - t * 0.07, -0.74 - t * 0.3], (t) => { const r = 0.085 * (1.0 - t * 0.6) + 0.01; return [r, r * 0.9]; }, 23, () => [0.8, 0.0, 0.0]);
+  // Ohren
   for (const sx of [-1, 1]) {
-    addLathe(b, 6, 5, (t) => [px + sx * (0.1 + t * 0.25), py + 2.15 + t * 0.7, pz - 1.75 + t * 0.5],
-      (t) => { const r = lerp(0.05, 0.015, t); return [r, r]; }, 23, (t) => [0.9, 0.5 + t * 2.5, 1.0]);
+    addLathe(b, 3, 4, (t) => [sx * (0.05 + t * 0.015), 0.95 + t * 0.1, -0.7 + t * 0.02], (t) => { const r = 0.035 * (1 - t) + 0.003; return [r, r * 0.5]; }, 23, () => [0.8, 0.0, 0.0]);
+    // Augen
+    addBox(b, [sx * 0.05, 0.9, -0.86], [0.03, 0.018, 0.02], 0, 0, 23, 3.0);
   }
-  b.computeSmoothNormals();
+  // Beine mit Phase für den Laufzyklus (diagonal gleich)
+  [[-0.09, -0.38, 1], [0.09, -0.38, -1], [-0.09, 0.42, -1], [0.09, 0.42, 1]].forEach(([x, z, ph]) => {
+    const back = z > 0;
+    addLathe(b, 6, 7, (t) => [x, 0.6 * (1.0 - t), z + (back ? Math.sin(t * Math.PI) * 0.08 : 0.0)],
+      (t, a) => { const r = (back ? 0.07 : 0.055) * (1.0 - t * 0.5); return [shag(t, a, r), shag(t, a, r)]; }, 23, (t) => [0.5, 0.0, ph * (0.05 + t)]);
+  });
+  // buschiger Schwanz
+  addLathe(b, 8, 8, (t) => [0, 0.68 - t * 0.3, 0.55 + t * 0.4], (t, a) => { const r = 0.06 + 0.04 * Math.sin(t * Math.PI); return [shag(t, a, r), shag(t, a, r)]; }, 23, () => [0.6, 0.0, 0.0]);
   return b;
 }
 
 const creatureMeshes = {
   glider: uploadStaticMesh(gl, buildGliderMesh()),
   fish: uploadStaticMesh(gl, buildFishMesh()),
-  longneck: uploadStaticMesh(gl, buildLongneckMesh())
+  wolf: uploadStaticMesh(gl, buildWolfMesh())
 };
+
+// Vogelschwärme (tint.a = 0 bedeutet: keine Leuchtzeichnung, Farbe aus tint)
+const BIRD_FLOCKS = [
+  { z: -30, offX: 22, y: 20, r: 18, dir: 1, tint: [0.03, 0.03, 0.04, 0] },
+  { z: -110, offX: -30, y: 26, r: 22, dir: -1, tint: [0.03, 0.03, 0.04, 0] },
+  { z: -360, offX: -25, y: 24, r: 20, dir: 1, tint: [0.95, 0.95, 0.92, 0] },
+  { z: -430, offX: 28, y: 30, r: 24, dir: -1, tint: [0.95, 0.95, 0.92, 0] }
+];
 
 // Abstand entlang der Strecke vom Boot zum Ereignis, positiv = liegt noch voraus (berücksichtigt die Schleife)
 function aheadDist(camZ, z) {
@@ -109,7 +113,7 @@ function aheadDist(camZ, z) {
 // Für jedes Bild: Positionen der sichtbaren Tiere und Blickziele (POIs) für die Kamera
 const creatureDraws = [];   // { mesh, model, tint, anim }
 const pois = [];            // { x, y, z, w }
-const drawPool = Array.from({ length: 40 }, () => ({ mesh: null, model: Mat4.create(), tint: [1, 1, 1, 1], anim: [0, 0, 0, 0] }));
+const drawPool = Array.from({ length: 80 }, () => ({ mesh: null, model: Mat4.create(), tint: [1, 1, 1, 1], anim: [0, 0, 0, 0] }));
 const ripplePool = Array.from({ length: 12 }, () => ({ x: 0, z: 0, a: 0 }));
 const rippleDraws = [];
 
@@ -121,7 +125,8 @@ function updateCreatures(camZ, t) {
   const take = (mesh, tint) => {
     const d = drawPool[k++];
     d.mesh = mesh;
-    d.tint[0] = tint[0]; d.tint[1] = tint[1]; d.tint[2] = tint[2]; d.tint[3] = 1;
+    d.tint[0] = tint[0]; d.tint[1] = tint[1]; d.tint[2] = tint[2]; d.tint[3] = tint.length > 3 ? tint[3] : 1;
+    d.anim[2] = 0;
     creatureDraws.push(d);
     return d;
   };
@@ -147,6 +152,25 @@ function updateCreatures(camZ, t) {
       g.anim[0] = i * 1.3 + ei;
       g.anim[1] = 0;
       if (i === 3) pois.push({ x, y, z, w: 1.6 });
+    }
+  });
+
+  // Vogelschwärme, die über einer Stelle kreisen: Krähen im Nebeltal, weiße Vögel bei den Himmelsinseln
+  BIRD_FLOCKS.forEach((fl, fi) => {
+    const d = aheadDist(camZ, fl.z);
+    if (d > 170 || d < -60) return;
+    const zc = camZ - d;
+    const xc = riverCenterX(zc) + fl.offX;
+    for (let i = 0; i < 9; i++) {
+      const a = t * (0.25 + (i % 3) * 0.04) * fl.dir + i * 0.7 + fi;
+      const r = fl.r * (0.7 + 0.3 * Math.sin(i * 1.7));
+      const x = xc + Math.cos(a) * r, z = zc + Math.sin(a) * r;
+      const y = fl.y + Math.sin(t * 0.7 + i * 1.3) * 1.5 + (i % 4) * 0.8;
+      const g = take(creatureMeshes.glider, fl.tint);
+      const yaw = Math.atan2(-Math.sin(a) * fl.dir, Math.cos(a) * fl.dir) + Math.PI;
+      Mat4.compose(g.model, [x, y, z], yaw, 0.0, 0.35 * fl.dir, [0.33, 0.33, 0.33]);
+      g.anim[0] = i * 1.9 + fi;
+      g.anim[2] = 1.4;
     }
   });
 
@@ -181,25 +205,26 @@ function updateCreatures(camZ, t) {
     }
   });
 
-  // Langhälse am Ufer: trinken, heben den Kopf, wenn das Boot näher als ~30 Einheiten ist
-  EVENTS.longnecks.forEach((ev, ei) => {
+  // Wolfsrudel im Nebeltal: läuft dem Boot am Ufer entgegen, bleibt in ~25 Einheiten stehen und schaut herüber
+  EVENTS.wolves.forEach((ev, ei) => {
     const d = aheadDist(camZ, ev.z);
-    if (d > 160 || d < -40) return;
+    if (d > 150 || d < -40) return;
     const zEv = camZ - d;
-    const lift = smoothstep(32, 16, d) * (1.0 - smoothstep(-5, -25, d));
-    for (let i = 0; i < 2; i++) {
-      const s = i === 0 ? 1.25 : 0.7;
-      const spot = longneckSpot(ev, i);
-      const z = zEv + (spot.z - ev.z);
-      const x = spot.x;
-      const y = spot.y;
-      const g = take(creatureMeshes.longneck, i === 0 ? [0.15, 0.75, 1.0] : [0.55, 0.35, 1.0]);
-      const yaw = ev.side * Math.PI * 0.5 + (i === 0 ? 0.15 : -0.3) * ev.side;
+    const walk = smoothstep(22, 32, d);
+    for (let i = 0; i < 3; i++) {
+      const spot = wolfSpot(ev, i);
+      const z = zEv + (spot.z - ev.z) - Math.max(d - 26 - i * 3, 0) * 0.45;
+      const x = riverCenterX(z) + (spot.x - riverCenterX(spot.z));
+      const y = terrainHeight(x, z) - 0.05;
+      const g = take(creatureMeshes.wolf, [1.0, 0.7, 0.25]);
+      // im Laufen zum Boot hin (+z), im Stehen zum Fluss gedreht
+      const yawWalk = Math.PI, yawStand = ev.side * Math.PI * 0.5 + ev.side * 0.35 * (i - 1);
+      const yaw = lerp(yawStand, yawWalk, walk);
+      const s = 1.5 - i * 0.12;
       Mat4.compose(g.model, [x, y, z], yaw, 0, 0, [s, s, s]);
-      const sip = Math.sin(t * 0.5 + i * 2.0) * 0.12;
-      g.anim[0] = ei + i;
-      g.anim[1] = lerp(-1.65 + sip, -0.15 + Math.sin(t * 0.7 + i) * 0.08, Math.max(0, lift - i * 0.25));
-      if (i === 0 && d < 60 && d > -10) pois.push({ x, y: y + 3.5 * s, z, w: 1.3 });
+      g.anim[0] = ei * 2.0 + i * 1.3;
+      g.anim[1] = walk;
+      if (i === 1 && d < 55 && d > -5) pois.push({ x, y: y + 1.0, z, w: 1.3 });
     }
   });
 }
