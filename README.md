@@ -4,7 +4,9 @@ Eine nächtliche Fahrt durch eine leuchtende Schlucht mit Wasserfällen, Riesenp
 
 ## Ausprobieren
 
-`index.html` im Browser öffnen. Leertaste hält die Fahrt an, `M` schaltet den Ton ein oder aus.
+`index.html` im Browser öffnen. Man sitzt im Boot, die Kamera sieht sich von selbst um und dreht sich zu Tieren und Wasserfällen.
+Mit gedrückter Maus oder dem Finger kann man selbst schauen, nach kurzer Zeit übernimmt wieder der automatische Blick.
+Leertaste hält die Fahrt an, `M` schaltet den Ton ein oder aus.
 Mit `index.html#t=60` startet die Fahrt 60 Sekunden später, praktisch zum Testen einer bestimmten Stelle.
 
 ## Grafik
@@ -15,6 +17,7 @@ Die Kamera fährt fest auf einer Strecke. Statt einer frei begehbaren Welt steck
 - der Fluss spiegelt die Szene in einem eigenen Renderdurchgang
 - Biolumineszenz als Punktmuster auf Moos, Rinde und Blättern, die aufleuchtet, wenn das Boot vorbeifährt
 - Höhennebel mit treibenden Schwaden, Sternenhimmel mit Gasriese und zwei Monden
+- Tiere tauchen an festen Stellen der Strecke auf: Gleiterschwärme, Springfische und Langhälse am Ufer
 - die Strecke ist eine nahtlose Schleife von gut 100 Sekunden; gezeichnet wird nur der Abschnitt in Sichtweite
 
 ## Quellcode
@@ -39,6 +42,10 @@ Dafür reicht Node.js 18 oder neuer, Pakete müssen nicht installiert werden.
 | `source/src/shaders.js` | GLSL-Shader: Materialien, Himmel, Nebel, Wasser, Bloom und Tonemapping |
 | `source/src/world.js` | Platzierung aller Objekte entlang der Strecke |
 | `source/src/renderer.js` | Render-Targets: HDR mit MSAA, Spiegelbild, Bloom-Kette |
+| `source/src/boat.js` | Das Boot: entpacken, Textur laden, auf dem Wasser schaukeln lassen |
+| `source/src/creatures.js` | Tiere: Formen, Bewegung und wann sie auftauchen |
+| `source/assets/boat.glb` | Bootsmodell, beim Build komprimiert eingebettet |
+| `source/assets/boat-texture.jpg` | verkleinerte Textur des Boots (1024 px), wird statt der Textur aus der GLB-Datei verwendet |
 | `source/src/audio.js` | Klangkulisse mit Web Audio |
 | `source/src/main.js` | Zustand, Steuerung, Kamerafahrt und Render-Loop |
 

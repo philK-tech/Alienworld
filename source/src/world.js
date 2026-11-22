@@ -95,7 +95,10 @@ function buildWorld() {
 
   for (let i = 0; i < 130; i++) {
     const p = bankSpot(i, 1.0, -0.8, 22.0, 1.3);
-    const s = 2.0 + hash2(i, 2.7) * 6.0;
+    // Felsen dürfen nicht in die Fahrrinne ragen: Radius kleiner als Abstand zur Flussmitte minus 3,5
+    const free = Math.abs(p.x - riverCenterX(p.z)) - 3.5;
+    const s = Math.min(2.0 + hash2(i, 2.7) * 6.0, free / 1.25);
+    if (s < 0.6) continue;
     pushInst("cliffs", [p.x, p.y - 0.4, p.z], hash2(i, 3.1) * Math.PI * 2, 0, 0, [s, s * (0.6 + hash2(i, 4.9) * 0.8), s * 0.9], [0.9, 1.0, 1.15, 1]);
   }
   for (let i = 0; i < 230; i++) {

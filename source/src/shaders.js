@@ -170,6 +170,7 @@ uniform vec4 uTint;
 uniform float uTime;
 uniform float uInstanced;
 uniform vec3 uOffset;
+uniform vec4 uAnim;
 
 out vec3 vWorldPos;
 out vec3 vLocalPos;
@@ -202,10 +203,27 @@ void main() {
     p.z += cos(phase * 0.83 + 1.1 + aPos.y * 1.7) * amt * 0.75;
   }
 
+  vec3 nrm = aNormal;
+  if (matId == 21) {
+    // Gleiter: Flügelschlag, außen stärker
+    float flap = sin(uTime * 3.4 + uAnim.x) * 0.6 + sin(uTime * 1.1 + uAnim.x) * 0.15;
+    p.y += flap * pow(aExtra.z, 1.3) * 0.75;
+  } else if (matId == 22) {
+    // Springfisch: Schwanzschlag
+    p.x += sin(uTime * 16.0 + uAnim.x - aExtra.z * 5.0) * 0.09 * aExtra.z;
+  } else if (matId == 23 && aExtra.z > 0.5) {
+    // Langhals: Hals und Kopf drehen sich um das Halsgelenk (uAnim.y = Winkel)
+    vec3 pivot = vec3(0.0, 2.65, -1.45);
+    float c = cos(uAnim.y), s = sin(uAnim.y);
+    vec3 r = p - pivot;
+    p = pivot + vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
+    nrm = vec3(nrm.x, nrm.y * c - nrm.z * s, nrm.y * s + nrm.z * c);
+  }
+
   vec4 wp = modelMat * vec4(p, 1.0);
   vLocalPos = wp.xyz;
   vWorldPos = wp.xyz + uOffset;
-  vNormal = normalize(mat3(modelMat) * aNormal);
+  vNormal = normalize(mat3(modelMat) * nrm);
   vUv = aUv;
   vExtra = aExtra;
   vTint = tint;
@@ -233,6 +251,7 @@ uniform vec3 uCamPos;
 uniform vec3 uRidePos;
 uniform float uClip;
 uniform sampler2D uReflTex;
+uniform sampler2D uBoatTex;
 uniform vec2 uScreen;
 ` + GLSL_COMMON + `
 
@@ -251,6 +270,7 @@ void main() {
   // Reaktion auf das vorbeifahrende Boot: alles Leuchtende in der Nähe flammt auf
   float rideD = length((vWorldPos - uRidePos) * vec3(1.0, 0.6, 1.0));
   float react = 1.0 + 2.2 * exp(-rideD * 0.16) * (0.75 + 0.25 * sin(t * 3.0 - rideD * 0.8));
+  if (matId >= 20) react = 1.0;
   // langsame Lichtwellen, die durch den Wald laufen
   float wave = 0.75 + 0.35 * sin(lp.z * 0.09 + lp.x * 0.05 + t * 0.9);
 
@@ -272,7 +292,7 @@ void main() {
 
     // Plankton, das mit der Strömung treibt
     vec2 pd = dotField(q * 1.4 + vec2(0.0, t * 0.8), 0.1, 0.12);
-    col += bioColor(pd.y * 0.7) * pd.x * (0.8 + 0.6 * sin(t * 2.0 + pd.y * 40.0)) * 1.4 * react;
+    col += bioColor(pd.y * 0.7) * pd.x * (0.8 + 0.6 * sin(t * 2.0 + pd.y * 40.0)) * 0.8 * react;
     // Ufersaum
     float shore = vExtra.x;
     float foam = smoothstep(0.25, 0.95, shore) * (0.5 + 0.5 * vnoise(q * 3.0 + flow * 2.0));
@@ -391,6 +411,35 @@ void main() {
     float on = vUv.y < 0.0 ? 0.15 : 1.0;
     emissive += vTint.rgb * (mid * 1.0 + veins * 0.55 + edge * 0.45) * on * (0.4 + 0.6 * smoothstep(0.0, 0.4, vUv.y));
     wet = 0.6;
+  } else if (matId == 20) {
+    // Boot: Holz aus der Textur, die türkisen Einlagen leuchten
+    vec3 tc = texture(uBoatTex, vUv).rgb;
+    vec3 lin = pow(tc, vec3(2.2));
+    base = lin * 2.2;
+    float cyan = smoothstep(0.06, 0.22, min(tc.g, tc.b) - tc.r);
+    emissive += vec3(0.1, 0.85, 1.0) * cyan * 2.5 * (0.85 + 0.15 * sin(t * 1.3 + vUv.y * 20.0));
+    // Widerschein der leuchtenden Umgebung auf dem Holz
+    emissive += lin * vec3(0.30, 0.55, 0.62) * (0.55 + 0.45 * N.y);
+    wet = 0.45;
+  } else if (matId == 21) {
+    // Gleiter: dunkle Haut, leuchtende Flügelkanten und Punkte
+    float edge = smoothstep(0.82, 1.0, vUv.y) + smoothstep(0.9, 1.0, vUv.x);
+    vec2 d1 = dotField(vUv * vec2(10.0, 4.0), 0.25, 0.55);
+    base = vec3(0.02, 0.02, 0.05);
+    emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
+  } else if (matId == 22) {
+    // Springfisch: leuchtendes Seitenband
+    float side = exp(-pow((vUv.x - 0.25) * 10.0, 2.0)) + exp(-pow((vUv.x - 0.75) * 10.0, 2.0));
+    base = vec3(0.03, 0.05, 0.08);
+    emissive += vTint.rgb * (side * 1.6 + glowMask * 0.9 + 0.08);
+    wet = 1.0;
+  } else if (matId == 23) {
+    // Langhals: dunkle, fein gemusterte Haut, Leuchtflecken auf dem Rücken, leuchtende Augen und Fühler
+    vec2 d1 = dotField(vUv * vec2(14.0, 18.0), 0.28, 0.6);
+    float stripes = smoothstep(0.7, 0.95, sin(vUv.y * 40.0 + vUv.x * 6.0) * 0.5 + 0.5);
+    base = mix(vec3(0.020, 0.025, 0.045), vec3(0.04, 0.05, 0.08), fine);
+    emissive += vTint.rgb * (d1.x * glowMask * 1.6 + stripes * 0.12 + max(glowMask - 1.0, 0.0) * 1.2);
+    wet = 0.2;
   }
 
   // Beleuchtung: kühles Licht des Gasriesen, Himmel, Widerschein des leuchtenden Bodens
@@ -485,7 +534,7 @@ void main() {
     float ringLine = pow(rings, 4.0) * smoothstep(0.0, 0.18, distR) * smoothstep(1.0, 0.25, distR);
     float coreMist = exp(-distR * 4.5) * 0.5;
     vec3 col = mix(vec3(0.10, 0.65, 0.9), vec3(0.6, 0.9, 1.0), coreMist);
-    float alpha = (ringLine * 0.4 + coreMist) * distFade;
+    float alpha = (ringLine * 0.4 + coreMist) * distFade * vTint.a;
     fragColor = vec4(col * alpha, alpha);
   } else {
     // dünne Lichtstrahlen des Gasriesen durch das Blätterdach
@@ -579,7 +628,7 @@ void main() {
   if (uMirror > 0.5 && wp.y < 0.0) wp.y = -1000.0;
   float dist = length(wp - uCamPos);
   float rideD = length((wp - uRidePos) * vec3(1.0, 0.6, 1.0));
-  float react = 1.0 + 1.6 * exp(-rideD * 0.18);
+  float react = 1.0 + 1.0 * exp(-rideD * 0.18);
   float seed = fract(aPos.x * 0.731 + aPos.z * 0.317);
   float pulse = 0.55 + 0.45 * sin(uTime * (0.7 + seed * 1.3) + seed * 50.0 + aPos.z * 0.08);
   float fade = exp(-max(dist - 20.0, 0.0) * 0.025);
@@ -596,7 +645,7 @@ void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
   if (r2 > 1.0) discard;
-  fragColor = vec4(vColor * exp(-r2 * 4.0) * 0.9, 0.0);
+  fragColor = vec4(vColor * exp(-r2 * 4.0) * 0.5, 0.0);
 }`;
 
 const VS_QUAD = `#version 300 es

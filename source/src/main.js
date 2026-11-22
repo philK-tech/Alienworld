@@ -29,6 +29,27 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+// Selbst umsehen: Maus ziehen oder mit dem Finger wischen. Nach kurzer Zeit übernimmt wieder der automatische Blick.
+const look = { yaw: 0, pitch: 0, dragging: false, lastX: 0, lastY: 0, idle: 99 };
+canvas.addEventListener("pointerdown", (e) => {
+  look.dragging = true;
+  look.lastX = e.clientX;
+  look.lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!look.dragging) return;
+  const k = 2.6 / Math.max(window.innerWidth, window.innerHeight);
+  look.yaw = Math.max(-2.6, Math.min(2.6, look.yaw + (e.clientX - look.lastX) * k));
+  look.pitch = Math.max(-0.7, Math.min(0.9, look.pitch + (e.clientY - look.lastY) * k));
+  look.lastX = e.clientX;
+  look.lastY = e.clientY;
+  look.idle = 0;
+});
+const endDrag = () => { look.dragging = false; };
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+
 function updateChapterLabel(zMod) {
   let label = "Schlucht der Leuchtenden Wasserfälle";
   if (zMod > LOOP_LENGTH / 3 && zMod <= (LOOP_LENGTH * 2) / 3) {
@@ -53,6 +74,11 @@ mirrorMat[5] = -1;
 const identityMat = Mat4.create();
 const tempModelMat = Mat4.create();
 const camEye = [0, 2.2, 0];
+const ridePos = [0, 0, 0];
+const gaze = { yaw: 0, pitch: 0.05 };
+const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+// feste Blickziele entlang der Strecke: Wasserfälle und die nahen schwebenden Berge
+const staticPois = [];
 const camTarget = [0, 2.4, -14];
 const camMirror = [0, -2.2, 0];
 const offsetVec = [0, 0, 0];
@@ -69,6 +95,9 @@ function updateCopies(camZ) {
   }
 }
 
+world.waterfalls.forEach((wf) => staticPois.push({ x: wf.x, y: wf.isSkyFall ? wf.y * 0.6 : wf.y * 0.5, z: wf.z, w: wf.isSkyFall ? 0.9 : 0.8 }));
+world.floatingPeaks.forEach((pk) => { if (pk.fall) staticPois.push({ x: pk.x, y: pk.y, z: pk.z, w: 0.7 }); });
+
 function drawScene(pass) {
   // pass.reflect: Spiegelbild für den Fluss (gespiegelte Kamera, alles unter Wasser verworfen)
   const vp = pass.reflect ? reflViewProj : viewProjMat;
@@ -79,7 +108,9 @@ function drawScene(pass) {
   gl.uniformMatrix4fv(u.uViewProj, false, vp);
   gl.uniform1f(u.uTime, state.time);
   gl.uniform3fv(u.uCamPos, cam);
-  gl.uniform3fv(u.uRidePos, camEye);
+  gl.uniform3fv(u.uRidePos, ridePos);
+  gl.uniform4f(u.uAnim, 0, 0, 0, 0);
+  gl.uniform1i(u.uBoatTex, 1);
   gl.uniform1f(u.uClip, pass.reflect ? 1.0 : 0.0);
   gl.uniform2f(u.uScreen, canvas.width, canvas.height);
   gl.uniform1i(u.uReflTex, 0);
@@ -139,6 +170,25 @@ function drawScene(pass) {
     for (const grp of world.instGroups) drawInstancedRange(gl, grp, c.zMin, c.zMax);
   }
 
+  // Tiere und Boot liegen schon in Kamerakoordinaten der aktuellen Runde
+  setOffset(0);
+  for (const cd of creatureDraws) {
+    setModel(cd.model, cd.tint, 0.0);
+    gl.uniform4fv(u.uAnim, cd.anim);
+    gl.bindVertexArray(cd.mesh.vao);
+    gl.drawElements(gl.TRIANGLES, cd.mesh.indexCount, gl.UNSIGNED_INT, 0);
+  }
+  gl.uniform4f(u.uAnim, 0, 0, 0, 0);
+  if (boat.mesh && boat.tex) {
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, boat.tex);
+    gl.uniform1i(u.uBoatTex, 1);
+    gl.activeTexture(gl.TEXTURE0);
+    setModel(boat.model, [1, 1, 1, 1], 0.0);
+    gl.bindVertexArray(boat.mesh.vao);
+    gl.drawElements(gl.TRIANGLES, boat.mesh.indexCount, gl.UNSIGNED_INT, 0);
+  }
+
   // Leuchtende Effekte, additiv
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE);
@@ -179,6 +229,13 @@ function drawScene(pass) {
         gl.uniform4f(fu.uTint, 0.3, 0.92, 1.0, 1.0);
         gl.drawElements(gl.TRIANGLES, world.plungeRippleMesh.indexCount, gl.UNSIGNED_INT, 0);
       }
+      for (const r of rippleDraws) {
+        if (c.o !== 0) continue;
+        Mat4.compose(tempModelMat, [r.x, 0.03, r.z], 0, 0, 0, [1.6, 1.0, 1.6]);
+        gl.uniformMatrix4fv(fu.uModel, false, tempModelMat);
+        gl.uniform4f(fu.uTint, 1, 1, 1, Math.max(0, Math.min(1, r.a)));
+        gl.drawElements(gl.TRIANGLES, world.plungeRippleMesh.indexCount, gl.UNSIGNED_INT, 0);
+      }
       gl.bindVertexArray(world.shaftMesh.vao);
       for (const sh of world.lightShafts) {
         if (!near(sh.z, 8)) continue;
@@ -195,7 +252,7 @@ function drawScene(pass) {
   gl.uniformMatrix4fv(du.uViewProj, false, vp);
   gl.uniform1f(du.uTime, state.time);
   gl.uniform3fv(du.uCamPos, cam);
-  gl.uniform3fv(du.uRidePos, camEye);
+  gl.uniform3fv(du.uRidePos, ridePos);
   gl.uniform1f(du.uPixelRatio, pixelRatio * (pass.reflect ? 0.5 : 1.0));
   gl.uniform1f(du.uMirror, pass.reflect ? 1.0 : 0.0);
   gl.bindVertexArray(world.dotVao);
@@ -214,7 +271,7 @@ function drawScene(pass) {
   gl.uniformMatrix4fv(pu.uViewProj, false, vp);
   gl.uniform1f(pu.uTime, state.time);
   gl.uniform3fv(pu.uCamPos, cam);
-  gl.uniform3fv(pu.uRidePos, camEye);
+  gl.uniform3fv(pu.uRidePos, ridePos);
   gl.uniform1f(pu.uLoop, LOOP_LENGTH);
   gl.uniform1f(pu.uPixelRatio, pixelRatio * (pass.reflect ? 0.5 : 1.0));
   gl.bindVertexArray(world.particleVao);
@@ -243,20 +300,57 @@ function render(now) {
   const zCur = -zMod;
   updateChapterLabel(zMod);
 
-  const swayX = Math.sin(state.time * 0.45) * 1.35;
-  camEye[0] = riverCenterX(zCur) + swayX;
-  camEye[1] = 2.15 + Math.sin(state.time * 0.85) * 0.16;
-  camEye[2] = zCur;
-  const lookZ = zCur - 16.0;
-  camTarget[0] = riverCenterX(lookZ) + Math.cos(state.time * 0.32) * 2.2;
-  camTarget[1] = 2.9 + Math.sin(state.time * 0.38) * 0.9;
-  camTarget[2] = lookZ;
+  // Boot folgt dem Fluss, pendelt leicht hin und her
+  const t = state.time;
+  const bx = riverCenterX(zCur) + Math.sin(t * 0.21) * 0.9;
+  const heading = Math.atan2(riverSlopeX(zCur - 3.0) + Math.cos(t * 0.21) * 0.04, 1.0);
+  placeBoat(bx, zCur, heading, t, camEye);
+  ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
+  updateCreatures(zCur, t);
+
+  // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten
+  let tYaw = Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12;
+  let tPitch = 0.06 + Math.sin(t * 0.15 + 0.5) * 0.08;
+  let best = null, bestScore = 0;
+  const consider = (p) => {
+    const dx = p.x - camEye[0], dy = p.y - camEye[1], dz = p.z - camEye[2];
+    const dist = Math.hypot(dx, dz);
+    if (dist < 4 || dist > 75) return;
+    const rel = wrapAngle(Math.atan2(-dx, -dz) - heading);
+    if (Math.abs(rel) > 1.5) return;
+    const score = p.w / (1.0 + dist * 0.04) * (1.0 - Math.abs(rel) * 0.3);
+    if (score > bestScore) { bestScore = score; best = { rel, pitch: Math.atan2(dy, dist) }; }
+  };
+  pois.forEach(consider);
+  for (const p of staticPois) {
+    const d = aheadDist(zCur, p.z);
+    if (d > -5 && d < 80) consider({ x: p.x, y: p.y, z: zCur - d, w: p.w });
+  }
+  if (best) {
+    tYaw = best.rel;
+    tPitch = Math.max(-0.35, Math.min(0.75, best.pitch));
+  }
+  const ease = 1.0 - Math.exp(-dt * (best ? 1.3 : 0.6));
+  gaze.yaw += wrapAngle(tYaw - gaze.yaw) * ease;
+  gaze.pitch += (tPitch - gaze.pitch) * ease;
+  // eigener Blick klingt nach 2,5 Sekunden ohne Bewegung wieder ab
+  look.idle += dt;
+  if (!look.dragging && look.idle > 2.5) {
+    const k = 1.0 - Math.exp(-dt * 0.8);
+    look.yaw -= look.yaw * k;
+    look.pitch -= look.pitch * k;
+  }
+  const yaw = heading + gaze.yaw + look.yaw;
+  const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch));
+  camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
+  camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;
+  camTarget[2] = camEye[2] - Math.cos(yaw) * Math.cos(pitch) * 10.0;
   camMirror[0] = camEye[0];
   camMirror[1] = -camEye[1];
   camMirror[2] = camEye[2];
 
   const aspect = canvas.width / Math.max(canvas.height, 1);
-  Mat4.perspective(projMat, (58 * Math.PI) / 180, aspect, 0.15, FAR + 40.0);
+  Mat4.perspective(projMat, ((aspect < 1 ? 74 : 62) * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
   Mat4.lookAt(viewMat, camEye, camTarget, [0, 1, 0]);
   Mat4.multiply(viewProjMat, projMat, viewMat);
   Mat4.multiply(reflViewProj, viewProjMat, mirrorMat);
