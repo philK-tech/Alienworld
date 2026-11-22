@@ -64,8 +64,8 @@ function buildWolfMesh() {
   const b = createGeometryBuilder();
   const shag = (t, a, base) => base * (1.0 + 0.16 * Math.abs(Math.sin(a * 7.0 + t * 23.0)) * Math.sin(a * 3.0 + t * 11.0));
   // Rumpf: vorne hoch und kräftig, hinten schmal
-  addLathe(b, 16, 14, (t) => [0, 0.62 + 0.08 * Math.sin(t * Math.PI) + 0.06 * t, 0.55 - t * 1.05], (t, a) => {
-    const r = 0.11 + 0.09 * Math.sin(Math.min(t * 1.2, 1.0) * Math.PI) + 0.05 * t;
+  addLathe(b, 16, 14, (t) => [0, 0.56 + 0.06 * Math.sin(t * Math.PI) + 0.08 * t, 0.55 - t * 1.05], (t, a) => {
+    const r = 0.14 + 0.11 * Math.sin(Math.min(t * 1.2, 1.0) * Math.PI) + 0.07 * t;
     return [shag(t, a, r * 0.8), shag(t, a, r * 1.15)];
   }, 23, (t) => [0.6, 0.0, 0.0]);
   // Hals, Kopf und Schnauze
@@ -80,8 +80,8 @@ function buildWolfMesh() {
   // Beine mit Phase für den Laufzyklus (diagonal gleich)
   [[-0.09, -0.38, 1], [0.09, -0.38, -1], [-0.09, 0.42, -1], [0.09, 0.42, 1]].forEach(([x, z, ph]) => {
     const back = z > 0;
-    addLathe(b, 6, 7, (t) => [x, 0.6 * (1.0 - t), z + (back ? Math.sin(t * Math.PI) * 0.08 : 0.0)],
-      (t, a) => { const r = (back ? 0.07 : 0.055) * (1.0 - t * 0.5); return [shag(t, a, r), shag(t, a, r)]; }, 23, (t) => [0.5, 0.0, ph * (0.05 + t)]);
+    addLathe(b, 6, 7, (t) => [x * 1.3, 0.5 * (1.0 - t), z + (back ? Math.sin(t * Math.PI) * 0.08 : 0.0)],
+      (t, a) => { const r = (back ? 0.085 : 0.07) * (1.0 - t * 0.5); return [shag(t, a, r), shag(t, a, r)]; }, 23, (t) => [0.5, 0.0, ph * (0.05 + t)]);
   });
   // buschiger Schwanz
   addLathe(b, 8, 8, (t) => [0, 0.68 - t * 0.3, 0.55 + t * 0.4], (t, a) => { const r = 0.06 + 0.04 * Math.sin(t * Math.PI); return [shag(t, a, r), shag(t, a, r)]; }, 23, () => [0.6, 0.0, 0.0]);
@@ -220,7 +220,7 @@ function updateCreatures(camZ, t) {
       // im Laufen zum Boot hin (+z), im Stehen zum Fluss gedreht
       const yawWalk = Math.PI, yawStand = ev.side * Math.PI * 0.5 + ev.side * 0.35 * (i - 1);
       const yaw = lerp(yawStand, yawWalk, walk);
-      const s = 1.5 - i * 0.12;
+      const s = 2.3 - i * 0.2;
       Mat4.compose(g.model, [x, y, z], yaw, 0, 0, [s, s, s]);
       g.anim[0] = ei * 2.0 + i * 1.3;
       g.anim[1] = walk;

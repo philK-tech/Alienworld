@@ -129,7 +129,7 @@ function buildWorld() {
     const p = bankSpot(i, 1.0, -0.8, 30.0, 1.1);
     if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 0.8, 0.3, 0.15, hash2(i, 1.9))) continue;
     // Felsen dürfen nicht in die Fahrrinne ragen
-    const free = Math.abs(p.x - riverCenterX(p.z)) - 3.5;
+    const free = Math.abs(p.x - riverCenterX(p.z)) - 5.0;
     const s = Math.min(1.2 + hash2(i, 2.7) * 4.0, free / 1.25);
     if (s < 0.6) continue;
     pushInst("cliffs", [p.x, p.y - 0.4, p.z], rot(i, 3.1), 0, 0, [s, s * (0.6 + hash2(i, 4.9) * 0.8), s * 0.9], [0.9, 1.0, 1.15, 1]);
@@ -155,23 +155,23 @@ function buildWorld() {
     for (const off of [-5.5, 5.0]) {
       const z = ch.z + off;
       const sideSign = Math.sign(ch.x - riverCenterX(ch.z));
-      const x = riverCenterX(z) + sideSign * (riverHalfWidth(z) + 3.5 + hash2(k, off) * 1.5);
-      const s = 3.5 + hash2(k, off + 1.0) * 1.5;
+      const s = 3.0 + hash2(k, off + 1.0) * 1.5;
+      const x = riverCenterX(z) + sideSign * (riverHalfWidth(z) + 1.5 + s * 1.1 + hash2(k, off) * 1.5);
       pushInst("cliffs", [x, terrainHeight(x, z) - 0.5, z], rot(k, off + 2.0), 0, 0, [s, s * 1.5, s], [0.9, 0.95, 1.05, 1]);
     }
   });
 
   // Zone 1: Nadelbäume, nah am Ufer kleiner (die unteren Zweige dürfen nicht in die Fahrrinne ragen)
-  for (let i = 0; i < 260; i++) {
-    const p = bankSpot(i, 5.0, 2.5, 30.0, 1.0);
-    if (inClearing(p.x, p.z, 10.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.5)) continue;
+  for (let i = 0; i < 700; i++) {
+    const p = bankSpot(i, 5.0, 2.5, 34.0, 1.0);
+    if (inClearing(p.x, p.z, 10.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.4)) continue;
     const h = Math.min(9.0 + hash2(i, 6.4) * 10.0, p.reach / 0.3);
     if (h < 5.0) continue;
     pushInst("pines", [p.x, p.y - 0.2, p.z], rot(i, 8.1), 0, 0, [h, h, h], CYAN);
   }
-  for (let i = 0; i < 200; i++) {
-    const p = bankSpot(i, 10.0, 30.0, 110.0, 1.0);
-    if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 10.7)) || !grove(p, 0.46)) continue;
+  for (let i = 0; i < 650; i++) {
+    const p = bankSpot(i, 10.0, 30.0, 140.0, 1.0);
+    if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 10.7)) || !grove(p, 0.36)) continue;
     const h = 16.0 + hash2(i, 11.4) * 16.0;
     pushInst("pines", [p.x, p.y - 0.3, p.z], rot(i, 13.1), 0, 0, [h, h, h], CYAN);
   }
@@ -273,13 +273,13 @@ function buildWorld() {
 
   for (let i = 0; i < 1100; i++) {
     const p = bankSpot(i, 15.0, 0.3, 16.0, 1.6);
-    if (inClearing(p.x, p.z, 3.5) || !zoneChance(p.z, 0.8, 1.0, 0.15, hash2(i, 15.9))) continue;
+    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 0.8, 1.0, 0.15, hash2(i, 15.9))) continue;
     const sc = 0.7 + hash2(i, 16.3) * 0.9;
     pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], hash2(i, 18.0) < 0.8 ? CYAN : BLUE);
   }
   for (let i = 0; i < 800; i++) {
     const p = bankSpot(i, 20.0, 0.6, 18.0, 1.5);
-    if (inClearing(p.x, p.z, 5.0) || !zoneChance(p.z, 0.15, 1.0, 0.5, hash2(i, 20.9))) continue;
+    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 0.15, 1.0, 0.5, hash2(i, 20.9))) continue;
     const sc = 0.8 + hash2(i, 21.3) * 1.2;
     pushInst("broadleaves", [p.x, p.y - 0.05, p.z], rot(i, 22.4), 0, 0, [sc, sc, sc], pickTint(hash2(i, 23.0)));
   }

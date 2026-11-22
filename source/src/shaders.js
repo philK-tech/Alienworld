@@ -688,7 +688,7 @@ void main() {
     float rimW = pow(1.0 - abs(dot(N, V)), 2.0);
     base = vec3(0.015, 0.014, 0.02);
     albA = albC = vec3(0.035, 0.032, 0.04) * (0.8 + 0.4 * fine);
-    emissive += skyHaze(-V) * rimW * 0.9;
+    emissive += skyHaze(-V) * rimW * 0.22;
     emissive += vTint.rgb * step(2.0, glowMask) * 6.0;
     emissive /= max(emScale, 0.3);
   }
