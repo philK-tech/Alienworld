@@ -185,7 +185,7 @@
       return (riverCenterX(z + eps) - riverCenterX(z - eps)) / (2.0 * eps);
     }
     function riverHalfWidth(z) {
-      return 5.6 + Math.sin(z * KZ * 4.0 + 1.1) * 1.3;
+      return 7.2 + Math.sin(z * KZ * 4.0 + 1.1) * 1.6;
     }
     // fbm, die in z periodisch über die Schleifenlänge ist (Überblendung zweier Abtastungen)
     function pnoise(x, z, scale, octaves) {
@@ -209,17 +209,26 @@
       return out;
     }
 
-    // Höhe des Talbodens an (x, z), identisch mit dem Terrain-Mesh
+    // Höhe des Bodens an (x, z), identisch mit dem Terrain-Mesh.
+    // Offene Landschaft: flaches Ufer, sanft gewellte Wiesen, Höhenzüge erst weit hinten.
+    // Je Zone unterschiedlich: Nebeltal mit flachen Stufen, Pilzwald fast eben, Himmelsinseln hügelig.
+    const _tw = [0, 0, 0];
     function terrainHeight(x, z) {
       const cx = riverCenterX(z);
       const hw = riverHalfWidth(z);
       const ax = Math.abs(x - cx);
       const d = Math.max(0.0, ax - hw);
+      zoneWeights(z, _tw);
       const riverDip = -1.35 * (1.0 - smoothstep(0.0, hw * 1.12, ax));
-      const bankRise = Math.pow(d / 15.0, 1.4) * 5.2;
-      const ridge = smoothstep(20.0, 52.0, d) * (3.0 + 6.0 * pnoise(x, z, 0.04, 3));
-      const undulation = (pnoise(x, z, 0.16, 3) - 0.5) * 0.8 * smoothstep(0.5, 4.0, d);
-      return riverDip + bankRise + ridge + undulation;
+      const lip = 0.7 * smoothstep(0.0, 3.0, d);
+      const amp = _tw[0] * 3.0 + _tw[1] * 1.4 + _tw[2] * 6.0;
+      let roll = (pnoise(x, z, 0.022, 3) - 0.42) * amp * smoothstep(3.0, 22.0, d);
+      // Nebeltal: weiche Geländestufen
+      const step = Math.floor(roll / 1.6) * 1.6;
+      roll = lerp(roll, step + smoothstep(0.0, 1.6, roll - step) * 1.6, _tw[0] * 0.8);
+      const far = smoothstep(80.0, 170.0, d) * (6.0 + 16.0 * pnoise(x, z, 0.012, 2));
+      const fine = (pnoise(x, z, 0.16, 2) - 0.5) * 0.35 * smoothstep(0.5, 4.0, d);
+      return riverDip + lip + Math.max(roll, -0.3) + far + fine;
     }
 
     // Mat4 helpers (column-major)
@@ -523,9 +532,9 @@
     // --- Procedural Meshes ---
     function buildValleyTerrainMesh() {
       const b = createGeometryBuilder();
-      const segX = 150;
+      const segX = 160;
       const segZ = Math.round(LOOP_LENGTH);
-      const spanX = 120.0;
+      const spanX = 220.0;
       for (let iz = 0; iz <= segZ; iz++) {
         const z = -(iz / segZ) * LOOP_LENGTH;
         const cx = riverCenterX(z);
@@ -533,7 +542,7 @@
         for (let ix = 0; ix <= segX; ix++) {
           // Spalten nahe am Fluss dichter, weit draußen gröber
           const u = (ix / segX) * 2.0 - 1.0;
-          const localX = Math.sign(u) * Math.pow(Math.abs(u), 1.7) * spanX;
+          const localX = Math.sign(u) * Math.pow(Math.abs(u), 2.0) * spanX;
           const x = cx + localX;
           const y = terrainHeight(x, z);
           const distFromRiver = Math.max(0.0, Math.abs(localX) - hw);
@@ -554,9 +563,9 @@
 
     function buildWaterSurfaceMesh() {
       const b = createGeometryBuilder();
-      const segX = 64;
+      const segX = 72;
       const segZ = Math.round(LOOP_LENGTH / 1.5);
-      const spanX = 16.0;
+      const spanX = 22.0;
       for (let iz = 0; iz <= segZ; iz++) {
         const z = -(iz / segZ) * LOOP_LENGTH;
         const cx = riverCenterX(z);
@@ -1402,7 +1411,7 @@
       float cl = smoothstep(0.45, 0.8, fbm(cp * vec2(0.6, 2.2)));
       sky = mix(sky, mix(vec3(0.85, 0.55, 0.65), vec3(0.35, 0.28, 0.48), smoothstep(0.0, 0.5, el)), cl * 0.7 * smoothstep(0.0, 0.08, el));
       // ferne Schneegipfel
-      float hFar = 0.05 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.22;
+      float hFar = 0.06 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.30;
       if (el < hFar) {
         float snow = smoothstep(hFar - 0.06, hFar - 0.015, el + vnoise(vec2(az * 40.0, el * 60.0)) * 0.02);
         vec3 rock = mix(vec3(0.30, 0.24, 0.38), vec3(0.42, 0.33, 0.48), vnoise(vec2(az * 30.0, el * 20.0)));
@@ -1549,7 +1558,7 @@
       float dy = d.y;
       float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
       float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
-      float zoneDens = uZoneW.x * 1.15 + uZoneW.y + uZoneW.z * 0.5;
+      float zoneDens = uZoneW.x * 0.65 + uZoneW.y + uZoneW.z * 0.45;
       float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
       float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
       vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
@@ -1782,7 +1791,7 @@
         wet = 1.0 - smoothstep(0.0, 2.0, lp.y);
         vec3 stone = vec3(0.24, 0.22, 0.28) * (0.65 + 0.7 * strata * tex);
         albA = mix(stone, vec3(0.40, 0.33, 0.08) * (0.7 + 0.6 * fine), moss);
-        albC = mix(vec3(0.42, 0.32, 0.22) * (0.65 + 0.7 * strata * tex), vec3(0.14, 0.32, 0.06), moss);
+        albC = mix(vec3(0.42, 0.32, 0.22) * (0.8 + 0.4 * tex) * (0.85 + 0.15 * strata), vec3(0.14, 0.32, 0.06), moss);
       } else if (matId == 5 || matId == 31) {
         // Rinde (Dschungel- und Nadelbäume)
         float rr = 0.5 + 0.5 * sin(vUv.x * 50.0 + fbm(vec2(vUv.x * 8.0, lp.y * 1.5)) * 6.0);
@@ -1938,6 +1947,9 @@
 
       float hemi = N.y * 0.5 + 0.5;
       vec3 col = vec3(0.0);
+      // Licht: überwiegend das der Zone, in der die Kamera gerade ist. Sonst würden ferne Inseln
+      // im Tageslicht mitten in der Nacht des Pilzwalds hell aufleuchten.
+      zw = mix(zw, uZoneW, 0.8);
       float specPow = mix(18.0, 90.0, wet);
       float rim = pow(1.0 - max(dot(N, V), 0.0), 4.0);
       if (zw.y > 0.001) {
@@ -2368,7 +2380,7 @@
       for (let i = 0; i < 12; i++) {
         const side = i % 2 === 0 ? -1 : 1;
         const s = 12.0 + hash2(i, 73.0) * 18.0;
-        floatingPeaks.push({ z: wrapZ(-305.0 - i * 16.0 - hash2(i, 74.0) * 10.0), offsetX: side * (45.0 + hash2(i, 75.0) * 75.0),
+        floatingPeaks.push({ z: -338.0 - i * 11.0 - hash2(i, 74.0) * 6.0, offsetX: side * (45.0 + hash2(i, 75.0) * 75.0),
           y: 30.0 + hash2(i, 76.0) * 40.0, sx: s, sy: s * (1.2 + hash2(i, 77.0) * 0.4), sz: s * 0.9, fall: false });
       }
       floatingPeaks.forEach((pk, idx) => { pk.x = riverCenterX(pk.z) + pk.offsetX; pk.rot = idx * 1.4; });
@@ -2383,7 +2395,7 @@
         const hw = riverHalfWidth(fz);
         const cliffX = cx + side * (hw + 1.8);
         const yaw = side < 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
-        const cliffHeight = 11.0;
+        const cliffHeight = 7.5;
         const dirX = Math.sin(yaw);
         const dirZ = Math.cos(yaw);
         const crestX = cliffX + dirX * 0.25;
@@ -2428,14 +2440,16 @@
       const CYAN = [0.10, 0.85, 1.0, 1], BLUE = [0.15, 0.45, 1.0, 1], VIOLET = [0.75, 0.28, 1.0, 1];
       const pickTint = (h) => (h < 0.55 ? CYAN : h < 0.85 ? BLUE : VIOLET);
       const rot = (i, salt) => hash2(i, salt) * Math.PI * 2;
+      // Haine: Bäume wachsen in Gruppen, dazwischen bleiben offene Wiesen
+      const grove = (p, thr) => pnoise(p.x + 517.0, p.z, 0.028, 2) > thr;
 
       // Felsen: viele im Nebeltal, einige auf den Himmelsinseln, wenige im Pilzwald
-      for (let i = 0; i < 170; i++) {
-        const p = bankSpot(i, 1.0, -0.8, 22.0, 1.3);
-        if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.35, 0.6, hash2(i, 1.9))) continue;
+      for (let i = 0; i < 110; i++) {
+        const p = bankSpot(i, 1.0, -0.8, 30.0, 1.1);
+        if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 0.8, 0.3, 0.15, hash2(i, 1.9))) continue;
         // Felsen dürfen nicht in die Fahrrinne ragen
         const free = Math.abs(p.x - riverCenterX(p.z)) - 3.5;
-        const s = Math.min(2.0 + hash2(i, 2.7) * 6.0, free / 1.25);
+        const s = Math.min(1.2 + hash2(i, 2.7) * 4.0, free / 1.25);
         if (s < 0.6) continue;
         pushInst("cliffs", [p.x, p.y - 0.4, p.z], rot(i, 3.1), 0, 0, [s, s * (0.6 + hash2(i, 4.9) * 0.8), s * 0.9], [0.9, 1.0, 1.15, 1]);
       }
@@ -2448,32 +2462,50 @@
           [w, 3.5 + hash2(i, 85.0) * 3.0, w * 0.8], [0.95, 0.95, 1.05, 1]);
       }
 
+      // große, abgerundete Felsberge im Mittelgrund (Himmelsinseln) und Felskuppen (Nebeltal)
+      for (let i = 0; i < 60; i++) {
+        const p = bankSpot(i, 110.0, 45.0, 120.0, 1.0);
+        if (!zoneChance(p.z, 0.35, 0.0, 1.0, hash2(i, 110.7))) continue;
+        const s = 12.0 + hash2(i, 111.0) * 16.0;
+        pushInst("cliffs", [p.x, p.y - 2.0, p.z], rot(i, 112.0), 0, 0, [s, s * (1.1 + hash2(i, 113.0) * 0.9), s * 0.9], [1.05, 0.95, 0.85, 1]);
+      }
+      // Felsen links und rechts der Wasserfälle, damit sie wie eine Felskante wirken
+      bankCliffHousings.forEach((ch, k) => {
+        for (const off of [-5.5, 5.0]) {
+          const z = ch.z + off;
+          const sideSign = Math.sign(ch.x - riverCenterX(ch.z));
+          const x = riverCenterX(z) + sideSign * (riverHalfWidth(z) + 3.5 + hash2(k, off) * 1.5);
+          const s = 3.5 + hash2(k, off + 1.0) * 1.5;
+          pushInst("cliffs", [x, terrainHeight(x, z) - 0.5, z], rot(k, off + 2.0), 0, 0, [s, s * 1.5, s], [0.9, 0.95, 1.05, 1]);
+        }
+      });
+
       // Zone 1: Nadelbäume, nah am Ufer kleiner (die unteren Zweige dürfen nicht in die Fahrrinne ragen)
       for (let i = 0; i < 260; i++) {
-        const p = bankSpot(i, 5.0, 2.0, 18.0, 1.2);
-        if (inClearing(p.x, p.z, 10.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7))) continue;
+        const p = bankSpot(i, 5.0, 2.5, 30.0, 1.0);
+        if (inClearing(p.x, p.z, 10.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.5)) continue;
         const h = Math.min(9.0 + hash2(i, 6.4) * 10.0, p.reach / 0.3);
         if (h < 5.0) continue;
         pushInst("pines", [p.x, p.y - 0.2, p.z], rot(i, 8.1), 0, 0, [h, h, h], CYAN);
       }
       for (let i = 0; i < 200; i++) {
-        const p = bankSpot(i, 10.0, 18.0, 80.0, 1.1);
-        if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 10.7))) continue;
+        const p = bankSpot(i, 10.0, 30.0, 110.0, 1.0);
+        if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 10.7)) || !grove(p, 0.46)) continue;
         const h = 16.0 + hash2(i, 11.4) * 16.0;
         pushInst("pines", [p.x, p.y - 0.3, p.z], rot(i, 13.1), 0, 0, [h, h, h], CYAN);
       }
       // Zone 2: Riesenpilze
-      for (let i = 0; i < 230; i++) {
-        const p = bankSpot(i, 90.0, 1.2, 50.0, 1.6);
-        if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 90.7))) continue;
+      for (let i = 0; i < 260; i++) {
+        const p = bankSpot(i, 90.0, 1.5, 70.0, 1.3);
+        if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 90.7)) || !grove(p, 0.44)) continue;
         const far = p.bank > 14.0;
         const h = far ? 10.0 + hash2(i, 91.0) * 12.0 : 4.5 + hash2(i, 91.0) * 7.0;
         pushInst("giantMushrooms", [p.x, p.y - 0.2, p.z], rot(i, 92.0), (hash2(i, 93.0) - 0.5) * 0.12, (hash2(i, 94.0) - 0.5) * 0.12, [h, h, h], CYAN);
       }
       // Zone 3: Bäume mit runden Kronen
-      for (let i = 0; i < 300; i++) {
-        const p = bankSpot(i, 95.0, 2.0, 70.0, 1.5);
-        if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 95.7))) continue;
+      for (let i = 0; i < 320; i++) {
+        const p = bankSpot(i, 95.0, 2.5, 90.0, 1.2);
+        if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 95.7)) || !grove(p, 0.47)) continue;
         const h = Math.min(6.0 + hash2(i, 96.0) * 7.0 + (p.bank > 18 ? 4.0 : 0.0), p.reach / 0.45);
         if (h < 3.5) continue;
         pushInst("roundTrees", [p.x, p.y - 0.2, p.z], rot(i, 97.0), 0, 0, [h, h, h], CYAN);
@@ -2798,7 +2830,7 @@
       const m = boat.model;
       const [sx, sy, sz] = BOAT_SEAT;
       eyeOut[0] = m[0] * sx + m[4] * sy + m[8] * sz + m[12];
-      eyeOut[1] = m[1] * sx + m[5] * sy + m[9] * sz + m[13] + 0.9;
+      eyeOut[1] = m[1] * sx + m[5] * sy + m[9] * sz + m[13] + 1.2;
       eyeOut[2] = m[2] * sx + m[6] * sy + m[10] * sz + m[14];
       return roll;
     }
@@ -3491,7 +3523,7 @@
       gl.uniform1i(progComposite.u.uBloomTex, 1);
       gl.uniform1f(progComposite.u.uTime, state.time);
       gl.uniform2f(progComposite.u.uScreen, canvas.width, canvas.height);
-      gl.uniform1f(progComposite.u.uExposure, zoneMix(1.15, 1.6, 0.85));
+      gl.uniform1f(progComposite.u.uExposure, zoneMix(0.95, 1.6, 0.85));
       fullscreenPass(null, canvas.width, canvas.height);
       gl.activeTexture(gl.TEXTURE0);
 

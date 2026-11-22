@@ -48,7 +48,7 @@ function riverSlopeX(z) {
   return (riverCenterX(z + eps) - riverCenterX(z - eps)) / (2.0 * eps);
 }
 function riverHalfWidth(z) {
-  return 5.6 + Math.sin(z * KZ * 4.0 + 1.1) * 1.3;
+  return 7.2 + Math.sin(z * KZ * 4.0 + 1.1) * 1.6;
 }
 // fbm, die in z periodisch über die Schleifenlänge ist (Überblendung zweier Abtastungen)
 function pnoise(x, z, scale, octaves) {
@@ -72,17 +72,26 @@ function zoneWeights(z, out = [0, 0, 0]) {
   return out;
 }
 
-// Höhe des Talbodens an (x, z), identisch mit dem Terrain-Mesh
+// Höhe des Bodens an (x, z), identisch mit dem Terrain-Mesh.
+// Offene Landschaft: flaches Ufer, sanft gewellte Wiesen, Höhenzüge erst weit hinten.
+// Je Zone unterschiedlich: Nebeltal mit flachen Stufen, Pilzwald fast eben, Himmelsinseln hügelig.
+const _tw = [0, 0, 0];
 function terrainHeight(x, z) {
   const cx = riverCenterX(z);
   const hw = riverHalfWidth(z);
   const ax = Math.abs(x - cx);
   const d = Math.max(0.0, ax - hw);
+  zoneWeights(z, _tw);
   const riverDip = -1.35 * (1.0 - smoothstep(0.0, hw * 1.12, ax));
-  const bankRise = Math.pow(d / 15.0, 1.4) * 5.2;
-  const ridge = smoothstep(20.0, 52.0, d) * (3.0 + 6.0 * pnoise(x, z, 0.04, 3));
-  const undulation = (pnoise(x, z, 0.16, 3) - 0.5) * 0.8 * smoothstep(0.5, 4.0, d);
-  return riverDip + bankRise + ridge + undulation;
+  const lip = 0.7 * smoothstep(0.0, 3.0, d);
+  const amp = _tw[0] * 3.0 + _tw[1] * 1.4 + _tw[2] * 6.0;
+  let roll = (pnoise(x, z, 0.022, 3) - 0.42) * amp * smoothstep(3.0, 22.0, d);
+  // Nebeltal: weiche Geländestufen
+  const step = Math.floor(roll / 1.6) * 1.6;
+  roll = lerp(roll, step + smoothstep(0.0, 1.6, roll - step) * 1.6, _tw[0] * 0.8);
+  const far = smoothstep(80.0, 170.0, d) * (6.0 + 16.0 * pnoise(x, z, 0.012, 2));
+  const fine = (pnoise(x, z, 0.16, 2) - 0.5) * 0.35 * smoothstep(0.5, 4.0, d);
+  return riverDip + lip + Math.max(roll, -0.3) + far + fine;
 }
 
 // Mat4 helpers (column-major)

@@ -418,7 +418,7 @@ function render(now) {
   gl.uniform1i(progComposite.u.uBloomTex, 1);
   gl.uniform1f(progComposite.u.uTime, state.time);
   gl.uniform2f(progComposite.u.uScreen, canvas.width, canvas.height);
-  gl.uniform1f(progComposite.u.uExposure, zoneMix(1.15, 1.6, 0.85));
+  gl.uniform1f(progComposite.u.uExposure, zoneMix(0.95, 1.6, 0.85));
   fullscreenPass(null, canvas.width, canvas.height);
   gl.activeTexture(gl.TEXTURE0);
 

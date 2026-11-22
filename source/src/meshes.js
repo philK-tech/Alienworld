@@ -2,9 +2,9 @@
 // --- Procedural Meshes ---
 function buildValleyTerrainMesh() {
   const b = createGeometryBuilder();
-  const segX = 150;
+  const segX = 160;
   const segZ = Math.round(LOOP_LENGTH);
-  const spanX = 120.0;
+  const spanX = 220.0;
   for (let iz = 0; iz <= segZ; iz++) {
     const z = -(iz / segZ) * LOOP_LENGTH;
     const cx = riverCenterX(z);
@@ -12,7 +12,7 @@ function buildValleyTerrainMesh() {
     for (let ix = 0; ix <= segX; ix++) {
       // Spalten nahe am Fluss dichter, weit draußen gröber
       const u = (ix / segX) * 2.0 - 1.0;
-      const localX = Math.sign(u) * Math.pow(Math.abs(u), 1.7) * spanX;
+      const localX = Math.sign(u) * Math.pow(Math.abs(u), 2.0) * spanX;
       const x = cx + localX;
       const y = terrainHeight(x, z);
       const distFromRiver = Math.max(0.0, Math.abs(localX) - hw);
@@ -33,9 +33,9 @@ function buildValleyTerrainMesh() {
 
 function buildWaterSurfaceMesh() {
   const b = createGeometryBuilder();
-  const segX = 64;
+  const segX = 72;
   const segZ = Math.round(LOOP_LENGTH / 1.5);
-  const spanX = 16.0;
+  const spanX = 22.0;
   for (let iz = 0; iz <= segZ; iz++) {
     const z = -(iz / segZ) * LOOP_LENGTH;
     const cx = riverCenterX(z);

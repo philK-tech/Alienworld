@@ -112,7 +112,7 @@ vec3 skyA(vec3 dir, float t) {
   float cl = smoothstep(0.45, 0.8, fbm(cp * vec2(0.6, 2.2)));
   sky = mix(sky, mix(vec3(0.85, 0.55, 0.65), vec3(0.35, 0.28, 0.48), smoothstep(0.0, 0.5, el)), cl * 0.7 * smoothstep(0.0, 0.08, el));
   // ferne Schneegipfel
-  float hFar = 0.05 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.22;
+  float hFar = 0.06 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.30;
   if (el < hFar) {
     float snow = smoothstep(hFar - 0.06, hFar - 0.015, el + vnoise(vec2(az * 40.0, el * 60.0)) * 0.02);
     vec3 rock = mix(vec3(0.30, 0.24, 0.38), vec3(0.42, 0.33, 0.48), vnoise(vec2(az * 30.0, el * 20.0)));
@@ -259,7 +259,7 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float dy = d.y;
   float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
   float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
-  float zoneDens = uZoneW.x * 1.15 + uZoneW.y + uZoneW.z * 0.5;
+  float zoneDens = uZoneW.x * 0.65 + uZoneW.y + uZoneW.z * 0.45;
   float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
   vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
@@ -492,7 +492,7 @@ void main() {
     wet = 1.0 - smoothstep(0.0, 2.0, lp.y);
     vec3 stone = vec3(0.24, 0.22, 0.28) * (0.65 + 0.7 * strata * tex);
     albA = mix(stone, vec3(0.40, 0.33, 0.08) * (0.7 + 0.6 * fine), moss);
-    albC = mix(vec3(0.42, 0.32, 0.22) * (0.65 + 0.7 * strata * tex), vec3(0.14, 0.32, 0.06), moss);
+    albC = mix(vec3(0.42, 0.32, 0.22) * (0.8 + 0.4 * tex) * (0.85 + 0.15 * strata), vec3(0.14, 0.32, 0.06), moss);
   } else if (matId == 5 || matId == 31) {
     // Rinde (Dschungel- und Nadelbäume)
     float rr = 0.5 + 0.5 * sin(vUv.x * 50.0 + fbm(vec2(vUv.x * 8.0, lp.y * 1.5)) * 6.0);
@@ -648,6 +648,9 @@ void main() {
 
   float hemi = N.y * 0.5 + 0.5;
   vec3 col = vec3(0.0);
+  // Licht: überwiegend das der Zone, in der die Kamera gerade ist. Sonst würden ferne Inseln
+  // im Tageslicht mitten in der Nacht des Pilzwalds hell aufleuchten.
+  zw = mix(zw, uZoneW, 0.8);
   float specPow = mix(18.0, 90.0, wet);
   float rim = pow(1.0 - max(dot(N, V), 0.0), 4.0);
   if (zw.y > 0.001) {

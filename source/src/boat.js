@@ -57,7 +57,7 @@ function placeBoat(x, z, yaw, t, eyeOut) {
   const m = boat.model;
   const [sx, sy, sz] = BOAT_SEAT;
   eyeOut[0] = m[0] * sx + m[4] * sy + m[8] * sz + m[12];
-  eyeOut[1] = m[1] * sx + m[5] * sy + m[9] * sz + m[13] + 0.9;
+  eyeOut[1] = m[1] * sx + m[5] * sy + m[9] * sz + m[13] + 1.2;
   eyeOut[2] = m[2] * sx + m[6] * sy + m[10] * sz + m[14];
   return roll;
 }
