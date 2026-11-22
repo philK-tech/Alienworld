@@ -56,6 +56,22 @@ function pnoise(x, z, scale, octaves) {
   const s = -z / LOOP_LENGTH;
   return lerp(fbm2(x * scale, z * scale, octaves), fbm2(x * scale, (z + LOOP_LENGTH) * scale, octaves), s);
 }
+// Drei Zonen hintereinander: 0 Nebeltal, 1 Pilzwald, 2 Himmelsinseln, je ein Drittel der Schleife.
+// zoneWeights liefert für eine Stelle z die Anteile der drei Zonen (Summe 1), mit kurzen Übergängen.
+const ZONE_FADE = 14.0; // halbe Länge eines Übergangs in Einheiten
+function zoneWeights(z, out = [0, 0, 0]) {
+  const u = (-wrapZ(z) / LOOP_LENGTH) * 3.0;
+  const tw = (ZONE_FADE / LOOP_LENGTH) * 3.0;
+  for (let k = 0; k < 3; k++) {
+    let w = 0;
+    for (const s of [-3, 0, 3]) w += smoothstep(k - tw, k + tw, u + s) - smoothstep(k + 1 - tw, k + 1 + tw, u + s);
+    out[k] = clamp01(w);
+  }
+  const sum = out[0] + out[1] + out[2] || 1;
+  out[0] /= sum; out[1] /= sum; out[2] /= sum;
+  return out;
+}
+
 // Höhe des Talbodens an (x, z), identisch mit dem Terrain-Mesh
 function terrainHeight(x, z) {
   const cx = riverCenterX(z);

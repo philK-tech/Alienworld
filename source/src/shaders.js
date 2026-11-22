@@ -2,7 +2,32 @@
 // --- Shaders ---
 // Gemeinsamer GLSL-Code: Rauschen, leuchtende Punktmuster, Himmel und Nebel.
 // Wird vor die Fragment-Shader gehängt, die ihn brauchen.
+// Zonen: Anteile von Nebeltal, Pilzwald und Himmelsinseln an einer Stelle z (wie zoneWeights in math.js)
+const GLSL_ZONE = `
+const float LOOP_LEN = ` + LOOP_LENGTH.toFixed(1) + `;
+const float ZONE_FADE = ` + ZONE_FADE.toFixed(1) + `;
+
+// Anteile der drei Zonen an der Stelle z (wie zoneWeights in math.js)
+vec3 zoneWeights(float z) {
+  float u = mod(-z, LOOP_LEN) / LOOP_LEN * 3.0;
+  float tw = ZONE_FADE / LOOP_LEN * 3.0;
+  vec3 w;
+  for (int k = 0; k < 3; k++) {
+    float fk = float(k), acc = 0.0;
+    for (int s = -1; s <= 1; s++) {
+      float uu = u + float(s) * 3.0;
+      acc += smoothstep(fk - tw, fk + tw, uu) - smoothstep(fk + 1.0 - tw, fk + 1.0 + tw, uu);
+    }
+    w[k] = clamp(acc, 0.0, 1.0);
+  }
+  return w / max(w.x + w.y + w.z, 1e-3);
+}
+`;
+
 const GLSL_COMMON = `
+// Anteile der Zonen für die Kamera (Himmel, Nebelfarbe), vom Programm gesetzt
+uniform vec3 uZoneW;
+
 float hash21(vec2 p) {
   p = fract(p * vec2(234.34, 435.345));
   p += dot(p, p + 34.23);
@@ -56,26 +81,63 @@ vec3 bioColor(float h) {
 
 const vec3 GIANT_DIR = vec3(-0.337, 0.379, -0.862);
 const vec3 MOON_DIR = vec3(-0.43, 0.55, -0.72);
+` + GLSL_ZONE + `
+// Sonnenrichtungen und Lichtfarben der Tagzonen
+const vec3 SUN_A = vec3(0.258, 0.209, -0.943);
+const vec3 SUN_C = vec3(0.45, 0.72, -0.53);
 
-// Dunst am Horizont, heller in Richtung des Gasriesen
-vec3 skyHaze(vec3 dir) {
-  float g = max(dot(dir, GIANT_DIR), 0.0);
-  vec3 c = vec3(0.010, 0.026, 0.055);
-  c += vec3(0.020, 0.055, 0.10) * pow(g, 6.0);
-  return c;
+// Bergkämme für die gemalten Hintergründe: Höhe über dem Horizont je Blickwinkel
+float ridge(float az, float freq, float seed, float sharp) {
+  float h = 0.0, a = 0.5, f = freq;
+  for (int i = 0; i < 5; i++) {
+    float n = vnoise(vec2(az * f + seed, seed * 1.7));
+    n = 1.0 - abs(n * 2.0 - 1.0);
+    h += a * pow(n, sharp);
+    a *= 0.5;
+    f *= 2.1;
+  }
+  return h;
 }
 
-vec3 skyColor(vec3 dir, float t) {
-  float elev = clamp(dir.y, 0.0, 1.0);
-  vec3 sky = mix(skyHaze(dir), vec3(0.002, 0.005, 0.016), pow(elev, 0.5));
+// Zone 1, Nebeltal: Dämmerung in Lila und Rosa, Schneegipfel, Hügel mit Nadelbäumen, Wolkenbänder
+vec3 skyA(vec3 dir, float t) {
+  float el = dir.y;
+  float az = atan(dir.x, -dir.z);
+  vec3 zen = vec3(0.07, 0.06, 0.17), hor = vec3(0.62, 0.42, 0.58);
+  vec3 sky = mix(hor, zen, pow(clamp(el, 0.0, 1.0), 0.45));
+  float sd = max(dot(dir, SUN_A), 0.0);
+  sky += vec3(1.0, 0.62, 0.45) * (pow(sd, 8.0) * 0.6 + pow(sd, 300.0) * 3.0);
+  // Wolkenbänder, von unten rosa angestrahlt
+  vec2 cp = dir.xz / (el + 0.12) * 1.4 + vec2(t * 0.004, 0.0);
+  float cl = smoothstep(0.45, 0.8, fbm(cp * vec2(0.6, 2.2)));
+  sky = mix(sky, mix(vec3(0.85, 0.55, 0.65), vec3(0.35, 0.28, 0.48), smoothstep(0.0, 0.5, el)), cl * 0.7 * smoothstep(0.0, 0.08, el));
+  // ferne Schneegipfel
+  float hFar = 0.05 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.22;
+  if (el < hFar) {
+    float snow = smoothstep(hFar - 0.06, hFar - 0.015, el + vnoise(vec2(az * 40.0, el * 60.0)) * 0.02);
+    vec3 rock = mix(vec3(0.30, 0.24, 0.38), vec3(0.42, 0.33, 0.48), vnoise(vec2(az * 30.0, el * 20.0)));
+    vec3 c = mix(rock, vec3(0.95, 0.85, 0.95), snow);
+    c = mix(c, hor, 0.35 + 0.4 * smoothstep(hFar, 0.0, el));
+    sky = c;
+  }
+  // nähere Hügel mit Nadelbaumspitzen
+  float hNear = 0.02 + ridge(az * 1.3, 1.1, 9.0, 1.2) * 0.07 + pow(vnoise(vec2(az * 160.0, 3.0)), 3.0) * 0.025;
+  if (el < hNear) sky = mix(vec3(0.10, 0.08, 0.16), hor, 0.35);
+  return sky;
+}
 
-  // Milchstraßenband
+// Zone 2, Pilzwald: Sternennacht mit Gasriese, zwei Monden und Milchstraße
+vec3 skyB(vec3 dir, float t) {
+  float elev = clamp(dir.y, 0.0, 1.0);
+  float g = max(dot(dir, GIANT_DIR), 0.0);
+  vec3 haze = vec3(0.010, 0.026, 0.055) + vec3(0.020, 0.055, 0.10) * pow(g, 6.0);
+  vec3 sky = mix(haze, vec3(0.002, 0.005, 0.016), pow(elev, 0.5));
+
   vec3 bandN = normalize(vec3(0.5, 0.25, 0.83));
   float band = exp(-pow(dot(dir, bandN) * 4.5, 2.0));
   float neb = fbm(dir.xz * 5.0 / (dir.y + 0.4) + 3.0);
   sky += vec3(0.020, 0.030, 0.060) * band * (0.4 + neb) * smoothstep(0.02, 0.3, elev);
 
-  // Sterne: Zellen auf der Himmelskugel, unterschiedliche Größe und Helligkeit
   for (int k = 0; k < 2; k++) {
     float sc = k == 0 ? 180.0 : 420.0;
     vec3 sp = dir * sc;
@@ -92,13 +154,11 @@ vec3 skyColor(vec3 dir, float t) {
     }
   }
 
-  // Gasriese mit Bändern, Wirbeln und Atmosphärensaum
   float cosA = dot(dir, GIANT_DIR);
   float ang = acos(clamp(cosA, -1.0, 1.0));
   float R = 0.22;
   if (ang < R * 1.25) {
-    vec3 up = vec3(0.0, 1.0, 0.0);
-    vec3 ax = normalize(cross(GIANT_DIR, up));
+    vec3 ax = normalize(cross(GIANT_DIR, vec3(0.0, 1.0, 0.0)));
     vec3 ay = cross(ax, GIANT_DIR);
     vec2 q = vec2(dot(dir, ax), dot(dir, ay)) / R;
     float r2 = dot(q, q);
@@ -111,7 +171,6 @@ vec3 skyColor(vec3 dir, float t) {
       col = mix(col, vec3(0.45, 0.70, 0.85), smoothstep(0.75, 0.95, turb) * 0.35);
       float spot = exp(-dot(q - vec2(0.3, -0.25), q - vec2(0.3, -0.25)) * 60.0);
       col = mix(col, vec3(0.6, 0.85, 1.0), spot * 0.6);
-      // Beleuchtung durch die ferne Sonne: Sichel mit weichem Terminator
       float lit = smoothstep(-0.25, 0.6, dot(n, normalize(vec3(0.75, 0.35, 0.55))));
       float limb = pow(n.z, 0.35);
       sky = mix(sky, col * (0.04 + 0.6 * lit) * limb * 0.8, smoothstep(1.0, 0.985, r2));
@@ -121,17 +180,76 @@ vec3 skyColor(vec3 dir, float t) {
   }
   sky += vec3(0.04, 0.10, 0.2) * pow(max(cosA, 0.0), 40.0) * 0.6;
 
-  // Zwei kleine Monde
   vec3 m1Dir = normalize(vec3(-0.62, 0.30, -0.72));
   float m1 = smoothstep(0.016, 0.012, acos(clamp(dot(dir, m1Dir), -1.0, 1.0)));
   sky += vec3(0.75, 0.88, 1.0) * m1 * 2.2 + vec3(0.1, 0.2, 0.35) * pow(max(dot(dir, m1Dir), 0.0), 800.0);
   vec3 m2Dir = normalize(vec3(-0.12, 0.52, -0.84));
   float m2 = smoothstep(0.010, 0.007, acos(clamp(dot(dir, m2Dir), -1.0, 1.0)));
   sky += vec3(0.9, 0.82, 1.0) * m2 * 1.8;
+  // flache, dunkle Hügel am Horizont
+  float az = atan(dir.x, -dir.z);
+  float hh = 0.015 + ridge(az, 1.4, 21.0, 0.8) * 0.05;
+  if (dir.y < hh) sky = vec3(0.004, 0.010, 0.022);
   return sky;
 }
 
-// Höhennebel: dicht über dem Wasser und am Boden, dünn in der Höhe, mit treibenden Schwaden
+// Zone 3, Himmelsinseln: heller Tag, Quellwolken, Polarlicht-Schlieren, Felsnadeln, ferne schwebende Inseln
+vec3 skyC(vec3 dir, float t) {
+  float el = dir.y;
+  float az = atan(dir.x, -dir.z);
+  vec3 zen = vec3(0.10, 0.26, 0.68), hor = vec3(0.62, 0.70, 0.95);
+  vec3 sky = mix(hor, zen, pow(clamp(el, 0.0, 1.0), 0.6));
+  float sd = max(dot(dir, SUN_C), 0.0);
+  sky += vec3(1.0, 0.9, 0.7) * (pow(sd, 6.0) * 0.35 + pow(sd, 600.0) * 8.0);
+  // Schlieren in Rosa und Violett quer über den Himmel
+  vec3 sn = normalize(vec3(0.55, -0.35, 0.75));
+  float sv = dot(dir, sn);
+  float streak = exp(-sv * sv * 40.0) * (0.5 + fbm(vec2(dot(dir, vec3(0.8, 0.5, -0.3)) * 6.0, sv * 30.0 + t * 0.01)));
+  sky += mix(vec3(0.9, 0.5, 0.9), vec3(0.6, 0.6, 1.0), smoothstep(-0.2, 0.2, sv)) * streak * 0.55 * smoothstep(0.02, 0.3, el);
+  // Quellwolken
+  vec2 cp = dir.xz / (el + 0.15) * 1.1 + vec2(t * 0.006, 0.0);
+  float c1 = fbm(cp);
+  float cl = smoothstep(0.5, 0.75, c1);
+  vec3 cloudCol = mix(vec3(0.75, 0.78, 0.92), vec3(1.05, 1.0, 1.0), smoothstep(0.55, 0.85, fbm(cp + 0.08)));
+  sky = mix(sky, cloudCol, cl * 0.85 * smoothstep(0.0, 0.1, el));
+  // ferne schwebende Inseln als Silhouetten
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    vec2 c = vec2(fi * 1.31 - 2.8 + sin(fi * 7.0) * 0.3, 0.12 + fract(fi * 0.618) * 0.18);
+    vec2 d = vec2(az - c.x, el - c.y);
+    float w = 0.05 + fract(fi * 0.37) * 0.06;
+    float top = smoothstep(0.012, 0.0, d.y - 0.008 * vnoise(vec2(d.x * 90.0, fi)));
+    float body = smoothstep(0.0, -0.002, d.y) * smoothstep(w, w * 0.6, abs(d.x) + (-d.y) * 1.6);
+    float isl = top * body * step(-w * 0.9, d.y);
+    sky = mix(sky, mix(vec3(0.42, 0.42, 0.62), hor, 0.35), isl * step(abs(d.x), w));
+  }
+  // Felsnadeln am Horizont, dahinter eine zweite, blassere Reihe
+  float hFar = 0.03 + ridge(az * 1.1, 2.2, 41.0, 4.0) * 0.20;
+  if (el < hFar) sky = mix(vec3(0.45, 0.45, 0.70), hor, 0.45);
+  float hNear = 0.02 + ridge(az * 0.8, 1.6, 57.0, 2.5) * 0.12;
+  if (el < hNear) sky = mix(vec3(0.38, 0.34, 0.50), hor, 0.25 + 0.3 * smoothstep(hNear, 0.0, el));
+  return sky;
+}
+
+vec3 skyColor(vec3 dir, float t) {
+  vec3 c = vec3(0.0);
+  if (uZoneW.x > 0.001) c += skyA(dir, t) * uZoneW.x;
+  if (uZoneW.y > 0.001) c += skyB(dir, t) * uZoneW.y;
+  if (uZoneW.z > 0.001) c += skyC(dir, t) * uZoneW.z;
+  return c;
+}
+
+// Dunst am Horizont der jeweiligen Zone (für den Nebel)
+vec3 skyHaze(vec3 dir) {
+  float g = max(dot(dir, GIANT_DIR), 0.0);
+  vec3 hb = vec3(0.010, 0.026, 0.055) + vec3(0.020, 0.055, 0.10) * pow(g, 6.0);
+  vec3 ha = vec3(0.48, 0.34, 0.50) + vec3(0.4, 0.22, 0.15) * pow(max(dot(dir, SUN_A), 0.0), 6.0);
+  vec3 hc = vec3(0.58, 0.66, 0.90);
+  return ha * uZoneW.x + hb * uZoneW.y + hc * uZoneW.z;
+}
+
+// Höhennebel: dicht über dem Wasser und am Boden, dünn in der Höhe, mit treibenden Schwaden.
+// Im Nebeltal deutlich dichter, auf den Himmelsinseln klarer.
 vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   vec3 d = wp - camPos;
   float dist = length(d);
@@ -141,10 +259,10 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float dy = d.y;
   float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
   float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
-  float dens = 0.0105 * exp(-fall * (h0 - 0.5)) * swirl;
+  float zoneDens = uZoneW.x * 1.15 + uZoneW.y + uZoneW.z * 0.5;
+  float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
-  // tief liegender Nebel nimmt das türkise Leuchten des Waldbodens auf
-  vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25);
+  vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
   return mix(col, fc, clamp(f, 0.0, 0.97));
 }
 `;
@@ -269,6 +387,9 @@ void main() {
 
   vec3 lp = vLocalPos;
   float t = uTime;
+  // Zone dieser Stelle: bestimmt Licht, Farben und wie stark die Biolumineszenz leuchtet
+  vec3 zw = zoneWeights(vWorldPos.z);
+  float emScale = dot(zw, vec3(0.3, 1.0, 0.07));
   // Reaktion auf das vorbeifahrende Boot: alles Leuchtende in der Nähe flammt auf
   float rideD = length((vWorldPos - uRidePos) * vec3(1.0, 0.6, 1.0));
   float react = 1.0 + 2.2 * exp(-rideD * 0.16) * (0.75 + 0.25 * sin(t * 3.0 - rideD * 0.8));
@@ -297,19 +418,21 @@ void main() {
     float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
     vec2 suv = gl_FragCoord.xy / uScreen + N.xz * vec2(0.035, 0.05);
     vec3 refl = texture(uReflTex, clamp(suv, vec2(0.001), vec2(0.999))).rgb;
-    vec3 deep = vec3(0.002, 0.010, 0.016);
+    vec3 deep = zw.x * vec3(0.03, 0.03, 0.05) + zw.y * vec3(0.002, 0.010, 0.016) + zw.z * vec3(0.02, 0.07, 0.09);
     vec3 col = mix(deep, refl, 0.35 + 0.6 * fres);
 
     // Plankton, das mit der Strömung treibt
     vec2 pd = dotField(q * 1.4 + vec2(0.0, t * 0.8), 0.1, 0.12);
-    col += bioColor(pd.y * 0.7) * pd.x * (0.8 + 0.6 * sin(t * 2.0 + pd.y * 40.0)) * 0.8 * react;
+    col += bioColor(pd.y * 0.7) * pd.x * (0.8 + 0.6 * sin(t * 2.0 + pd.y * 40.0)) * 0.8 * react * emScale;
     // Ufersaum
     float shore = vExtra.x;
     float foam = smoothstep(0.25, 0.95, shore) * (0.5 + 0.5 * vnoise(q * 3.0 + flow * 2.0));
-    col += vec3(0.05, 0.55, 0.75) * foam * 0.18 * wave * react;
-    // Mondglanz
-    vec3 H = normalize(MOON_DIR + V);
-    col += vec3(0.4, 0.6, 0.9) * pow(max(dot(N, H), 0.0), 220.0) * 1.5;
+    col += vec3(0.05, 0.55, 0.75) * foam * 0.18 * wave * react * emScale;
+    col += vec3(0.6, 0.65, 0.7) * foam * 0.08 * (zw.x + zw.z);
+    // Glanz von Mond bzw. Sonne
+    col += vec3(0.4, 0.6, 0.9) * pow(max(dot(N, normalize(MOON_DIR + V)), 0.0), 220.0) * 1.5 * zw.y;
+    col += vec3(1.0, 0.7, 0.55) * pow(max(dot(N, normalize(SUN_A + V)), 0.0), 220.0) * 4.0 * zw.x;
+    col += vec3(1.0, 0.95, 0.85) * pow(max(dot(N, normalize(SUN_C + V)), 0.0), 300.0) * 8.0 * zw.z;
     col = applyFog(col, vWorldPos, uCamPos, t);
     fragColor = vec4(clamp(col, vec3(0.0), vec3(30.0)), 1.0);
     return;
@@ -328,8 +451,11 @@ void main() {
   float tex = nYZ * bl.x + nXZ * bl.y + nXY * bl.z;
   float fine = fbm(lp.xz * 5.1 + lp.yy * 3.7);
 
-  vec3 base = vec3(0.02);
+  vec3 base = vec3(0.02);     // Farbe in der Nachtzone (dort sehr dunkel, das Leuchten dominiert)
+  vec3 albA = vec3(-1.0);     // Farbe bei Dämmerlicht (Nebeltal), -1 = aus base ableiten
+  vec3 albC = vec3(-1.0);     // Farbe bei Tageslicht (Himmelsinseln)
   vec3 emissive = vec3(0.0);
+  bool foliage = false;
   float rough = 0.6;
   float wet = 0.0;
 
@@ -347,6 +473,11 @@ void main() {
     emissive += bioColor(d1.y) * dots * 1.6;
     // flächiges Moosleuchten unter dichten Stellen
     emissive += vec3(0.0, 0.05, 0.06) * patchM * moss * glowMask * 0.6;
+    float tufts = fbm(lp.xz * 0.9 + 4.0);
+    albA = mix(vec3(0.20, 0.17, 0.22) * (0.7 + 0.6 * fine), mix(vec3(0.34, 0.29, 0.09), vec3(0.16, 0.20, 0.08), tufts) * (0.7 + 0.6 * tex), moss);
+    albC = mix(vec3(0.32, 0.26, 0.18) * (0.7 + 0.6 * fine), mix(vec3(0.12, 0.30, 0.05), vec3(0.30, 0.36, 0.08), smoothstep(0.55, 0.8, tufts)) * (0.75 + 0.5 * tex), moss);
+    albA *= 1.0 - wet * 0.5;
+    albC *= 1.0 - wet * 0.5;
   } else if (matId == 2) {
     // Fels: dunkler Schiefer mit Schichtung, Moospolster oben, Flechtenpunkte
     float strata = 0.5 + 0.5 * sin(lp.y * 3.6 + tex * 5.0 + fine * 1.5);
@@ -359,8 +490,57 @@ void main() {
     emissive += bioColor(d1.y) * d1.x * (moss * 1.4 + lichen * 0.5) * 1.3;
     emissive += vec3(0.05, 0.4, 0.6) * glowMask * smoothstep(0.62, 0.8, fine) * 0.25;
     wet = 1.0 - smoothstep(0.0, 2.0, lp.y);
-  } else if (matId == 5) {
-    // Baumstamm: dunkle, gerippte Rinde mit Reihen leuchtender Punkte
+    vec3 stone = vec3(0.24, 0.22, 0.28) * (0.65 + 0.7 * strata * tex);
+    albA = mix(stone, vec3(0.40, 0.33, 0.08) * (0.7 + 0.6 * fine), moss);
+    albC = mix(vec3(0.42, 0.32, 0.22) * (0.65 + 0.7 * strata * tex), vec3(0.14, 0.32, 0.06), moss);
+  } else if (matId == 5 || matId == 31) {
+    // Rinde (Dschungel- und Nadelbäume)
+    float rr = 0.5 + 0.5 * sin(vUv.x * 50.0 + fbm(vec2(vUv.x * 8.0, lp.y * 1.5)) * 6.0);
+    base = mix(vec3(0.012, 0.010, 0.018), vec3(0.035, 0.030, 0.045), rr * (0.5 + tex));
+    albA = albC = vec3(0.14, 0.09, 0.07) * (0.5 + 0.9 * rr);
+    if (matId == 5) {
+      vec2 d1 = dotField(vec2(vUv.x * 16.0, vUv.y * 9.0 + vSeed * 10.0), 0.24, 0.5);
+      float band = smoothstep(0.3, 0.7, sin(vUv.y * 1.6 + vUv.x * 3.14159 + vSeed * 6.0) * 0.5 + 0.5);
+      float lower = 1.0 - smoothstep(0.5, 3.5, vUv.y);
+      emissive += mix(vTint.rgb, bioColor(d1.y), 0.5) * d1.x * (band * 0.8 + lower * 0.6) * 2.0;
+    }
+    rough = 0.8;
+  } else if (matId == 30) {
+    // Nadelbaum: dunkle Nadelschichten, Spitzen etwas heller
+    float tips = smoothstep(0.6, 1.0, vUv.y);
+    float n = fbm(vec2(vUv.x * 30.0, vUv.y * 6.0) + vSeed * 9.0);
+    base = vec3(0.006, 0.020, 0.018) * (0.6 + n);
+    albA = mix(vec3(0.035, 0.085, 0.060), vec3(0.08, 0.15, 0.10), tips) * (0.6 + 0.8 * n);
+    albC = mix(vec3(0.05, 0.14, 0.05), vec3(0.14, 0.24, 0.08), tips) * (0.6 + 0.8 * n);
+    emissive += vec3(0.1, 0.6, 0.8) * tips * smoothstep(0.75, 0.9, n) * 0.3;
+    foliage = true;
+  } else if (matId == 32) {
+    // Riesenpilz: blauvioletter Hut mit dunklen Flecken, Stiel und Unterseite mit orange leuchtenden Flecken
+    float part = vExtra.y;  // 0 Stiel, 1 Hutoberseite, 2 Unterseite
+    vec2 sp = vUv * vec2(9.0, 5.0) + vSeed * 7.0;
+    vec2 d1 = dotField(sp, 0.32, 0.55);
+    vec3 cap = mix(vec3(0.16, 0.16, 0.42), vec3(0.28, 0.30, 0.62), tex) * (1.0 - 0.45 * d1.x);
+    vec3 stem = mix(vec3(0.18, 0.15, 0.40), vec3(0.32, 0.30, 0.62), vUv.y * tex);
+    vec3 gill = mix(vec3(0.16, 0.12, 0.34), vec3(0.24, 0.16, 0.40), 0.5 + 0.5 * sin(vUv.x * 200.0));
+    vec3 c = part < 0.5 ? stem : part < 1.5 ? cap : gill;
+    base = c * 0.14;
+    albA = albC = c;
+    // Leuchtflecken am Stiel und vereinzelt auf der Unterseite, dazu ein schwacher Schein am Hutrand
+    vec2 d2 = dotField(sp * 1.3 + 3.0, 0.3, 0.22);
+    float glowSpots = part < 0.5 ? d1.x : part > 1.5 ? d2.x : 0.0;
+    float rimGlow = part > 1.5 ? smoothstep(0.7, 1.0, vUv.y) * 0.12 : 0.0;
+    emissive += vec3(1.0, 0.42, 0.08) * glowSpots * 2.4 + vec3(1.0, 0.45, 0.12) * rimGlow;
+    emissive *= 1.0 / max(emScale, 0.3);
+  } else if (matId == 33) {
+    // Rundkronen-Baum: weiche, gebauschte Krone in Grün mit gelben Lichtern
+    float n = fbm(lp.xz * 0.6 + lp.y * 0.4);
+    float lit = smoothstep(0.2, 0.9, N.y * 0.5 + 0.5);
+    base = vec3(0.01, 0.03, 0.02);
+    vec3 g = mix(vec3(0.10, 0.26, 0.05), vec3(0.30, 0.38, 0.08), smoothstep(0.45, 0.75, n + vSeed * 0.2));
+    albA = albC = g * (0.75 + 0.5 * lit);
+    foliage = true;
+  } else if (matId == 99999) {
+    // (nicht mehr verwendet)
     float ridges = 0.5 + 0.5 * sin(vUv.x * 55.0 + fbm(vec2(vUv.x * 8.0, vUv.y * 2.0)) * 6.0);
     base = mix(vec3(0.012, 0.010, 0.018), vec3(0.035, 0.030, 0.045), ridges * (0.5 + tex));
     vec2 d1 = dotField(vec2(vUv.x * 16.0, vUv.y * 9.0 + vSeed * 10.0), 0.24, 0.5);
@@ -377,6 +557,7 @@ void main() {
     float under = smoothstep(0.2, -0.4, N.y) * 0.7 + 0.3;
     emissive += vTint.rgb * (d1.x * 1.3 * under + midrib * 0.12 + smoothstep(0.12, 0.0, edge) * 0.25) * smoothstep(0.1, 0.5, vUv.y);
     wet = 0.5;
+    foliage = true;
   } else if (matId == 14 || matId == 16) {
     // Lianen: leuchtende Perlen entlang der Ranke, zur Spitze hin heller
     float beads = smoothstep(0.8, 0.98, sin(vUv.y * 1.3) * 0.5 + 0.5);
@@ -390,9 +571,11 @@ void main() {
     float edge = exp(-min(vUv.x, 1.0 - vUv.x) * 16.0);
     base = vec3(0.010, 0.040, 0.036);
     emissive += vTint.rgb * (midrib * 0.9 + edge * 0.5) * (0.3 + 0.7 * vUv.y) * (0.3 + glowMask);
+    foliage = true;
   } else if (matId == 8) {
     base = vec3(0.01, 0.035, 0.035);
     emissive += vTint.rgb * glowMask * glowMask * 1.3;
+    foliage = true;
   } else if (matId == 9) {
     base = vec3(0.02, 0.05, 0.08);
     float rings = 0.6 + 0.4 * sin(vUv.y * 30.0);
@@ -421,11 +604,13 @@ void main() {
     float on = vUv.y < 0.0 ? 0.15 : 1.0;
     emissive += vTint.rgb * (mid * 1.0 + veins * 0.55 + edge * 0.45) * on * (0.4 + 0.6 * smoothstep(0.0, 0.4, vUv.y));
     wet = 0.6;
+    foliage = true;
   } else if (matId == 20) {
     // Boot: Holz aus der Textur, die türkisen Einlagen leuchten
     vec3 tc = texture(uBoatTex, vUv).rgb;
     vec3 lin = pow(tc, vec3(2.2));
     base = lin * 2.2;
+    albA = albC = lin * 0.9;
     float cyan = smoothstep(0.06, 0.22, min(tc.g, tc.b) - tc.r);
     emissive += vec3(0.1, 0.85, 1.0) * cyan * 2.5 * (0.85 + 0.15 * sin(t * 1.3 + vUv.y * 20.0));
     // Widerschein der leuchtenden Umgebung auf dem Holz
@@ -452,19 +637,47 @@ void main() {
     wet = 0.2;
   }
 
-  // Beleuchtung: kühles Licht des Gasriesen, Himmel, Widerschein des leuchtenden Bodens
-  float nDotL = max(dot(N, MOON_DIR), 0.0);
+  // Pflanzen in den Tagzonen: Blattfarbe statt der dunklen Nachtfarbe
+  if (foliage && albA.x < 0.0) {
+    float n = fbm(lp.xz * 0.5 + vSeed * 3.0);
+    albA = vec3(0.05, 0.13, 0.06) * (0.7 + 0.6 * tex);
+    albC = mix(vec3(0.12, 0.30, 0.06), vec3(0.32, 0.34, 0.08), step(0.72, vSeed)) * (0.7 + 0.6 * n);
+  }
+  if (albA.x < 0.0) albA = base * 7.0;
+  if (albC.x < 0.0) albC = base * 7.0;
+
   float hemi = N.y * 0.5 + 0.5;
-  vec3 ambient = mix(vec3(0.010, 0.030, 0.035), vec3(0.018, 0.036, 0.070), hemi) * ao;
-  vec3 moon = vec3(0.16, 0.26, 0.45) * nDotL * ao;
-  vec3 H = normalize(MOON_DIR + V);
+  vec3 col = vec3(0.0);
   float specPow = mix(18.0, 90.0, wet);
-  float spec = pow(max(dot(N, H), 0.0), specPow) * (0.04 + wet * 0.5);
-  float rim = pow(1.0 - max(dot(N, V), 0.0), 4.0) * 0.12;
-  vec3 col = base * (ambient + moon) * 2.2;
-  col += vec3(0.25, 0.45, 0.8) * spec * ao;
-  col += vec3(0.05, 0.12, 0.22) * rim * ao;
-  col += emissive * wave * react * (0.85 + 0.15 * sin(t * 1.7 + vSeed * 30.0));
+  float rim = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+  if (zw.y > 0.001) {
+    // Nacht: kühles Licht des Gasriesen, Widerschein des leuchtenden Bodens
+    float nDotL = max(dot(N, MOON_DIR), 0.0);
+    vec3 ambient = mix(vec3(0.010, 0.030, 0.035), vec3(0.018, 0.036, 0.070), hemi) * ao;
+    vec3 moon = vec3(0.16, 0.26, 0.45) * nDotL * ao;
+    float spec = pow(max(dot(N, normalize(MOON_DIR + V)), 0.0), specPow) * (0.04 + wet * 0.5);
+    vec3 c = base * (ambient + moon) * 2.2 + vec3(0.25, 0.45, 0.8) * spec * ao + vec3(0.05, 0.12, 0.22) * rim * 0.12 * ao;
+    col += c * zw.y;
+  }
+  float wrap = foliage ? 0.45 : 0.0;
+  if (zw.x > 0.001) {
+    // Dämmerung: tief stehende, warme Sonne, violettes Himmelslicht
+    float ndl = max((dot(N, SUN_A) + wrap) / (1.0 + wrap), 0.0);
+    vec3 amb = mix(vec3(0.09, 0.07, 0.08), vec3(0.22, 0.18, 0.34), hemi) * ao;
+    float spec = pow(max(dot(N, normalize(SUN_A + V)), 0.0), specPow) * (0.02 + wet * 0.35);
+    vec3 c = albA * (amb + vec3(1.05, 0.62, 0.48) * 1.5 * ndl * mix(1.0, ao, 0.5)) + vec3(1.0, 0.7, 0.6) * spec * ao;
+    c += vec3(0.5, 0.35, 0.6) * rim * 0.06 * ao;
+    col += c * zw.x;
+  }
+  if (zw.z > 0.001) {
+    // Tag: hohe, helle Sonne, blaues Himmelslicht
+    float ndl = max((dot(N, SUN_C) + wrap) / (1.0 + wrap), 0.0);
+    vec3 amb = mix(vec3(0.15, 0.14, 0.09), vec3(0.36, 0.46, 0.72), hemi) * ao;
+    float spec = pow(max(dot(N, normalize(SUN_C + V)), 0.0), specPow) * (0.02 + wet * 0.35);
+    vec3 c = albC * (amb + vec3(1.35, 1.25, 1.05) * 2.0 * ndl * mix(1.0, ao, 0.5)) + vec3(1.2, 1.1, 1.0) * spec * ao;
+    col += c * zw.z;
+  }
+  col += emissive * emScale * wave * react * (0.85 + 0.15 * sin(t * 1.7 + vSeed * 30.0));
   col = applyFog(col, vWorldPos, uCamPos, t);
   fragColor = vec4(clamp(col, vec3(0.0), vec3(30.0)), 1.0);
 }`;
@@ -522,6 +735,7 @@ void main() {
   int matId = int(vMatId + 0.5);
   float d = length(vWorldPos - uCamPos);
   float distFade = exp(-max(d - 25.0, 0.0) * 0.012);
+  vec3 zw = zoneWeights(vWorldPos.z);
 
   if (matId == 4) {
     // Wasserfall aus feinen Strähnen
@@ -535,6 +749,8 @@ void main() {
     float crest = (1.0 - smoothstep(0.0, 0.12, vNorm)) * 0.4;
     float splash = smoothstep(0.8, 1.0, vNorm) * 0.8;
     vec3 waterCol = mix(vec3(0.06, 0.40, 0.75), vec3(0.65, 0.92, 1.0), clamp(filaments * 1.3 + splash * 0.5, 0.0, 1.0));
+    // am Tag und in der Dämmerung weißes Wasser statt türkisem Leuchten
+    waterCol = mix(waterCol, mix(vec3(0.75, 0.68, 0.85), vec3(1.4, 1.45, 1.5), zw.z / max(zw.x + zw.z, 1e-3)), zw.x + zw.z);
     float alpha = edgeFade * (0.12 + 0.6 * filaments + crest + splash) * distFade;
     fragColor = vec4(waterCol * layerBoost * alpha * 0.9, alpha);
   } else if (matId == 15) {
@@ -553,8 +769,9 @@ void main() {
     float viewFade = pow(abs(dot(N, V)), 2.0);
     float verticalFade = sin(clamp(vUv.y, 0.0, 1.0) * 3.14159) * smoothstep(0.0, 0.4, vUv.y);
     float shimmer = 0.6 + 0.4 * vnoise(vec2(vUv.x * 10.0 + uTime * 0.15, vUv.y * 3.0 - uTime * 0.1));
-    float alpha = viewFade * verticalFade * shimmer * 0.035 * distFade;
-    fragColor = vec4(vTint.rgb * alpha, alpha);
+    float alpha = viewFade * verticalFade * shimmer * 0.035 * distFade * (zw.x * 3.0 + zw.y);
+    vec3 shaftCol = mix(vTint.rgb, vec3(1.0, 0.65, 0.5), zw.x);
+    fragColor = vec4(shaftCol * alpha, alpha);
   }
 }`;
 
@@ -575,7 +792,7 @@ uniform float uLoop;
 
 out vec3 vColor;
 out float vAlpha;
-
+` + GLSL_ZONE + `
 float riverX(float z) {
   float k = 6.2831853 / uLoop;
   return sin(z * k * 2.0) * 7.5 + cos(z * k) * 4.2 + sin(z * k * 3.0 + 1.3) * 1.6;
@@ -594,8 +811,10 @@ void main() {
   float fade = exp(-max(dist - 10.0, 0.0) * 0.03) * smoothstep(0.5, 3.0, dist);
   float blink = smoothstep(0.2, 0.9, sin(uTime * (0.8 + aSeed.z) + aSeed.y * 80.0) * 0.5 + 0.5);
 
-  vColor = aColor;
-  vAlpha = fade * (0.15 + 0.85 * blink);
+  vec3 zw = zoneWeights(z);
+  // im Nebeltal blasse Schwebeteilchen statt Glühwürmchen, auf den Himmelsinseln kaum etwas
+  vColor = mix(aColor, vec3(0.9, 0.8, 0.95) * 0.4, zw.x);
+  vAlpha = fade * (0.15 + 0.85 * blink) * dot(zw, vec3(0.7, 1.0, 0.15));
   gl_Position = uViewProj * wp;
   gl_PointSize = clamp((aSize * uPixelRatio * 22.0) / max(dist, 1.5), 1.0, 10.0);
 }`;
@@ -632,7 +851,7 @@ uniform float uPixelRatio;
 uniform float uMirror;
 
 out vec3 vColor;
-
+` + GLSL_ZONE + `
 void main() {
   vec3 wp = aPos + uOffset;
   if (uMirror > 0.5 && wp.y < 0.0) wp.y = -1000.0;
@@ -642,7 +861,7 @@ void main() {
   float seed = fract(aPos.x * 0.731 + aPos.z * 0.317);
   float pulse = 0.55 + 0.45 * sin(uTime * (0.7 + seed * 1.3) + seed * 50.0 + aPos.z * 0.08);
   float fade = exp(-max(dist - 20.0, 0.0) * 0.025);
-  vColor = aColor * pulse * react * fade;
+  vColor = aColor * pulse * react * fade * dot(zoneWeights(aPos.z), vec3(0.25, 1.0, 0.0));
   gl_Position = uViewProj * vec4(wp, 1.0);
   gl_PointSize = clamp(aSize * uPixelRatio * 7.0 / max(dist, 1.0), 1.0, 5.0);
 }`;
@@ -675,6 +894,7 @@ out vec4 fragColor;
 uniform sampler2D uTex;
 uniform vec2 uTexel;
 uniform float uPrefilter;
+uniform float uThreshold;
 
 vec3 s(vec2 o) { return texture(uTex, vUv + o * uTexel).rgb; }
 
@@ -689,7 +909,7 @@ void main() {
     if (any(isnan(col)) || any(isinf(col))) col = vec3(0.0);
     col = min(col, vec3(12.0));
     float br = max(col.r, max(col.g, col.b));
-    float knee = 0.25, thr = 0.35;
+    float thr = uThreshold, knee = thr * 0.7;
     float soft = clamp(br - thr + knee, 0.0, 2.0 * knee);
     soft = soft * soft / (4.0 * knee + 1e-4);
     col *= max(soft, br - thr) / max(br, 1e-4);
@@ -723,6 +943,7 @@ uniform sampler2D uSceneTex;
 uniform sampler2D uBloomTex;
 uniform float uTime;
 uniform vec2 uScreen;
+uniform float uExposure;
 
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
@@ -733,7 +954,7 @@ void main() {
   if (any(isnan(sceneCol))) sceneCol = vec3(0.0);
   vec3 bloom = texture(uBloomTex, vUv).rgb;
   vec3 hdr = sceneCol + bloom * 0.55;
-  hdr *= 1.6;
+  hdr *= uExposure;
   // kühle Schatten, leicht türkise Mitten
   float lum = dot(hdr, vec3(0.2126, 0.7152, 0.0722));
   hdr = mix(hdr, hdr * vec3(0.85, 1.0, 1.15), smoothstep(0.2, 0.0, lum) * 0.5);

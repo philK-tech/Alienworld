@@ -2,9 +2,9 @@
 // --- World Population ---
 // Stellen der Strecke, an denen Tiere auftauchen (z in Weltkoordinaten der Schleife), siehe creatures.js
 const EVENTS = {
-  flocks: [{ z: -55, side: 1 }, { z: -215, side: -1 }, { z: -372, side: 1 }],
-  fish: [-28, -132, -168, -248, -300, -345, -440],
-  longnecks: [{ z: -100, side: -1 }, { z: -282, side: 1 }, { z: -418, side: -1 }]
+  flocks: [{ z: -345, side: 1 }, { z: -398, side: -1 }, { z: -452, side: 1 }],   // Himmelsinseln
+  fish: [-176, -199, -223, -247, -271, -296],                                     // Pilzwald
+  longnecks: [{ z: -40, side: 1 }, { z: -92, side: -1 }, { z: -140, side: 1 }]   // Nebeltal
 };
 // Standort eines Langhalses (i = 0 erwachsenes Tier, i = 1 Jungtier)
 function longneckSpot(ev, i) {
@@ -42,55 +42,57 @@ function buildWorld() {
   const archZ = -L * 0.46;
   const archModel = Mat4.create();
   Mat4.compose(archModel, [riverCenterX(archZ), 0.0, archZ], -riverSlopeX(archZ) * 0.65, 0, 0, [1.15, 1.1, 1.2]);
+  const zw = [0, 0, 0];
+  // true mit der Wahrscheinlichkeit, mit der Zonengewichte wA/wB/wC an der Stelle z gelten
+  const zoneChance = (z, wA, wB, wC, h) => {
+    zoneWeights(z, zw);
+    return h < zw[0] * wA + zw[1] * wB + zw[2] * wC;
+  };
 
-  // Schwebende Berge: drei nahe mit Wasserfällen, viele ferne als Silhouetten im Dunst
-  const floatingPeaks = [
-    { z: -112.0, offsetX: -26.0, y: 25.0, sx: 11.0, sy: 15.0, sz: 10.0, fall: true },
-    { z: -262.0, offsetX: 28.0, y: 28.0, sx: 12.0, sy: 16.5, sz: 10.5, fall: true },
-    { z: -398.0, offsetX: -23.0, y: 23.0, sx: 10.0, sy: 14.0, sz: 9.0, fall: true }
-  ];
-  for (let i = 0; i < 14; i++) {
+  // Schwebende Inseln: nur in Zone 3. Nahe Inseln mit Wasserfällen, ferne als Kulisse
+  const floatingPeaks = [];
+  const nearIslands = [-336, -354, -373, -394, -416, -437, -458];
+  nearIslands.forEach((z, i) => {
     const side = i % 2 === 0 ? -1 : 1;
-    const s = 16.0 + hash2(i, 71.0) * 22.0;
-    floatingPeaks.push({
-      z: -(i / 14) * L - hash2(i, 72.0) * 20.0,
-      offsetX: side * (55.0 + hash2(i, 73.0) * 75.0),
-      y: 32.0 + hash2(i, 74.0) * 40.0,
-      sx: s, sy: s * (1.2 + hash2(i, 75.0) * 0.5), sz: s * 0.9,
-      fall: false
-    });
+    const s = 6.0 + hash2(i, 70.0) * 5.0;
+    floatingPeaks.push({ z, offsetX: side * (17.0 + hash2(i, 71.0) * 14.0), y: 15.0 + hash2(i, 72.0) * 12.0,
+      sx: s, sy: s * 1.35, sz: s * 0.9, fall: i % 2 === 0 });
+  });
+  for (let i = 0; i < 12; i++) {
+    const side = i % 2 === 0 ? -1 : 1;
+    const s = 12.0 + hash2(i, 73.0) * 18.0;
+    floatingPeaks.push({ z: wrapZ(-305.0 - i * 16.0 - hash2(i, 74.0) * 10.0), offsetX: side * (45.0 + hash2(i, 75.0) * 75.0),
+      y: 30.0 + hash2(i, 76.0) * 40.0, sx: s, sy: s * (1.2 + hash2(i, 77.0) * 0.4), sz: s * 0.9, fall: false });
   }
   floatingPeaks.forEach((pk, idx) => { pk.x = riverCenterX(pk.z) + pk.offsetX; pk.rot = idx * 1.4; });
 
-  // Uferklippen mit Wasserfällen: das Wasser tritt in der Nische aus und fällt bis y=0
+  // Uferklippen mit Wasserfällen im Nebeltal: das Wasser tritt in der Nische aus und fällt bis y=0
   const waterfalls = [];
   const bankCliffHousings = [];
   const plungeRipples = [];
-  const bankFallZones = [-70.0, -84.0, -318.0, -332.0];
-
-  bankFallZones.forEach((fz, idx) => {
-    const side = idx % 2 === 0 ? -1 : 1;
+  const bankFalls = [{ z: -22, side: -1 }, { z: -60, side: 1 }, { z: -73, side: -1 }, { z: -118, side: -1 }];
+  bankFalls.forEach(({ z: fz, side }) => {
     const cx = riverCenterX(fz);
     const hw = riverHalfWidth(fz);
     const cliffX = cx + side * (hw + 1.8);
     const yaw = side < 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
-    const cliffHeight = 10.0;
+    const cliffHeight = 11.0;
     const dirX = Math.sin(yaw);
     const dirZ = Math.cos(yaw);
     const crestX = cliffX + dirX * 0.25;
     const crestZ = fz + dirZ * 0.25;
-    bankCliffHousings.push({ x: cliffX, y: -0.6, z: fz, rotY: yaw, sx: 4.8, sy: cliffHeight + 1.2, sz: 3.4 });
+    bankCliffHousings.push({ x: cliffX, y: -0.6, z: fz, rotY: yaw, sx: 5.2, sy: cliffHeight + 1.2, sz: 3.6 });
     waterfalls.push({ x: crestX, y: cliffHeight - 0.55, z: crestZ, rotY: yaw, sx: 2.9, sy: cliffHeight - 0.55, sz: 1.8, isSkyFall: false });
     plungeRipples.push({ x: crestX + dirX * 0.85, y: 0.02, z: crestZ + dirZ * 0.85, sx: 3.4, sz: 3.0 });
   });
 
-  // Wasserfälle, die aus den nahen schwebenden Bergen stürzen
+  // Wasserfälle, die aus den nahen schwebenden Inseln stürzen
   floatingPeaks.forEach((pk, idx) => {
     if (!pk.fall) return;
     const startY = pk.y - pk.sy * 0.12;
-    const fx = pk.x + (pk.offsetX < 0 ? 2.0 : -2.0);
+    const fx = pk.x + (pk.offsetX < 0 ? 1.5 : -1.5);
     const groundY = terrainHeight(fx, pk.z + 1.6);
-    waterfalls.push({ x: fx, y: startY, z: pk.z + 1.6, rotY: 0.0, sx: 1.6, sy: startY - groundY, sz: 1.2, isSkyFall: true, peakIdx: idx, groundY });
+    waterfalls.push({ x: fx, y: startY, z: pk.z + 1.6, rotY: 0.0, sx: 1.4, sy: startY - groundY, sz: 1.2, isSkyFall: true, peakIdx: idx, groundY });
   });
 
   // Instanzen
@@ -111,82 +113,124 @@ function buildWorld() {
     const z = -hash2(i, salt) * L;
     const side = hash2(i, salt + 0.5) < 0.5 ? -1 : 1;
     const hw = riverHalfWidth(z);
-    const dist = hw + dMin + Math.pow(hash2(i, salt + 1.1), bias) * (dMax - dMin);
-    const x = riverCenterX(z) + side * dist;
-    return { x, z, y: terrainHeight(x, z), side };
+    const bank = dMin + Math.pow(hash2(i, salt + 1.1), bias) * (dMax - dMin);
+    const x = riverCenterX(z) + side * (hw + bank);
+    // reach: waagrechter Abstand zur Fahrrinne des Boots (Bootsmitte pendelt um bis zu 1 Einheit)
+    return { x, z, y: terrainHeight(x, z), side, bank, reach: hw + bank - 2.2 };
   }
   const CYAN = [0.10, 0.85, 1.0, 1], BLUE = [0.15, 0.45, 1.0, 1], VIOLET = [0.75, 0.28, 1.0, 1];
   const pickTint = (h) => (h < 0.55 ? CYAN : h < 0.85 ? BLUE : VIOLET);
+  const rot = (i, salt) => hash2(i, salt) * Math.PI * 2;
 
-  for (let i = 0; i < 130; i++) {
+  // Felsen: viele im Nebeltal, einige auf den Himmelsinseln, wenige im Pilzwald
+  for (let i = 0; i < 170; i++) {
     const p = bankSpot(i, 1.0, -0.8, 22.0, 1.3);
-    if (inClearing(p.x, p.z, 9.0)) continue;
-    // Felsen dürfen nicht in die Fahrrinne ragen: Radius kleiner als Abstand zur Flussmitte minus 3,5
+    if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.35, 0.6, hash2(i, 1.9))) continue;
+    // Felsen dürfen nicht in die Fahrrinne ragen
     const free = Math.abs(p.x - riverCenterX(p.z)) - 3.5;
     const s = Math.min(2.0 + hash2(i, 2.7) * 6.0, free / 1.25);
     if (s < 0.6) continue;
-    pushInst("cliffs", [p.x, p.y - 0.4, p.z], hash2(i, 3.1) * Math.PI * 2, 0, 0, [s, s * (0.6 + hash2(i, 4.9) * 0.8), s * 0.9], [0.9, 1.0, 1.15, 1]);
+    pushInst("cliffs", [p.x, p.y - 0.4, p.z], rot(i, 3.1), 0, 0, [s, s * (0.6 + hash2(i, 4.9) * 0.8), s * 0.9], [0.9, 1.0, 1.15, 1]);
   }
+  // Steinsäulen im Nebeltal
+  for (let i = 0; i < 60; i++) {
+    const p = bankSpot(i, 80.0, 1.5, 16.0, 1.2);
+    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 80.7))) continue;
+    const w = 0.9 + hash2(i, 81.0) * 0.6;
+    pushInst("cliffs", [p.x, p.y - 0.3, p.z], rot(i, 82.0), (hash2(i, 83.0) - 0.5) * 0.15, (hash2(i, 84.0) - 0.5) * 0.15,
+      [w, 3.5 + hash2(i, 85.0) * 3.0, w * 0.8], [0.95, 0.95, 1.05, 1]);
+  }
+
+  // Zone 1: Nadelbäume, nah am Ufer kleiner (die unteren Zweige dürfen nicht in die Fahrrinne ragen)
+  for (let i = 0; i < 260; i++) {
+    const p = bankSpot(i, 5.0, 2.0, 18.0, 1.2);
+    if (inClearing(p.x, p.z, 10.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7))) continue;
+    const h = Math.min(9.0 + hash2(i, 6.4) * 10.0, p.reach / 0.3);
+    if (h < 5.0) continue;
+    pushInst("pines", [p.x, p.y - 0.2, p.z], rot(i, 8.1), 0, 0, [h, h, h], CYAN);
+  }
+  for (let i = 0; i < 200; i++) {
+    const p = bankSpot(i, 10.0, 18.0, 80.0, 1.1);
+    if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 10.7))) continue;
+    const h = 16.0 + hash2(i, 11.4) * 16.0;
+    pushInst("pines", [p.x, p.y - 0.3, p.z], rot(i, 13.1), 0, 0, [h, h, h], CYAN);
+  }
+  // Zone 2: Riesenpilze
   for (let i = 0; i < 230; i++) {
-    const p = bankSpot(i, 5.0, 2.6, 16.0, 1.2);
-    if (inClearing(p.x, p.z, 11.0)) continue;
-    const h = 9.0 + hash2(i, 6.4) * 7.0;
-    const r = 1.0 + hash2(i, 7.8) * 0.7;
-    pushInst("trees", [p.x, p.y - 0.2, p.z], hash2(i, 8.1) * Math.PI * 2, 0, 0, [r, h, r], pickTint(hash2(i, 9.0)));
+    const p = bankSpot(i, 90.0, 1.2, 50.0, 1.6);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 90.7))) continue;
+    const far = p.bank > 14.0;
+    const h = far ? 10.0 + hash2(i, 91.0) * 12.0 : 4.5 + hash2(i, 91.0) * 7.0;
+    pushInst("giantMushrooms", [p.x, p.y - 0.2, p.z], rot(i, 92.0), (hash2(i, 93.0) - 0.5) * 0.12, (hash2(i, 94.0) - 0.5) * 0.12, [h, h, h], CYAN);
   }
-  for (let i = 0; i < 150; i++) {
-    const p = bankSpot(i, 10.0, 16.0, 75.0, 1.1);
-    if (inClearing(p.x, p.z, 9.0)) continue;
-    const h = 20.0 + hash2(i, 11.4) * 16.0;
-    const r = 2.3 + hash2(i, 12.8) * 1.8;
-    pushInst("giants", [p.x, p.y - 0.3, p.z], hash2(i, 13.1) * Math.PI * 2, 0, 0, [r, h, r], pickTint(hash2(i, 14.0)));
+  // Zone 3: Bäume mit runden Kronen
+  for (let i = 0; i < 300; i++) {
+    const p = bankSpot(i, 95.0, 2.0, 70.0, 1.5);
+    if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 95.7))) continue;
+    const h = Math.min(6.0 + hash2(i, 96.0) * 7.0 + (p.bank > 18 ? 4.0 : 0.0), p.reach / 0.45);
+    if (h < 3.5) continue;
+    pushInst("roundTrees", [p.x, p.y - 0.2, p.z], rot(i, 97.0), 0, 0, [h, h, h], CYAN);
   }
+  // Bäume auf den schwebenden Inseln
+  floatingPeaks.forEach((pk, k) => {
+    const n = 2 + Math.floor(hash2(k, 98.0) * 4);
+    for (let i = 0; i < n; i++) {
+      const a = hash2(k * 7 + i, 99.0) * Math.PI * 2, rr = Math.sqrt(hash2(k * 7 + i, 100.0)) * 0.45;
+      const y = pk.y + pk.sy * 0.34 * (1.0 - (rr / 0.85) * (rr / 0.85)) - 0.3;
+      const h = pk.sx * (0.35 + hash2(k * 7 + i, 101.0) * 0.3);
+      pushInst("roundTrees", [pk.x + Math.cos(a) * rr * pk.sx, y, pk.z + Math.sin(a) * rr * pk.sz], rot(k * 7 + i, 102.0), 0, 0, [h, h, h], CYAN);
+    }
+  });
+
   for (let i = 0; i < 1100; i++) {
     const p = bankSpot(i, 15.0, 0.3, 16.0, 1.6);
-    if (inClearing(p.x, p.z, 3.5)) continue;
+    if (inClearing(p.x, p.z, 3.5) || !zoneChance(p.z, 0.8, 1.0, 0.15, hash2(i, 15.9))) continue;
     const sc = 0.7 + hash2(i, 16.3) * 0.9;
-    pushInst("ferns", [p.x, p.y - 0.05, p.z], hash2(i, 17.4) * Math.PI * 2, 0, 0, [sc, sc, sc], hash2(i, 18.0) < 0.8 ? CYAN : BLUE);
+    pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], hash2(i, 18.0) < 0.8 ? CYAN : BLUE);
   }
   for (let i = 0; i < 800; i++) {
     const p = bankSpot(i, 20.0, 0.6, 18.0, 1.5);
-    if (inClearing(p.x, p.z, 5.0)) continue;
+    if (inClearing(p.x, p.z, 5.0) || !zoneChance(p.z, 0.15, 1.0, 0.5, hash2(i, 20.9))) continue;
     const sc = 0.8 + hash2(i, 21.3) * 1.2;
-    pushInst("broadleaves", [p.x, p.y - 0.05, p.z], hash2(i, 22.4) * Math.PI * 2, 0, 0, [sc, sc, sc], pickTint(hash2(i, 23.0)));
+    pushInst("broadleaves", [p.x, p.y - 0.05, p.z], rot(i, 22.4), 0, 0, [sc, sc, sc], pickTint(hash2(i, 23.0)));
   }
-  for (let i = 0; i < 650; i++) {
-    const p = bankSpot(i, 25.0, -0.7, 1.4, 1.0);
+  for (let i = 0; i < 900; i++) {
+    const p = bankSpot(i, 25.0, -0.7, 3.0, 1.6);
     const sc = 0.75 + hash2(i, 26.6) * 0.8;
-    pushInst("reeds", [p.x, Math.max(p.y, -0.3) - 0.05, p.z], hash2(i, 27.7) * Math.PI * 2, 0, 0, [sc, sc, sc], hash2(i, 28.0) < 0.85 ? CYAN : VIOLET);
+    pushInst("reeds", [p.x, Math.max(p.y, -0.3) - 0.05, p.z], rot(i, 27.7), 0, 0, [sc, sc, sc], hash2(i, 28.0) < 0.85 ? CYAN : VIOLET);
   }
   for (let i = 0; i < 450; i++) {
     const p = bankSpot(i, 30.0, 0.4, 8.0, 1.4);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 30.9))) continue;
     const sc = 0.6 + hash2(i, 31.5) * 0.7;
-    pushInst("buds", [p.x, p.y - 0.05, p.z], hash2(i, 32.2) * Math.PI * 2, 0, 0, [sc, sc, sc], hash2(i, 33.0) < 0.7 ? CYAN : VIOLET);
+    pushInst("buds", [p.x, p.y - 0.05, p.z], rot(i, 32.2), 0, 0, [sc, sc, sc], hash2(i, 33.0) < 0.7 ? BLUE : VIOLET);
   }
-  for (let i = 0; i < 160; i++) {
-    const p = bankSpot(i, 35.0, 0.8, 9.0, 1.3);
+  for (let i = 0; i < 700; i++) {
+    const p = bankSpot(i, 35.0, 0.8, 20.0, 1.3);
+    if (!zoneChance(p.z, 0.1, 0.15, 1.0, hash2(i, 35.9))) continue;
     const sc = 0.6 + hash2(i, 36.4) * 0.6;
-    pushInst("blossoms", [p.x, p.y - 0.05, p.z], hash2(i, 37.8) * Math.PI * 2, 0, 0, [sc, sc, sc], [1.0, 0.45, 0.12, 1]);
+    pushInst("blossoms", [p.x, p.y - 0.05, p.z], rot(i, 37.8), 0, 0, [sc, sc, sc], hash2(i, 38.0) < 0.6 ? [1.0, 0.45, 0.12, 1] : [1.0, 0.8, 0.2, 1]);
   }
-  for (let i = 0; i < 150; i++) {
-    const p = bankSpot(i, 40.0, 1.0, 12.0, 1.3);
-    if (inClearing(p.x, p.z, 6.0)) continue;
-    const big = hash2(i, 41.0) < 0.2;
-    const sc = big ? 2.2 + hash2(i, 42.9) * 1.5 : 0.7 + hash2(i, 42.9) * 1.0;
-    pushInst("mushrooms", [p.x, p.y - 0.1, p.z], hash2(i, 43.5) * Math.PI * 2, 0, 0, [sc, sc, sc], hash2(i, 44.0) < 0.5 ? VIOLET : CYAN);
+  for (let i = 0; i < 260; i++) {
+    const p = bankSpot(i, 40.0, 0.6, 12.0, 1.3);
+    if (inClearing(p.x, p.z, 6.0) || !zoneChance(p.z, 0.25, 1.0, 0.0, hash2(i, 40.9))) continue;
+    const sc = 0.5 + hash2(i, 42.9) * 1.1;
+    pushInst("mushrooms", [p.x, p.y - 0.1, p.z], rot(i, 43.5), 0, 0, [sc, sc, sc], hash2(i, 44.0) < 0.6 ? [1.0, 0.45, 0.12, 1] : BLUE);
   }
-  // schwebende Quallen über dem Fluss
-  for (let i = 0; i < 30; i++) {
-    const z = -(i / 30) * L - hash2(i, 45.0) * 8.0;
+  // schwebende Quallen über dem Fluss, nur im Pilzwald
+  for (let i = 0; i < 40; i++) {
+    const z = -(i / 40) * L - hash2(i, 45.0) * 8.0;
+    if (!zoneChance(z, 0.0, 1.0, 0.0, hash2(i, 45.5))) continue;
     const x = riverCenterX(z) + (hash2(i, 46.1) - 0.5) * 12.0;
     const y = 7.5 + hash2(i, 47.4) * 4.0;
     const sc = 0.55 + hash2(i, 48.7) * 0.55;
-    pushInst("jellyfish", [x, y, z], hash2(i, 49.2) * Math.PI * 2, 0, 0, [sc, sc, sc], hash2(i, 50.0) < 0.6 ? [0.2, 0.75, 1.0, 1] : [0.7, 0.3, 1.0, 1]);
+    pushInst("jellyfish", [x, y, z], rot(i, 49.2), 0, 0, [sc, sc, sc], hash2(i, 50.0) < 0.6 ? [0.2, 0.75, 1.0, 1] : [0.7, 0.3, 1.0, 1]);
   }
 
+  // Lichtstrahlen: warm durch den Nebel im Tal, schwach im Pilzwald
   const lightShafts = [];
-  for (let i = 0; i < 16; i++) {
-    const z = -(i / 16) * L - 10.0;
+  for (let i = 0; i < 22; i++) {
+    const z = -(i / 22) * L * 0.68 - 6.0;
     const x = riverCenterX(z) + (hash2(i, 51.2) - 0.5) * 12.0;
     const model = Mat4.create();
     Mat4.compose(model, [x, terrainHeight(x, z), z], 0, 0.12, 0.2, [1.0, 1.0, 1.0]);
@@ -199,7 +243,7 @@ function buildWorld() {
   while (dots.length < 30000 && tries < 400000) {
     const i = tries++;
     const p = bankSpot(i, 60.0, -0.3, 22.0, 1.8);
-    if (p.y < 0.02) continue;
+    if (p.y < 0.02 || zoneWeights(p.z, zw)[2] > 0.5) continue;
     const patch = pnoise(p.x, p.z, 0.2, 2);
     if (patch < 0.48 + hash2(i, 61.0) * 0.12) continue;
     const h = hash2(i, 62.0);
@@ -247,15 +291,15 @@ function buildWorld() {
     const g = group(name);
     return uploadInstancedMesh(gl, builder, new Float32Array(g.mats), new Float32Array(g.tints), margin);
   };
-  const treeMesh = buildJungleTreeMesh();
   return {
     valleyMesh, waterMesh, skyDomeMesh, archMesh, archZ, archModel, mountainMesh, floatingPeaks,
     cliffHousingMesh, bankCliffHousings, plungeRippleMesh, plungeRipples, waterfallMesh, waterfalls,
     shaftMesh, lightShafts,
     instGroups: [
       inst("cliffs", buildRockCliffMesh(), 10.0),
-      inst("trees", treeMesh, 8.0),
-      inst("giants", treeMesh, 14.0),
+      inst("pines", buildPineMesh(), 12.0),
+      inst("giantMushrooms", buildGiantMushroomMeshV2(), 16.0),
+      inst("roundTrees", buildRoundTreeMesh(), 14.0),
       inst("ferns", buildFernRosetteMesh(), 2.0),
       inst("broadleaves", buildBroadLeafPlantMesh(), 3.0),
       inst("reeds", buildReedClusterMesh(), 2.0),

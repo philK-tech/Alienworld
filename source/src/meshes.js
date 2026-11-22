@@ -352,99 +352,6 @@ function buildPlungeRippleMesh() {
   return b;
 }
 
-function buildJungleTreeMesh() {
-  const b = createGeometryBuilder();
-  // Stamm mit Brettwurzeln, leicht gebogen. Skaliert wird mit [r, h, r].
-  const trunkRings = 22;
-  const trunkSectors = 16;
-  const trunkCenter = (v) => [Math.sin(v * Math.PI * 1.35) * 0.3, Math.cos(v * Math.PI * 1.1) * 0.22 - 0.22];
-  for (let ir = 0; ir <= trunkRings; ir++) {
-    const v = ir / trunkRings;
-    const rootFlare = 1.0 + 2.4 * Math.pow(1.0 - v, 4.0);
-    const rad = lerp(0.42, 0.16, Math.pow(v, 0.8)) * rootFlare;
-    const [bx, bz] = trunkCenter(v);
-    for (let is = 0; is <= trunkSectors; is++) {
-      const u = is / trunkSectors;
-      const ang = u * Math.PI * 2.0;
-      const buttress = 1.0 + 0.6 * Math.pow(Math.max(0.0, Math.cos(ang * 5.0)), 3.0) * Math.pow(1.0 - v, 3.0);
-      const px = bx + Math.cos(ang) * rad * buttress;
-      const pz = bz + Math.sin(ang) * rad * buttress;
-      b.pushVertex(px, v - 0.04, pz, Math.cos(ang), 0.15, Math.sin(ang), u * 2.0, v * 5.0, 0.3 + 0.6 * v, 1.0, v * 0.3, 5);
-    }
-  }
-  const row = trunkSectors + 1;
-  for (let ir = 0; ir < trunkRings; ir++) {
-    for (let is = 0; is < trunkSectors; is++) {
-      const a = ir * row + is;
-      b.pushQuad(a, a + 1, a + row + 1, a + row);
-    }
-  }
-
-  // Blätterdach aus breiten, nach unten hängenden Blättern in mehreren Etagen
-  const [topX, topZ] = trunkCenter(1.0);
-  const tiers = [
-    { y: 0.80, n: 9, len: 2.9, w: 0.95 },
-    { y: 0.90, n: 8, len: 2.3, w: 0.85 },
-    { y: 0.98, n: 6, len: 1.6, w: 0.7 }
-  ];
-  tiers.forEach((tier, ti) => {
-    for (let k = 0; k < tier.n; k++) {
-      const ang = (k / tier.n) * Math.PI * 2.0 + ti * 0.7 + hash2(k, ti) * 0.4;
-      const ca = Math.cos(ang), sa = Math.sin(ang);
-      const len = tier.len * (0.8 + hash2(k, ti + 7.0) * 0.4);
-      const segL = 7, segW = 2;
-      const base = b.positions.length / 3;
-      for (let i = 0; i <= segL; i++) {
-        const t = i / segL;
-        const r = 0.15 + t * len;
-        const droop = 0.03 * Math.sin(t * Math.PI) - t * t * 0.09;
-        const halfW = Math.pow(Math.sin(Math.min(t * 1.15, 1.0) * Math.PI), 0.7) * tier.w * 0.5 + 0.02;
-        for (let j = 0; j <= segW; j++) {
-          const s2 = j / segW * 2.0 - 1.0;
-          const crease = (1.0 - Math.abs(s2)) * 0.012;
-          const px = topX + ca * r - sa * s2 * halfW;
-          const pz = topZ + sa * r + ca * s2 * halfW;
-          b.pushVertex(px, tier.y + droop + crease, pz, 0, 1, 0, j / segW, t, 0.55 + 0.3 * t, 0.0, 0.4 + t * 0.6, 6);
-        }
-      }
-      for (let i = 0; i < segL; i++) {
-        for (let j = 0; j < segW; j++) {
-          const a = base + i * (segW + 1) + j;
-          b.pushQuad(a, a + 1, a + segW + 2, a + segW + 1);
-        }
-      }
-    }
-  });
-
-  // Leuchtende Lianen, die aus dem Blätterdach hängen (Material 14)
-  const vineCount = 16;
-  for (let vc = 0; vc < vineCount; vc++) {
-    const ang = hash2(vc, 41.0) * Math.PI * 2.0;
-    const rRim = 0.4 + hash2(vc, 42.0) * 2.3;
-    const vx = topX + Math.cos(ang) * rRim;
-    const vz = topZ + Math.sin(ang) * rRim;
-    const vy = 0.86 - rRim * 0.025;
-    const vLen = 0.12 + hash2(vc, 43.0) * 0.42;
-    const nx = -Math.sin(ang), nz = Math.cos(ang);
-    const vineSegs = 10;
-    const startIdx = b.positions.length / 3;
-    for (let sgi = 0; sgi <= vineSegs; sgi++) {
-      const t = sgi / vineSegs;
-      const w = lerp(0.018, 0.008, t);
-      const py = vy - t * vLen;
-      b.pushVertex(vx - nx * w, py, vz - nz * w, nx, 0, nz, 0, t * vLen * 40.0, 0.9, t, 1.0 + t, 14);
-      b.pushVertex(vx + nx * w, py, vz + nz * w, nx, 0, nz, 1, t * vLen * 40.0, 0.9, t, 1.0 + t, 14);
-    }
-    for (let sgi = 0; sgi < vineSegs; sgi++) {
-      const a = startIdx + sgi * 2;
-      b.pushQuad(a, a + 1, a + 3, a + 2);
-    }
-  }
-
-  b.computeSmoothNormals();
-  return b;
-}
-
 // Großblättrige Bodenpflanze mit leuchtenden Blattadern (Material 13)
 function buildBroadLeafPlantMesh() {
   const b = createGeometryBuilder();
@@ -741,5 +648,122 @@ function buildLightShaftMesh() {
   for (let is = 0; is < segs; is++) {
     b.pushQuad(is, is + 1, row + is + 1, row + is);
   }
+  return b;
+}
+
+// Nadelbaum (Nebeltal): dünner Stamm, gestaffelte, hängende Nadelschichten. Höhe 1, Fuß bei 0.
+function buildPineMesh() {
+  const b = createGeometryBuilder();
+  addLathe(b, 10, 8, (t) => [0, t * 0.98, 0], (t) => { const r = lerp(0.035, 0.008, t) * (1.0 + 0.8 * Math.pow(1.0 - t, 6.0)); return [r, r]; },
+    31, (t) => [0.4 + 0.6 * t, 0.0, t * 0.2]);
+  const tiers = 10;
+  for (let k = 0; k < tiers; k++) {
+    const f = k / (tiers - 1);
+    const yTop = 0.2 + f * 0.8;
+    const R = 0.27 * Math.pow(1.0 - f, 0.85) + 0.035;
+    const drop = 0.10 + 0.05 * (1.0 - f);
+    const segs = 18;
+    const base = b.positions.length / 3;
+    // Mitte, ein Zwischenring und der gezackte, herabhängende Rand
+    for (const [rf, yf, v] of [[0.0, 0.0, 0.0], [0.55, 0.45, 0.55], [1.0, 1.0, 1.0]]) {
+      for (let j = 0; j <= segs; j++) {
+        const a = (j / segs) * Math.PI * 2.0 + k * 0.7;
+        const jag = rf > 0.9 ? 0.82 + 0.3 * Math.abs(Math.sin(a * 4.5 + k)) : 1.0;
+        const r = R * rf * jag;
+        const y = yTop - drop * Math.pow(yf, 1.3) - (rf > 0.9 ? 0.02 * Math.sin(a * 9.0) : 0.0);
+        b.pushVertex(Math.cos(a) * r, y, Math.sin(a) * r, 0, 1, 0, j / segs, v, 0.35 + 0.65 * f * (0.6 + 0.4 * v), 0.0, 0.2 + 0.6 * v * f, 30);
+      }
+    }
+    for (let ring = 0; ring < 2; ring++) {
+      for (let j = 0; j < segs; j++) {
+        const a = base + ring * (segs + 1) + j;
+        b.pushQuad(a, a + 1, a + segs + 2, a + segs + 1);
+      }
+    }
+  }
+  b.computeSmoothNormals();
+  return b;
+}
+
+// Riesenpilz (Pilzwald): geschwungener Stiel, breiter flacher Hut mit Krempe und Lamellen. Höhe ~1.
+// extra.y: 0 Stiel, 1 Hutoberseite, 2 Unterseite
+function buildGiantMushroomMeshV2() {
+  const b = createGeometryBuilder();
+  const bend = (t) => [Math.sin(t * 2.2) * 0.06, t * 0.72, Math.sin(t * 1.7) * 0.03];
+  addLathe(b, 14, 16, bend, (t) => {
+    const r = 0.11 + 0.10 * Math.pow(1.0 - t, 3.0) + 0.07 * Math.pow(t, 4.0);
+    return [r, r * 0.92];
+  }, 32, (t) => [0.45 + 0.55 * t, 0.0, 0.0]);
+  const top = bend(1.0);
+  const capR = 0.62, rings = 12, secs = 32;
+  // Oberseite: flache Kuppel bis zur Krempe, die leicht nach unten fällt
+  let base = b.positions.length / 3;
+  for (let i = 0; i <= rings; i++) {
+    const f = i / rings;
+    const r = f * capR;
+    const y = top[1] + 0.16 * (1.0 - f * f) - (f > 0.85 ? (f - 0.85) * 0.5 : 0.0);
+    for (let j = 0; j <= secs; j++) {
+      const a = (j / secs) * Math.PI * 2.0;
+      const wob = 1.0 + 0.05 * Math.sin(a * 3.0) * f;
+      b.pushVertex(top[0] + Math.cos(a) * r * wob, y, top[2] + Math.sin(a) * r * wob, 0, 1, 0, j / secs, f, 0.95, 1.0, 0.0, 32);
+    }
+  }
+  for (let i = 0; i < rings; i++) for (let j = 0; j < secs; j++) {
+    const a = base + i * (secs + 1) + j;
+    b.pushQuad(a, a + 1, a + secs + 2, a + secs + 1);
+  }
+  // Unterseite mit Lamellen: vom Rand zurück zum Stiel
+  base = b.positions.length / 3;
+  for (let i = 0; i <= 6; i++) {
+    const f = 1.0 - i / 6;
+    const r = 0.1 + f * (capR - 0.1);
+    const y = top[1] - 0.03 + 0.10 * (1.0 - f) - (f > 0.85 ? (f - 0.85) * 0.5 : 0.0) + 0.02;
+    for (let j = 0; j <= secs; j++) {
+      const a = (j / secs) * Math.PI * 2.0;
+      const wob = 1.0 + 0.05 * Math.sin(a * 3.0) * f;
+      b.pushVertex(top[0] + Math.cos(a) * r * wob, y, top[2] + Math.sin(a) * r * wob, 0, -1, 0, j / secs, f, 0.7, 2.0, 0.0, 32);
+    }
+  }
+  for (let i = 0; i < 6; i++) for (let j = 0; j < secs; j++) {
+    const a = base + i * (secs + 1) + j;
+    b.pushQuad(a, a + 1, a + secs + 2, a + secs + 1);
+  }
+  b.computeSmoothNormals();
+  return b;
+}
+
+// Rundkronen-Baum (Himmelsinseln): gedrehter Stamm, der sich in Äste mit gebauschten Kronen teilt. Höhe ~1.
+function buildRoundTreeMesh() {
+  const b = createGeometryBuilder();
+  const trunk = (t) => [Math.sin(t * 2.5) * 0.08, t * 0.55, Math.cos(t * 1.9) * 0.05 - 0.05];
+  addLathe(b, 12, 10, trunk, (t) => { const r = lerp(0.07, 0.04, t) * (1.0 + 1.2 * Math.pow(1.0 - t, 5.0)); return [r, r]; },
+    31, (t) => [0.4 + 0.6 * t, 0.0, t * 0.1]);
+  const fork = trunk(1.0);
+  const crowns = [[0.0, 0.85, 0.0, 0.30], [0.26, 0.72, 0.12, 0.22], [-0.24, 0.70, -0.08, 0.21], [0.05, 0.68, -0.27, 0.19], [-0.08, 0.66, 0.26, 0.18]];
+  crowns.forEach(([cx, cy, cz, cr], ci) => {
+    if (ci > 0) {
+      addLathe(b, 6, 6, (t) => [lerp(fork[0], cx, t), lerp(fork[1] - 0.05, cy - cr * 0.6, t), lerp(fork[2], cz, t)],
+        (t) => { const r = lerp(0.035, 0.018, t); return [r, r]; }, 31, (t) => [0.6, 0.0, 0.1 + t * 0.1]);
+    }
+    // gebauschte Krone: Kugel mit Beulen, unten abgeflacht
+    const rings = 10, secs = 14;
+    const base = b.positions.length / 3;
+    for (let i = 0; i <= rings; i++) {
+      const v = i / rings;
+      const phi = v * Math.PI;
+      for (let j = 0; j <= secs; j++) {
+        const a = (j / secs) * Math.PI * 2.0;
+        const nx = Math.sin(phi) * Math.cos(a), ny = Math.cos(phi), nz = Math.sin(phi) * Math.sin(a);
+        const bump = 1.0 + 0.22 * (fbm2(nx * 2.2 + ci * 3.1, nz * 2.2 + ny * 1.7, 3) - 0.5) * 2.0;
+        const flat = ny < 0 ? 0.55 : 1.0;
+        b.pushVertex(cx + nx * cr * bump, cy + ny * cr * bump * 0.8 * flat, cz + nz * cr * bump, nx, ny, nz, j / secs, v, 0.5 + 0.5 * (ny * 0.5 + 0.5), 0.0, 0.3, 33);
+      }
+    }
+    for (let i = 0; i < rings; i++) for (let j = 0; j < secs; j++) {
+      const a = base + i * (secs + 1) + j;
+      b.pushQuad(a, a + secs + 1, a + secs + 2, a + 1);
+    }
+  });
+  b.computeSmoothNormals();
   return b;
 }

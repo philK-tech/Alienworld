@@ -9,6 +9,18 @@ Mit gedrückter Maus oder dem Finger kann man selbst schauen, nach kurzer Zeit �
 Leertaste hält die Fahrt an, `M` schaltet den Ton ein oder aus.
 Mit `index.html#t=60` startet die Fahrt 60 Sekunden später, praktisch zum Testen einer bestimmten Stelle.
 
+## Drei Zonen
+
+Die Fahrt führt durch drei Zonen mit eigenem Licht, eigenem gemaltem Himmel und eigener Tierart. Zwischen ihnen gibt es kurze Übergänge.
+
+| Zone | Stimmung | Landschaft | Tiere |
+|---|---|---|---|
+| Tal der Nebelfälle | Dämmerung in Lila und Rosa, dichter Dunst | Nadelbäume, Steinsäulen, Wasserfälle an Felskanten, Schneegipfel im Hintergrund | Langhälse am Ufer |
+| Pilzwald im Sternenlicht | Nacht mit Gasriese und Sternen, starke Biolumineszenz | Riesenpilze mit orange leuchtenden Flecken, leuchtende Blüten, Quallen | Springfische |
+| Die Himmelsinseln | heller Tag mit Wolken und Schlieren | schwebende Inseln mit Bäumen und Wasserfällen, runde Bäume, Wiesenblumen, Felsnadeln | Gleiterschwärme |
+
+Welche Zone wo liegt, steht in `zoneWeights` (`source/src/math.js`). Was in welcher Zone wächst, steht in `source/src/world.js`.
+
 ## Grafik
 
 Die Kamera fährt fest auf einer Strecke. Statt einer frei begehbaren Welt steckt die Rechenleistung deshalb in der Bildqualität:

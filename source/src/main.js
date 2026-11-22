@@ -50,16 +50,10 @@ const endDrag = () => { look.dragging = false; };
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
 
-function updateChapterLabel(zMod) {
-  let label = "Schlucht der Leuchtenden Wasserfälle";
-  if (zMod > LOOP_LENGTH / 3 && zMod <= (LOOP_LENGTH * 2) / 3) {
-    label = "Kronendach der Violetten Quallenpilze";
-  } else if (zMod > (LOOP_LENGTH * 2) / 3) {
-    label = "Lagune der Schwebenden Berge";
-  }
-  if (chapterEl.textContent !== label) {
-    chapterEl.textContent = label;
-  }
+const ZONE_NAMES = ["Tal der Nebelfälle", "Pilzwald im Sternenlicht", "Die Himmelsinseln"];
+function updateChapterLabel(w) {
+  const k = w[0] >= w[1] && w[0] >= w[2] ? 0 : w[1] >= w[2] ? 1 : 2;
+  if (chapterEl.textContent !== ZONE_NAMES[k]) chapterEl.textContent = ZONE_NAMES[k];
 }
 
 // --- Render Loop ---
@@ -74,6 +68,9 @@ mirrorMat[5] = -1;
 const identityMat = Mat4.create();
 const tempModelMat = Mat4.create();
 const camEye = [0, 2.2, 0];
+const camZone = [1, 0, 0];
+// Belichtung und Bloom-Schwelle je Zone: Dämmerung, Nacht, Tag
+const zoneMix = (a, b, c) => camZone[0] * a + camZone[1] * b + camZone[2] * c;
 const ridePos = [0, 0, 0];
 let boatHeading = 0;
 const gaze = { yaw: 0, pitch: 0.05 };
@@ -106,6 +103,7 @@ function drawScene(pass) {
   const u = progOpaque.u;
 
   gl.useProgram(progOpaque.prog);
+  gl.uniform3fv(u.uZoneW, camZone);
   gl.uniformMatrix4fv(u.uViewProj, false, vp);
   gl.uniform1f(u.uTime, state.time);
   gl.uniform3fv(u.uCamPos, cam);
@@ -163,8 +161,7 @@ function drawScene(pass) {
     gl.bindVertexArray(world.mountainMesh.vao);
     world.floatingPeaks.forEach((pk, idx) => {
       if (!near(pk.z, pk.sx + 20)) return;
-      const bob = Math.sin(state.time * 0.35 + idx * 2.1) * 0.5;
-      Mat4.compose(tempModelMat, [pk.x, pk.y + bob, pk.z], pk.rot, 0, 0, [pk.sx, pk.sy, pk.sz]);
+      Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot, 0, 0, [pk.sx, pk.sy, pk.sz]);
       setModel(tempModelMat, [0.92, 1.0, 1.15, 1], 0.0);
       gl.drawElements(gl.TRIANGLES, world.mountainMesh.indexCount, gl.UNSIGNED_INT, 0);
     });
@@ -199,6 +196,7 @@ function drawScene(pass) {
 
   const fu = progFx.u;
   gl.useProgram(progFx.prog);
+  gl.uniform3fv(fu.uZoneW, camZone);
   gl.uniformMatrix4fv(fu.uViewProj, false, vp);
   gl.uniform1f(fu.uTime, state.time);
   gl.uniform3fv(fu.uCamPos, cam);
@@ -213,9 +211,7 @@ function drawScene(pass) {
       if (!near(wf.z, 10)) continue;
       let y = wf.y, sy = wf.sy;
       if (wf.isSkyFall) {
-        const bob = Math.sin(state.time * 0.35 + wf.peakIdx * 2.1) * 0.5;
-        y += bob;
-        sy = Math.max(0.5, wf.sy + bob);
+        sy = Math.max(0.5, wf.sy);
       }
       Mat4.compose(tempModelMat, [wf.x, y, wf.z], wf.rotY, 0, 0, [wf.sx, sy, wf.sz]);
       gl.uniformMatrix4fv(fu.uModel, false, tempModelMat);
@@ -301,7 +297,8 @@ function render(now) {
 
   const zMod = ((state.travelDist % LOOP_LENGTH) + LOOP_LENGTH) % LOOP_LENGTH;
   const zCur = -zMod;
-  updateChapterLabel(zMod);
+  zoneWeights(zCur, camZone);
+  updateChapterLabel(camZone);
 
   // Boot folgt dem Fluss, pendelt leicht hin und her
   const t = state.time;
@@ -362,7 +359,7 @@ function render(now) {
 
   gl.enable(gl.DEPTH_TEST);
   gl.disable(gl.BLEND);
-  gl.clearColor(0.010, 0.026, 0.055, 1.0);
+  gl.clearColor(zoneMix(0.45, 0.010, 0.58), zoneMix(0.32, 0.026, 0.66), zoneMix(0.48, 0.055, 0.9), 1.0);
 
   // 1. Spiegelbild für den Fluss
   gl.bindFramebuffer(gl.FRAMEBUFFER, rt.reflFbo);
@@ -393,6 +390,7 @@ function render(now) {
     gl.bindTexture(gl.TEXTURE_2D, srcTex);
     gl.uniform2f(progBloomDown.u.uTexel, 1.0 / srcW, 1.0 / srcH);
     gl.uniform1f(progBloomDown.u.uPrefilter, i === 0 ? 1.0 : 0.0);
+    gl.uniform1f(progBloomDown.u.uThreshold, zoneMix(0.9, 0.35, 1.6));
     fullscreenPass(lv.fbo, lv.w, lv.h);
     srcTex = lv.tex; srcW = lv.w; srcH = lv.h;
   });
@@ -420,6 +418,7 @@ function render(now) {
   gl.uniform1i(progComposite.u.uBloomTex, 1);
   gl.uniform1f(progComposite.u.uTime, state.time);
   gl.uniform2f(progComposite.u.uScreen, canvas.width, canvas.height);
+  gl.uniform1f(progComposite.u.uExposure, zoneMix(1.15, 1.6, 0.85));
   fullscreenPass(null, canvas.width, canvas.height);
   gl.activeTexture(gl.TEXTURE0);
 

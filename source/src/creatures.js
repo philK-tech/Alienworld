@@ -5,42 +5,6 @@
 //   Langhälse (Material 23): große Grasende am Ufer, heben den Kopf, wenn das Boot kommt
 // Jedes Auftauchen ist an eine Stelle der Strecke gebunden und wird über den Abstand des Boots ausgelöst.
 
-// Rotationskörper entlang einer Mittellinie: center(t) und radius(t) für t = 0..1
-function addLathe(b, rings, secs, center, radius, matId, extra) {
-  const base = b.positions.length / 3;
-  for (let i = 0; i <= rings; i++) {
-    const t = i / rings;
-    const c = center(t);
-    const c2 = center(Math.min(t + 0.01, 1.0)), c1 = center(Math.max(t - 0.01, 0.0));
-    let tx = c2[0] - c1[0], ty = c2[1] - c1[1], tz = c2[2] - c1[2];
-    const tl = Math.hypot(tx, ty, tz) || 1;
-    tx /= tl; ty /= tl; tz /= tl;
-    // zwei Achsen senkrecht zur Mittellinie
-    let ax = Math.abs(ty) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-    let ux = ty * ax[2] - tz * ax[1], uy = tz * ax[0] - tx * ax[2], uz = tx * ax[1] - ty * ax[0];
-    const ul = Math.hypot(ux, uy, uz) || 1;
-    ux /= ul; uy /= ul; uz /= ul;
-    const vx = ty * uz - tz * uy, vy = tz * ux - tx * uz, vz = tx * uy - ty * ux;
-    for (let j = 0; j <= secs; j++) {
-      const a = (j / secs) * Math.PI * 2.0;
-      const [rx, ry] = radius(t, a);
-      const nx = ux * Math.cos(a) + vx * Math.sin(a);
-      const ny = uy * Math.cos(a) + vy * Math.sin(a);
-      const nz = uz * Math.cos(a) + vz * Math.sin(a);
-      const r = Math.cos(a) * Math.cos(a) * rx + Math.sin(a) * Math.sin(a) * ry;
-      const e = extra(t, a);
-      b.pushVertex(c[0] + nx * r, c[1] + ny * r, c[2] + nz * r, nx, ny, nz, j / secs, t, e[0], e[1], e[2], matId);
-    }
-  }
-  const row = secs + 1;
-  for (let i = 0; i < rings; i++) {
-    for (let j = 0; j < secs; j++) {
-      const a = base + i * row + j;
-      b.pushQuad(a, a + row, a + row + 1, a + 1);
-    }
-  }
-}
-
 function buildGliderMesh() {
   const b = createGeometryBuilder();
   // schlanker Körper, Kopf bei -z
