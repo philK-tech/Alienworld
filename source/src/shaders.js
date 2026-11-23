@@ -110,7 +110,7 @@ vec3 skyA(vec3 dir, float t) {
   float ma = acos(clamp(md, -1.0, 1.0));
   float moon = smoothstep(0.052, 0.048, ma);
   float crater = fbm(dir.xy * 160.0 + dir.z * 90.0);
-  sky += vec3(1.0, 0.68, 0.22) * moon * (0.9 + 0.35 * crater) + vec3(0.4, 0.26, 0.08) * pow(md, 300.0) + vec3(0.1, 0.07, 0.03) * pow(md, 12.0);
+  sky += vec3(0.75, 0.48, 0.14) * moon * (0.55 + 0.25 * crater) + vec3(0.12, 0.07, 0.02) * pow(md, 400.0) + vec3(0.03, 0.02, 0.008) * pow(md, 20.0);
   // schwere Wolken, am Rand vom Mond angeleuchtet
   vec2 cp = dir.xz / (el + 0.15) * 1.3 + vec2(t * 0.006, t * 0.002);
   float c1 = fbm(cp * 1.2), c2 = fbm(cp * 2.7 + 5.0);
@@ -340,8 +340,8 @@ void main() {
   } else if (matId == 34 && uAnim.y > 0.0) {
     // Tentakel in der Szene: Peitschenwelle läuft vom Ansatz zur Spitze (uAnim.y = Stärke)
     float hgt = aExtra.z, w = hgt * hgt;
-    p.x += uAnim.y * w * sin(uTime * 5.5 + uAnim.x - hgt * 5.0) * 0.32;
-    p.z += uAnim.y * w * cos(uTime * 4.2 + uAnim.x - hgt * 4.0) * 0.18;
+    p.x += uAnim.y * w * sin(uTime * 8.0 + uAnim.x - hgt * 5.5) * 0.3;
+    p.z += uAnim.y * w * cos(uTime * 6.2 + uAnim.x - hgt * 4.5) * 0.16;
   } else if (matId == 34) {
     // Tentakel: schwingt langsam, die Spitze stärker als der Ansatz
     float ph = origin.x * 0.31 + origin.z * 0.17;

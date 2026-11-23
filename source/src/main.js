@@ -170,12 +170,13 @@ function drawScene(pass) {
       gl.drawElements(gl.TRIANGLES, world.cliffHousingMesh.indexCount, gl.UNSIGNED_INT, 0);
     }
 
-    gl.bindVertexArray(world.mountainMesh.vao);
     world.floatingPeaks.forEach((pk, idx) => {
+      const mm = world.mountainMeshes[pk.variant || 0];
+      gl.bindVertexArray(mm.vao);
       if (!near(pk.z, pk.sx + 20)) return;
       Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot, pk.tiltX || 0, pk.tiltZ || 0, [pk.sx, pk.sy, pk.sz]);
       setModel(tempModelMat, [0.92, 1.0, 1.15, 1], 0.0);
-      gl.drawElements(gl.TRIANGLES, world.mountainMesh.indexCount, gl.UNSIGNED_INT, 0);
+      gl.drawElements(gl.TRIANGLES, mm.indexCount, gl.UNSIGNED_INT, 0);
     });
 
     setModel(identityMat, [1, 1, 1, 1], 1.0);
@@ -288,6 +289,18 @@ function drawScene(pass) {
   gl.bindVertexArray(world.particleVao);
   gl.drawArrays(gl.POINTS, 0, world.particleCount);
 
+  // Wolkenschleier unter den Schwebefelsen
+  if (!pass.reflect && world.cloudCount > 0 && copies[1].on) {
+    const su = progDust.u;
+    gl.useProgram(progDust.prog);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniformMatrix4fv(su.uViewProj, false, vp);
+    gl.uniform3fv(su.uCamPos, cam);
+    gl.uniform1f(su.uViewH, viewH);
+    gl.uniform3f(su.uColor, 0.95, 0.96, 1.0);
+    gl.bindVertexArray(world.cloudVao);
+    gl.drawArrays(gl.POINTS, 0, world.cloudCount);
+  }
   // Staubwolken mit normaler Mischung (verdecken, statt aufzuhellen)
   if (!pass.reflect && dustCount > 0) {
     const su = progDust.u;
@@ -386,7 +399,8 @@ function render(now) {
   // während einer Szene: Blick fest auf das Geschehen
   if (sceneFocusOn) {
     const dx = sceneFocus[0] - camEye[0], dy = sceneFocus[1] - camEye[1], dz = sceneFocus[2] - camEye[2];
-    tYaw = wrapAngle(Math.atan2(-dx, -dz) - heading);
+    // höchstens etwa 75 Grad zur Seite, sonst käme das Boot ins Bild
+    tYaw = Math.max(-1.3, Math.min(1.3, wrapAngle(Math.atan2(-dx, -dz) - heading)));
     tPitch = Math.max(-0.4, Math.min(0.9, Math.atan2(dy, Math.hypot(dx, dz))));
   }
   // bei Testsprüngen (#t=...) rastet der Blick in den ersten Bildern sofort ein

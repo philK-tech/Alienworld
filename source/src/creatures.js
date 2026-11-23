@@ -210,6 +210,7 @@ const rippleDraws = [];
 const sceneFocus = [0, 0, 0];
 let sceneFocusOn = false;
 let sceneDuck = 0.0;
+let sceneShake = 0.0; // Schütteln des Boots (Tentakel)
 // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
 const DUST_MAX = 240;
 const dustData = new Float32Array(DUST_MAX * 5);
@@ -225,6 +226,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
   rippleDraws.length = 0;
   sceneFocusOn = false;
   sceneDuck = 0.0;
+  sceneShake = 0.0;
   dustCount = 0;
   const dust = (x, y, z, size, a) => {
     if (dustCount >= DUST_MAX || a <= 0.002) return;
@@ -328,20 +330,27 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       } else focus(cx + (st < t0 ? xa : xb) * 0.6, 0.3, zJ);
     } else if (sc.type === "tentacles") {
       // Tentakel schießen links und rechts der Fahrspur aus dem Wasser, peitschen und tauchen wieder ab
-      const spots = [[-1, -2.0, 0.0], [1, -5.0, 0.5], [-1, -9.0, 1.0], [1, -12.0, 1.4], [-1, -15.0, 1.9]];
+      // einer taucht direkt neben dem Bug auf und schlägt ins Wasser, die anderen links und rechts weiter vorn
+      const spots = [[-1, -2.0, 0.0], [1, -5.0, 0.5], [-1, -9.0, 1.0], [1, -12.0, 1.4], [-1, -15.0, 1.9], [1, 4.5, 2.6]];
       let fx = 0, fy = 0, fz = 0, n = 0;
       spots.forEach(([side, dz, delay], i) => {
         const z = sc.z + dz + zOff, cx = riverCenterX(z);
-        const x = cx + side * (2.3 + hash2(i, 310.0) * 0.8);
-        const up = ease(st, 0.6 + delay, 1.6 + delay), down = ease(st, 7.0 + delay * 0.5, 8.2 + delay * 0.5);
-        const h = 7.0 + hash2(i, 311.0) * 3.0;
+        const near = i === 5;
+        const x = cx + side * (near ? 2.6 : 2.3 + hash2(i, 310.0) * 0.8);
+        const up = ease(st, 0.6 + delay, 1.3 + delay), down = ease(st, 7.0 + delay * 0.4, 7.9 + delay * 0.4);
+        const h = near ? 8.0 : 9.0 + hash2(i, 311.0) * 4.0;
         const lift = up * (1.0 - down);
         ripple(x, z, (st > 0.3 + delay && st < 2.5 + delay ? 1.0 : 0) + (st > 7.0 + delay * 0.5 && st < 9.5 + delay * 0.5 ? 0.8 : 0));
         if (lift <= 0.001) return;
-        const g = take(creatureMeshes.tentacle, side > 0 ? [0.75, 0.28, 1.0] : [0.1, 0.85, 1.0]);
-        Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * 0.15 * lift, [h, h, h]);
+        const g = take(creatureMeshes.tentacle, side > 0 ? [0.6, 0.12, 0.9] : [0.05, 0.55, 0.8]);
+        // der nahe Tentakel neigt sich über das Boot und schlägt zu
+        const slap = near ? ease(st, 4.4, 5.0) * (1.0 - ease(st, 5.6, 6.4)) : 0.0;
+        Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * (0.15 + slap * 0.9) * lift, [h, h * 1.1, h]);
         g.anim[0] = i * 1.9;
-        g.anim[1] = 0.6 + 0.6 * ease(st, 2.0 + delay, 3.0 + delay);
+        g.anim[1] = 0.8 + 0.8 * ease(st, 2.0 + delay, 2.8 + delay);
+        if (near && st > 5.0 && st < 6.0) ripple(cx, z - 1.0, 1.0);
+        // das Boot schüttelt sich beim Auftauchen und beim Schlag
+        sceneShake = Math.max(sceneShake, (near ? slap * 1.0 : 0.0) + up * (1.0 - ease(st, 1.3 + delay, 2.4 + delay)) * 0.5);
         fx += x; fy += h * lift * 0.6; fz += z; n++;
       });
       if (n) focus(fx / n, fy / n, fz / n); else focus(riverCenterX(sc.z + zOff), 2.0, sc.z - 6 + zOff);
@@ -352,23 +361,23 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       for (let i = 0; i < 14; i++) {
         const ox = (hash2(i, 320.0) - 0.5) * 16, oz = (hash2(i, 321.0) - 0.5) * 12;
         // die Herde zieht auf dem Hügelkamm entlang, als Silhouette vor dem Himmel
-        const x0 = riverCenterX(sc.z - 80) + sc.side * HERD_RIDGE, x1 = riverCenterX(sc.z + 10) + sc.side * HERD_RIDGE;
-        const z0 = sc.z - 80, z1 = sc.z + 10;
+        const x0 = riverCenterX(sc.z - 120) + sc.side * HERD_RIDGE, x1 = riverCenterX(sc.z + 40) + sc.side * HERD_RIDGE;
+        const z0 = sc.z - 120, z1 = sc.z + 40;
         const x = lerp(x0, x1, p) + ox, z = lerp(z0, z1, p) + oz + zOff;
         const y = terrainHeight(x, z) - 0.05;
         const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
         if (!g) break;
         const s = 3.2 + hash2(i, 322.0) * 0.8;
-        const ph = t * 5.2 + i * 1.3;
+        const ph = t * 6.5 + i * 1.3;
         Mat4.compose(g.model, [x, y + Math.max(0, Math.sin(ph * 2.0)) * 0.25, z], Math.atan2(-(x1 - x0), -(z1 - z0)), Math.sin(ph * 2.0) * 0.04, 0, [s, s, s]);
         g.anim[0] = i * 1.3;
-        g.anim[1] = 1.0;
+        g.anim[1] = 1.5;
         // Staub hinter jedem Tier: Wolken entstehen an den Hufen, steigen auf, wachsen und verblassen
-        for (let k = 0; k < 6; k++) {
-          const age = (t * 0.55 + k / 6 + i * 0.137) % 1.0;
-          const back = age * 7.0;
+        for (let k = 0; k < 8; k++) {
+          const age = (t * 0.28 + k / 8 + i * 0.137) % 1.0;
+          const back = age * 22.0;
           const dx = (x1 - x0), dz = (z1 - z0), dl = Math.hypot(dx, dz);
-          dust(x - dx / dl * back + Math.sin(k * 3.1 + i) * 1.2, y + 0.4 + age * 2.6, z - dz / dl * back, 4.0 + age * 12.0, (1.0 - age) * (1.0 - age) * 0.75);
+          dust(x - dx / dl * back + Math.sin(k * 3.1 + i) * 1.2, y + 0.4 + age * 2.6, z - dz / dl * back, 4.0 + age * 12.0, (1.0 - age) * 0.5);
         }
         cxs += x; cys += y; czs += z; n++;
       }
@@ -395,7 +404,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         if (i === 1) lead = [x, y, z];
       }
       // die Kamera folgt nur, solange die Mantas vor dem Boot sind, danach ziehen sie einfach vorbei
-      if (lead && lead[2] < cam[2] - 10) focus(lead[0], lead[1], lead[2]);
+      if (lead && lead[2] < cam[2] - 28) focus(lead[0], lead[1], lead[2]);
     }
   });
 }

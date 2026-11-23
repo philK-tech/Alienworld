@@ -171,7 +171,10 @@ function buildWaterfallCliffHousingMesh() {
   return b;
 }
 
-function buildFloatingMountainMesh() {
+const wrapAng = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+// Form-Varianten: wide = Breite, pool = Mulde oben (Wasserbecken), terrace = Felsstufen, split = Spalt quer durch den Fels
+function buildFloatingMountainMesh(opt = {}) {
+  const { wide = 1.0, pool = 0.0, terrace = 0.0, split = 0.0, seed = 0.0 } = opt;
   const b = createGeometryBuilder();
   const rings = 40;
   const sectors = 56;
@@ -182,23 +185,26 @@ function buildFloatingMountainMesh() {
     let radius, y;
     if (v < 0.7) {
       const t = v / 0.7;
-      radius = Math.pow(t, 0.72);
+      radius = Math.pow(t, 0.72) * wide;
       y = (t - 0.7) * 0.95;
+      if (terrace > 0) radius *= 1.0 + terrace * Math.max(0, Math.sin(t * Math.PI * 4.0)) * 0.12;
     } else {
       const t = (v - 0.7) / 0.3;
-      radius = Math.cos(t * Math.PI * 0.47);
-      y = t * 0.34;
+      radius = Math.cos(t * Math.PI * 0.47) * wide;
+      y = t * 0.34 - pool * Math.pow(Math.max(0, t - 0.55) / 0.45, 2.0) * 0.18;
     }
     ringStart.push(b.positions.length / 3);
     for (let is = 0; is <= sectors; is++) {
       const u = is / sectors;
       const ang = u * Math.PI * 2.0;
       const ca = Math.cos(ang), sa = Math.sin(ang);
-      const n = fbm2(ca * 2.2 + v * 3.0, sa * 2.2 + 8.2, 5);
+      const n = fbm2(ca * 2.2 + v * 3.0 + seed, sa * 2.2 + 8.2 + seed * 0.7, 5);
+      // Spalt: an zwei gegenüberliegenden Winkeln tief eingeschnitten
+      const cleft = split > 0 ? 1.0 - split * (Math.exp(-Math.pow(wrapAng(ang - 0.6), 2) * 30.0) + Math.exp(-Math.pow(wrapAng(ang - 0.6 - Math.PI), 2) * 30.0)) * smoothstep(0.2, 0.8, v) : 1.0;
       // Unterseite: senkrechte Felsrippen und Zacken, oben ein leicht überhängender Rand
       const ribs = v < 0.72 ? (fbm2(ang * 4.0, v * 1.2 + 3.0, 3) - 0.5) * 0.35 * (1.0 - v) : 0.0;
       const lip = smoothstep(0.66, 0.74, v) * (1.0 - smoothstep(0.74, 0.86, v)) * 0.08;
-      const jag = (0.62 + 0.58 * n) * (1.0 + ribs + lip);
+      const jag = (0.62 + 0.58 * n) * (1.0 + ribs + lip) * cleft;
       const rx = ca * radius * jag;
       const rz = sa * radius * jag * 0.86;
       const glow = smoothstep(0.55, 0.85, n) * 0.6;
@@ -965,7 +971,8 @@ function buildGothicCastleMesh() {
   // Fundament, das in den Felsen reicht (damit auf unebenem Grund nichts schwebt)
   addBox(b, [-0.05, -0.2, 0.0], [1.05, 0.42, 0.72], 0, 0, 36);
   addBox(b, [0, 0.17, 0], [0.46, 0.34, 0.26], 0, 0, 36);
-  addPrismRoof(b, [0, 0.34, 0], 0.48, 0.22, 0.28, Math.PI / 2, 37);
+  // First entlang des Hauptbaus (x): Breite = Tiefe des Baus, Länge = seine Länge
+  addPrismRoof(b, [0, 0.34, 0], 0.3, 0.22, 0.5, Math.PI / 2, 37);
   addBox(b, [-0.3, 0.12, 0.08], [0.22, 0.24, 0.2], 0.3, 0, 36);
   addPrismRoof(b, [-0.3, 0.24, 0.08], 0.22, 0.15, 0.22, 0.3, 37);
   const towers = [[0.27, -0.14, 0.62, 0.07], [-0.24, -0.15, 0.78, 0.075], [0.3, 0.17, 0.5, 0.06], [0.0, -0.2, 1.0, 0.085], [-0.45, 0.2, 0.55, 0.06]];
@@ -1118,5 +1125,45 @@ function buildBushMesh() {
     addLathe(b, 6, 8, (t) => [cx, cy - rr * 0.8 + t * rr * 1.6, cz], (t) => { const q = Math.sin(t * Math.PI) * rr + 0.01; const j = 1.0 + 0.15 * Math.sin(t * 9.0 + k); return [q * j, q * j]; },
       30, (t) => [0.5 + 0.5 * t, 0.0, t * 0.3]);
   }
+  return b;
+}
+
+// Kristallzitadelle (Schwebefelsen): Sockel, gedrehte Turmspitze mit Perlen, Rippenbögen, kleine Kuppeln, Kristall an der Spitze. Höhe ~1.
+function buildCrystalCitadelMesh() {
+  const b = createGeometryBuilder();
+  addLathe(b, 2, 16, (t) => [0, -0.25 + t * 0.27, 0], () => [0.42, 0.42], 36, () => [0.9, 0.0, 0.0]);
+  addLathe(b, 2, 16, (t) => [0, 0.02 + t * 0.04, 0], () => [0.34, 0.34], 36, () => [0.9, 0.0, 0.0]);
+  addLathe(b, 30, 10, (t) => [Math.sin(t * 9.0) * 0.012, 0.06 + t * 0.86, Math.cos(t * 9.0) * 0.012],
+    (t) => { const r = 0.06 * (1.0 - t * 0.8) * (1.0 + 0.3 * Math.pow(Math.max(0, Math.sin(t * 28.0)), 4.0)); return [r, r]; }, 36, (t) => [0.6 + 0.4 * t, t, 0.0]);
+  addLathe(b, 6, 8, (t) => [0, 0.92 + t * 0.12, 0], (t) => { const r = Math.sin(t * Math.PI) * 0.035 + 0.002; return [r, r * 0.7]; }, 35, () => [1.0, 1.0, 0.0]);
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2;
+    addLathe(b, 12, 6, (t) => { const r = 0.3 * (1.0 - t * 0.85); return [Math.cos(a) * r, 0.06 + Math.sin(t * Math.PI * 0.55) * 0.6, Math.sin(a) * r]; },
+      (t) => { const r = 0.016 * (1.0 - t * 0.7); return [r, r]; }, 36, () => [0.8, 0.0, 0.0]);
+  }
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2 + 0.5;
+    addLathe(b, 6, 10, (t) => [Math.cos(a) * 0.22, 0.06 + Math.sin(t * Math.PI * 0.5) * 0.08, Math.sin(a) * 0.22], (t) => { const r = Math.cos(t * Math.PI * 0.5) * 0.08 + 0.002; return [r, r]; }, 37, (t) => [0.9, t, 0.0]);
+  }
+  for (let k = 0; k < 4; k++) addBox(b, [Math.cos(k * 1.57) * 0.05, 0.3 + k * 0.12, Math.sin(k * 1.57) * 0.05], [0.006, 0.04, 0.006], 0, 0, 38, 2.0);
+  return b;
+}
+
+// Monolithring (Schwebefelsen): schlanke, teils gebrochene Steinnadeln im Kreis mit leuchtenden Zeichen,
+// darüber schwebt ein gebrochener Ring. Grundfläche ~1, Höhe ~1.
+function buildMonolithRingMesh() {
+  const b = createGeometryBuilder();
+  addLathe(b, 2, 12, (t) => [0, -0.25 + t * 0.27, 0], () => [0.5, 0.5], 36, () => [0.9, 0.0, 0.0]);
+  const hs = [0.75, 0.6, 0.3, 0.72, 0.65, 0.18, 0.7, 0.55, 0.4];
+  hs.forEach((h, k) => {
+    const a = (k / hs.length) * Math.PI * 2, x = Math.cos(a) * 0.4, z = Math.sin(a) * 0.4;
+    const lean = (k % 3 === 2 ? 0.12 : 0.03);
+    addLathe(b, 6, 4, (t) => [x + Math.cos(a) * lean * t, t * h, z + Math.sin(a) * lean * t], (t) => { const r = 0.045 * (1.0 - t * 0.55); return [r, r * 0.6]; }, 36, (t) => [0.6 + 0.4 * t, 0.0, 0.0]);
+    if (h > 0.5) addBox(b, [x * 0.9, h * 0.6, z * 0.9], [0.008, h * 0.35, 0.008], -a, 0, 38, 2.0);
+  });
+  addLathe(b, 4, 8, (t) => [0, 0.02 + t * 0.1, 0], (t) => [0.09, 0.07], 36, () => [0.8, 0.0, 0.0]);
+  addLathe(b, 26, 6, (t) => { const a = t * Math.PI * 1.35 + 0.3; return [Math.cos(a) * 0.34, 0.95 + Math.sin(t * 4.0) * 0.02, Math.sin(a) * 0.34]; },
+    () => [0.022, 0.022], 36, () => [0.9, 0.0, 0.0]);
+  addLathe(b, 6, 6, (t) => { const a = Math.PI * 1.75 + t * 0.5; return [Math.cos(a) * 0.36, 0.9, Math.sin(a) * 0.36]; }, () => [0.02, 0.02], 36, () => [0.9, 0.0, 0.0]);
   return b;
 }

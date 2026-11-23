@@ -96,6 +96,7 @@ function buildWorld() {
   const STONE_A = [0.22, 0.22, 0.26, 1], STONE_C = [0.80, 0.78, 0.72, 1];
 
   const waterfalls = [];
+  const clouds = [];
   const bankCliffHousings = [];
   const plungeRipples = [];
   const lightShafts = [];
@@ -183,9 +184,9 @@ function buildWorld() {
     pushInst("lanterns", [x, terrainHeight(x, z) - 0.05, z], side > 0 ? Math.PI : 0, 0, 0, [2.3, 2.3, 2.3], [1, 1, 1, 1]);
   });
   // schwache Lichtstrahlen durch den Nebel, ein kräftigerer hinter der Lichtung des Wolfs
-  [[-20, 1], [-48, -1], [-84, 1], [-118, -1]].forEach(([z, s]) => addShaft(riverCenterX(z) + s * 8.0, z, 1.0, 0.8));
-  addShaft(wolfSpot(SCENES[0]).x + SCENES[0].side * 4.5, SCENES[0].z - 1.0, 2.6, 6.0);
-  addShaft(CASTLE.x - 6.0, CASTLE.z + 6.0, 3.5, 3.0);
+  // sparsam: ein schwacher Lichtkegel am Anfang, ein etwas deutlicherer hinter der Lichtung des Wolfs
+  addShaft(riverCenterX(-20) + 8.0, -20, 1.0, 0.6);
+  addShaft(wolfSpot(SCENES[0]).x + SCENES[0].side * 4.5, SCENES[0].z - 1.0, 2.2, 1.8);
 
   // ---------------- Zone 2: Pilzwald ----------------
   // dichte Riesenpilze direkt am Ufer; manche neigen sich als Baldachin über den Fluss
@@ -246,10 +247,11 @@ function buildWorld() {
 
   // ---------------- Zone 3: offene Ebene mit drei Schwebefelsen ----------------
   // Felsen 1 links mit Wasserfall, Felsen 2 rechts mit Schloss, Felsen 3 rechts mit Ruine; alle eher entfernt
+  // jeder Felsen mit eigener Form: schlanke Säule mit Wasserbecken, breiter Tafelberg mit Stufen, gespaltener Fels
   const floatingPeaks = [
-    { z: -360, offsetX: -78, y: 38, sx: 18, sy: 24, sz: 16, fall: true, build: null },
-    { z: -404, offsetX: 88, y: 46, sx: 20, sy: 26, sz: 18, fall: false, build: "fortress" },
-    { z: -452, offsetX: 70, y: 32, sx: 15, sy: 20, sz: 13, fall: false, build: "ruins" }
+    { z: -360, offsetX: -78, y: 38, sx: 15, sy: 30, sz: 14, fall: true, build: null, variant: 0 },
+    { z: -404, offsetX: 88, y: 46, sx: 24, sy: 22, sz: 20, fall: false, build: "fortress", variant: 1 },
+    { z: -452, offsetX: 70, y: 32, sx: 17, sy: 20, sz: 15, fall: false, build: "ruins", variant: 2 }
   ];
   floatingPeaks.forEach((pk, idx) => {
     pk.x = riverCenterX(pk.z) + pk.offsetX;
@@ -260,11 +262,26 @@ function buildWorld() {
     const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
     const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
     const topH = pk.sy * 0.33;
-    if (pk.build === "fortress") pushInst("fortress", onTop(topH - 0.8), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
-    if (pk.build === "ruins") pushInst("ruins", onTop(topH - 0.5), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 1.1, pk.sx * 1.1, pk.sx * 1.1], STONE_C);
+    // kleine, feine Bauwerke, etwas aus der Mitte gerückt
+    const at = (h, ox, oz) => [pk.x + R[0] * ox + R[4] * h + R[8] * oz, pk.y + R[1] * ox + R[5] * h + R[9] * oz, pk.z + R[2] * ox + R[6] * h + R[10] * oz];
+    if (pk.build === "fortress") pushInst("citadel", at(topH - 0.6, pk.sx * 0.15, 0), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.42, pk.sx * 0.5, pk.sx * 0.42], STONE_C);
+    if (pk.build === "ruins") pushInst("monoliths", at(topH - 0.4, -pk.sx * 0.12, 0), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 0.42, pk.sx * 0.42, pk.sx * 0.42], STONE_C);
+    // kleine Bäume und Felsbrocken auf dem Rand der Oberseite
+    for (let k = 0; k < 6; k++) {
+      const a = hash2(idx * 13 + k, 400.0) * Math.PI * 2, r = 0.45 + hash2(idx * 13 + k, 401.0) * 0.3;
+      const ox = Math.cos(a) * r * pk.sx * 0.7, oz = Math.sin(a) * r * pk.sz * 0.7;
+      const h = topH * (1.0 - r * r * 0.6) - 0.5;
+      if (k < 4) { const th = 2.5 + hash2(idx * 13 + k, 402.0) * 3.0; pushInst("islandTrees", at(h, ox, oz), a, pk.tiltX, pk.tiltZ, [th, th, th], CYAN); }
+      else { const s = 0.8 + hash2(idx * 13 + k, 403.0) * 1.2; pushInst("rocks", at(h, ox, oz), a, pk.tiltX, pk.tiltZ, [s, s * 0.7, s], [1.05, 0.95, 0.85, 1]); }
+    }
+    // Wolkenschleier unter dem Felsen (weiche Wolkenpunkte)
+    for (let k = 0; k < 26; k++) {
+      const a = (k / 26) * Math.PI * 2 + hash2(idx, k) * 0.4, r = pk.sx * (0.5 + hash2(idx * 31 + k, 410.0) * 0.8);
+      clouds.push([pk.x + Math.cos(a) * r, pk.y - pk.sy * (0.25 + hash2(idx * 31 + k, 411.0) * 0.45), pk.z + Math.sin(a) * r * 0.8, 10.0 + hash2(idx * 31 + k, 412.0) * 14.0, 0.18 + hash2(idx * 31 + k, 413.0) * 0.16]);
+    }
     const topY = pk.y + topH;
     if (pk.fall) {
-      const fx = pk.x + 4.0;
+      const fx = pk.x + pk.sx * 0.62; // an der Kante zum Fluss
       waterfalls.push({ x: fx, y: topY - 0.5, z: pk.z + 2.0, rotY: 0.0, sx: 3.2, sy: topY - 0.5 - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
     }
   });
@@ -326,12 +343,30 @@ function buildWorld() {
   gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 24);
   gl.bindVertexArray(null);
 
+  // Wolkenschleier als statischer Punktpuffer (gezeichnet wie die Staubwolken)
+  const cloudData = new Float32Array(clouds.length * 5);
+  clouds.forEach((c, i) => cloudData.set(c, i * 5));
+  const cloudVao = gl.createVertexArray();
+  gl.bindVertexArray(cloudVao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, cloudData, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 20, 0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 16);
+  gl.bindVertexArray(null);
+  const mountainMeshes = [
+    uploadStaticMesh(gl, buildFloatingMountainMesh({ wide: 0.75, pool: 1.0, seed: 3.0 })),
+    uploadStaticMesh(gl, buildFloatingMountainMesh({ wide: 1.1, terrace: 1.0, seed: 7.0 })),
+    uploadStaticMesh(gl, buildFloatingMountainMesh({ wide: 1.0, split: 0.45, seed: 11.0 }))
+  ];
+
   const inst = (name, builder, margin) => {
     const g = group(name);
     return uploadInstancedMesh(gl, builder, new Float32Array(g.mats), new Float32Array(g.tints), margin);
   };
   return {
-    valleyMesh, waterMesh, skyDomeMesh, mountainMesh, floatingPeaks,
+    valleyMesh, waterMesh, skyDomeMesh, mountainMesh, mountainMeshes, floatingPeaks, cloudVao, cloudCount: clouds.length,
     cliffHousingMesh, bankCliffHousings, plungeRippleMesh, plungeRipples, waterfallMesh, waterfalls,
     shaftMesh, lightShafts,
     instGroups: [
@@ -351,8 +386,9 @@ function buildWorld() {
       inst("broadleaves", buildBroadLeafPlantMesh(), 3.0),
       inst("jellyfish", buildCanopyJellyfishMesh(), 4.0),
       inst("blossoms", buildGoldenBlossomMesh(), 2.0),
-      inst("fortress", buildFortressMesh(), 20.0),
-      inst("ruins", buildRuinSiteMesh(), 16.0)
+      inst("citadel", buildCrystalCitadelMesh(), 20.0),
+      inst("monoliths", buildMonolithRingMesh(), 16.0),
+      inst("islandTrees", buildRoundTreeMesh(), 16.0)
     ],
     dotVao, dotZ, dotCount: dots.length,
     particleVao: pVao,

@@ -50,8 +50,10 @@ const boat = { mesh: null, tex: null, model: Mat4.create() };
 // Stellt das Boot an Position (x, z) auf die Wasseroberfläche, mit Kurs yaw und leichtem Schaukeln.
 // Gibt die Augenposition in Weltkoordinaten in eyeOut zurück.
 function placeBoat(x, z, yaw, t, eyeOut) {
-  const pitch = Math.sin(t * 0.9) * 0.025 + Math.sin(t * 2.3) * 0.008;
-  const roll = Math.sin(t * 0.7 + 1.0) * 0.035 + Math.sin(t * 1.9) * 0.01;
+  // Schütteln durch die Tentakel-Szene (sceneShake aus creatures.js, 0..1)
+  const sh = typeof sceneShake === "number" ? sceneShake : 0.0;
+  const pitch = Math.sin(t * 0.9) * 0.025 + Math.sin(t * 2.3) * 0.008 + Math.sin(t * 11.0) * 0.03 * sh;
+  const roll = Math.sin(t * 0.7 + 1.0) * 0.035 + Math.sin(t * 1.9) * 0.01 + Math.sin(t * 8.3 + 1.0) * 0.07 * sh;
   const y = -BOAT_WATERLINE * BOAT_SCALE[1] + Math.sin(t * 1.3) * 0.04;
   Mat4.compose(boat.model, [x, y, z], yaw, pitch, roll, BOAT_SCALE);
   const m = boat.model;
