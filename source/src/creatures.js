@@ -213,6 +213,7 @@ const sceneFocus = [0, 0, 0];
 let sceneFocusOn = false;
 let sceneDuck = 0.0;
 let sceneShake = 0.0; // Schütteln des Boots (Tentakel)
+let sceneRock = 0.0;  // Kippen des Boots im Takt der Tentakel (-1..1)
 // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
 const DUST_MAX = 240;
 const dustData = new Float32Array(DUST_MAX * 5);
@@ -229,6 +230,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
   sceneFocusOn = false;
   sceneDuck = 0.0;
   sceneShake = 0.0;
+  sceneRock = 0.0;
   dustCount = 0;
   const dust = (x, y, z, size, a) => {
     if (dustCount >= DUST_MAX || a <= 0.002) return;
@@ -331,31 +333,35 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         focus(x, Math.max(y, 0.4), zJ);
       } else focus(cx + (st < t0 ? xa : xb) * 0.6, 0.3, zJ);
     } else if (sc.type === "tentacles") {
-      // Tentakel schießen links und rechts der Fahrspur aus dem Wasser, peitschen und tauchen wieder ab
-      // einer taucht direkt neben dem Bug auf und schlägt ins Wasser, die anderen links und rechts weiter vorn
-      const spots = [[-1, -2.0, 0.0], [1, -5.0, 0.5], [-1, -9.0, 1.0], [1, -12.0, 1.4], [-1, -15.0, 1.9], [1, 4.5, 2.6]];
-      let fx = 0, fy = 0, fz = 0, n = 0;
-      spots.forEach(([side, dz, delay], i) => {
-        const z = sc.z + dz + zOff, cx = riverCenterX(z);
-        const near = i === 5;
-        const x = cx + side * (near ? 2.6 : 2.3 + hash2(i, 310.0) * 0.8);
-        const up = ease(st, 0.6 + delay, 1.3 + delay), down = ease(st, 7.0 + delay * 0.4, 7.9 + delay * 0.4);
-        const h = near ? 8.0 : 9.0 + hash2(i, 311.0) * 4.0;
+      // vier Tentakel dicht am Boot: je einer links und rechts, zwei vorn. Sie peitschen im selben Takt,
+      // und das Boot kippt im Takt mit (sceneRock, siehe boat.js)
+      const bx = riverCenterX(cam[2]);
+      const spots = [
+        [-1, cam[0] - 3.4, cam[2] + 0.5, 0.0, 8.0],
+        [1, cam[0] + 3.4, cam[2] - 1.0, 0.25, 8.0],
+        [-1, bx - 1.8, cam[2] - 9.0, 0.6, 11.0],
+        [1, bx + 1.9, cam[2] - 12.0, 0.85, 12.0]
+      ];
+      let fx = 0, fy = 0, fz = 0, n = 0, rockAmp = 0;
+      spots.forEach(([side, x, z, delay, h], i) => {
+        const up = ease(st, 0.6 + delay, 1.4 + delay), down = ease(st, 7.6 + delay * 0.3, 8.6 + delay * 0.3);
         const lift = up * (1.0 - down);
-        ripple(x, z, (st > 0.3 + delay && st < 2.5 + delay ? 1.0 : 0) + (st > 7.0 + delay * 0.5 && st < 9.5 + delay * 0.5 ? 0.8 : 0));
+        ripple(x, z, (st > 0.3 + delay && st < 2.5 + delay ? 1.0 : 0) + (st > 7.6 && st < 10.0 ? 0.8 : 0));
         if (lift <= 0.001) return;
         const g = take(creatureMeshes.tentacle, side > 0 ? [0.6, 0.12, 0.9] : [0.05, 0.55, 0.8]);
-        // der nahe Tentakel neigt sich über das Boot und schlägt zu
-        const slap = near ? ease(st, 4.4, 5.0) * (1.0 - ease(st, 5.6, 6.4)) : 0.0;
-        Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * (0.15 + slap * 0.9) * lift, [h, h * 1.1, h]);
-        g.anim[0] = i * 1.9;
-        g.anim[1] = 0.8 + 0.8 * ease(st, 2.0 + delay, 2.8 + delay);
-        if (near && st > 5.0 && st < 6.0) ripple(cx, z - 1.0, 1.0);
-        // das Boot schüttelt sich beim Auftauchen und beim Schlag
-        sceneShake = Math.max(sceneShake, (near ? slap * 1.0 : 0.0) + up * (1.0 - ease(st, 1.3 + delay, 2.4 + delay)) * 0.5);
-        fx += x; fy += h * lift * 0.6; fz += z; n++;
+        // die seitlichen neigen sich über das Boot, die vorderen bäumen sich vor dem Bug auf
+        const lean = i < 2 ? 0.45 : 0.15;
+        Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * lean * lift, [h, h * 1.1, h]);
+        // alle im selben Takt (Phase 0 bzw. gegenphasig je Seite)
+        g.anim[0] = side > 0 ? 0.0 : Math.PI;
+        g.anim[1] = 0.9 + 0.7 * ease(st, 2.0, 2.8);
+        fx += x; fy += h * lift * 0.5; fz += z; n++;
+        rockAmp = Math.max(rockAmp, lift);
       });
-      if (n) focus(fx / n, fy / n, fz / n); else focus(riverCenterX(sc.z + zOff), 2.0, sc.z - 6 + zOff);
+      // Boot kippt im Takt der Schläge (gleiche Frequenz wie die Peitschenwelle im Shader)
+      sceneRock = Math.sin(t * 4.0) * rockAmp * ease(st, 1.5, 2.5);
+      sceneShake = Math.max(sceneShake, rockAmp * (1.0 - ease(st, 1.4, 2.6)) * 0.6);
+      if (n) focus(fx / n, Math.max(fy / n, 2.0), Math.min(fz / n, cam[2] - 6.0)); else focus(bx, 2.0, cam[2] - 10.0);
     } else if (sc.type === "herd") {
       // eine Herde zieht in der Ferne schräg über die Ebene
       let cxs = 0, cys = 0, czs = 0, n = 0;

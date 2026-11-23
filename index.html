@@ -2048,8 +2048,8 @@
     vec3 skyHaze(vec3 dir) {
       float g = max(dot(dir, GIANT_DIR), 0.0);
       vec3 hb = vec3(0.010, 0.026, 0.055) + vec3(0.020, 0.055, 0.10) * pow(g, 6.0);
-      vec3 ha = vec3(0.075, 0.085, 0.105) + vec3(0.05, 0.06, 0.08) * pow(max(dot(dir, SUN_A), 0.0), 4.0);
-      vec3 hc = vec3(0.58, 0.66, 0.90);
+      vec3 ha = vec3(0.028, 0.032, 0.04) + vec3(0.03, 0.025, 0.015) * pow(max(dot(dir, SUN_A), 0.0), 8.0);
+      vec3 hc = vec3(0.42, 0.5, 0.72);
       return ha * uZoneW.x + hb * uZoneW.y + hc * uZoneW.z;
     }
 
@@ -2065,15 +2065,18 @@
       float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
       float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
       // Dichte nach der Zone der Kamera; der Nebelwald ist auch von außen gesehen eine dichte Nebelwand
-      float zoneDens = uZoneW.x * 2.4 + uZoneW.y + uZoneW.z * 0.12;
+      float zoneDens = uZoneW.x * 1.3 + uZoneW.y + uZoneW.z * 0.12;
       vec3 fw = zoneWeights(wp.z);
       zoneDens = max(zoneDens, fw.x * 6.0 * (1.0 - uZoneW.x));
-      // bodennahe Nebelschwaden im Nebelwald
-      float ground = exp(-max(wp.y, 0.0) * 0.35) * (0.6 + 0.8 * vnoise(wp.xz * 0.08 + vec2(t * 0.05, 0.0)));
-      zoneDens += fw.x * uZoneW.x * ground * 2.5;
+      // Nebelschwaden im Nebelwald: in Bänden am Boden, mit deutlichen Lücken dazwischen
+      float wisp = smoothstep(0.42, 0.75, fbm(wp.xz * 0.035 + vec2(t * 0.025, t * 0.01)));
+      float ground = exp(-max(wp.y, 0.0) * 0.45) * wisp;
+      zoneDens += fw.x * uZoneW.x * ground * 5.0;
       float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
       float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
       vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
+      // der Nebelwald ist von der Ebene aus eine graue, nicht leuchtende Wand
+      fc = mix(fc, vec3(0.2, 0.22, 0.26), fw.x * (1.0 - uZoneW.x));
       return mix(col, fc, clamp(f, 0.0, 0.97));
     }
     `;
@@ -2145,8 +2148,8 @@
       } else if (matId == 34 && uAnim.y > 0.0) {
         // Tentakel in der Szene: Peitschenwelle läuft vom Ansatz zur Spitze (uAnim.y = Stärke)
         float hgt = aExtra.z, w = hgt * hgt;
-        p.x += uAnim.y * w * sin(uTime * 8.0 + uAnim.x - hgt * 5.5) * 0.3;
-        p.z += uAnim.y * w * cos(uTime * 6.2 + uAnim.x - hgt * 4.5) * 0.16;
+        p.x += uAnim.y * w * sin(uTime * 4.0 + uAnim.x - hgt * 4.0) * 0.34;
+        p.z += uAnim.y * w * cos(uTime * 4.0 + uAnim.x - hgt * 3.5) * 0.12;
       } else if (matId == 34) {
         // Tentakel: schwingt langsam, die Spitze stärker als der Ansatz
         float ph = origin.x * 0.31 + origin.z * 0.17;
@@ -2503,7 +2506,7 @@
         base = vec3(0.2, 0.12, 0.05);
         albA = albC = vec3(0.6, 0.45, 0.25);
         float flick = 0.85 + 0.15 * sin(t * 9.0 + vSeed * 40.0) * sin(t * 5.3 + vSeed * 11.0);
-        vec3 lightCol = glowMask > 1.5 ? vec3(0.45, 0.65, 1.0) * 0.8 : vec3(1.0, 0.55, 0.18) * 3.0;
+        vec3 lightCol = glowMask > 1.5 ? vec3(0.45, 0.65, 1.0) * (0.8 + 2.5 * zw.z) : vec3(1.0, 0.55, 0.18) * 3.0;
         emissive += lightCol * flick / max(emScale, 0.3);
       } else if (matId == 20) {
         // Boot: Holz aus der Textur, die türkisen Einlagen leuchten
@@ -2981,7 +2984,7 @@
       { type: "wolf", z: -62, side: -1, dur: 10.5, trigger: 15, slow: 0.25, zoom: 0.55 },
       { type: "castle", z: -150, side: 1, dur: 12.5, trigger: 54, slow: 0.35, zoom: 0.3 },
       { type: "fish", z: -214, side: 1, dur: 6.5, trigger: 14, slow: 0.4, zoom: 0.25 },
-      { type: "tentacles", z: -266, side: 1, dur: 10.5, trigger: 15, slow: 0.12, zoom: 0.0 },
+      { type: "tentacles", z: -266, side: 1, dur: 10.5, trigger: 15, slow: 0.02, zoom: 0.0 },
       { type: "herd", z: -362, side: -1, dur: 12.0, trigger: 30, slow: 0.45, zoom: 0.45 },
       { type: "mantas", z: -422, side: 1, dur: 12.0, trigger: 36, slow: 0.45, zoom: 0.15 }
     ];
@@ -3094,6 +3097,7 @@
         const dirX = Math.sin(yaw), dirZ = Math.cos(yaw);
         const crestX = cliffX + dirX * 0.25, crestZ = fz + dirZ * 0.25;
         bankCliffHousings.push({ x: cliffX, y: -0.6, z: fz, rotY: yaw, sx: 5.2, sy: h + 1.2, sz: 3.6 });
+        CLEARINGS.push({ x: cliffX, z: fz, r: 9.0 }); // keine Bäume im Wasserfallfelsen
         waterfalls.push({ x: crestX, y: h - 0.55, z: crestZ, rotY: yaw, sx: 2.9, sy: h - 0.55, sz: 1.8, isSkyFall: false });
         plungeRipples.push({ x: crestX + dirX * 0.85, y: 0.02, z: crestZ + dirZ * 0.85, sx: 3.4, sz: 3.0 });
         for (const off of [-5.5, 5.0]) {
@@ -3230,15 +3234,15 @@
         pk.x = riverCenterX(pk.z) + pk.offsetX;
         pk.rot = idx * 1.4;
         // zum Fluss und zur Kamera gekippt, damit man sieht, was oben steht
-        pk.tiltX = 0.18;
-        pk.tiltZ = pk.offsetX < 0 ? -0.38 : 0.38;
+        pk.tiltX = 0.22;
+        pk.tiltZ = pk.offsetX < 0 ? -0.46 : 0.46;
         const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
         const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
         const topH = pk.sy * 0.33;
         // kleine, feine Bauwerke, etwas aus der Mitte gerückt
         const at = (h, ox, oz) => [pk.x + R[0] * ox + R[4] * h + R[8] * oz, pk.y + R[1] * ox + R[5] * h + R[9] * oz, pk.z + R[2] * ox + R[6] * h + R[10] * oz];
-        if (pk.build === "fortress") pushInst("citadel", at(topH - 0.6, pk.sx * 0.15, 0), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.42, pk.sx * 0.5, pk.sx * 0.42], STONE_C);
-        if (pk.build === "ruins") pushInst("monoliths", at(topH - 0.4, -pk.sx * 0.12, 0), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 0.42, pk.sx * 0.42, pk.sx * 0.42], STONE_C);
+        if (pk.build === "fortress") pushInst("citadel", at(topH - 0.6, pk.sx * 0.12, 0), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.6, pk.sx * 0.75, pk.sx * 0.6], STONE_C);
+        if (pk.build === "ruins") pushInst("monoliths", at(topH - 0.4, -pk.sx * 0.1, 0), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 0.6, pk.sx * 0.62, pk.sx * 0.6], STONE_C);
         // kleine Bäume und Felsbrocken auf dem Rand der Oberseite
         for (let k = 0; k < 6; k++) {
           const a = hash2(idx * 13 + k, 400.0) * Math.PI * 2, r = 0.45 + hash2(idx * 13 + k, 401.0) * 0.3;
@@ -3542,7 +3546,8 @@
       // Schütteln durch die Tentakel-Szene (sceneShake aus creatures.js, 0..1)
       const sh = typeof sceneShake === "number" ? sceneShake : 0.0;
       const pitch = Math.sin(t * 0.9) * 0.025 + Math.sin(t * 2.3) * 0.008 + Math.sin(t * 11.0) * 0.03 * sh;
-      const roll = Math.sin(t * 0.7 + 1.0) * 0.035 + Math.sin(t * 1.9) * 0.01 + Math.sin(t * 8.3 + 1.0) * 0.07 * sh;
+      const rock = typeof sceneRock === "number" ? sceneRock : 0.0;
+      const roll = Math.sin(t * 0.7 + 1.0) * 0.035 + Math.sin(t * 1.9) * 0.01 + Math.sin(t * 8.3 + 1.0) * 0.07 * sh + rock * 0.12;
       const y = -BOAT_WATERLINE * BOAT_SCALE[1] + Math.sin(t * 1.3) * 0.04;
       Mat4.compose(boat.model, [x, y, z], yaw, pitch, roll, BOAT_SCALE);
       const m = boat.model;
@@ -3767,6 +3772,7 @@
     let sceneFocusOn = false;
     let sceneDuck = 0.0;
     let sceneShake = 0.0; // Schütteln des Boots (Tentakel)
+    let sceneRock = 0.0;  // Kippen des Boots im Takt der Tentakel (-1..1)
     // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
     const DUST_MAX = 240;
     const dustData = new Float32Array(DUST_MAX * 5);
@@ -3783,6 +3789,7 @@
       sceneFocusOn = false;
       sceneDuck = 0.0;
       sceneShake = 0.0;
+      sceneRock = 0.0;
       dustCount = 0;
       const dust = (x, y, z, size, a) => {
         if (dustCount >= DUST_MAX || a <= 0.002) return;
@@ -3885,31 +3892,35 @@
             focus(x, Math.max(y, 0.4), zJ);
           } else focus(cx + (st < t0 ? xa : xb) * 0.6, 0.3, zJ);
         } else if (sc.type === "tentacles") {
-          // Tentakel schießen links und rechts der Fahrspur aus dem Wasser, peitschen und tauchen wieder ab
-          // einer taucht direkt neben dem Bug auf und schlägt ins Wasser, die anderen links und rechts weiter vorn
-          const spots = [[-1, -2.0, 0.0], [1, -5.0, 0.5], [-1, -9.0, 1.0], [1, -12.0, 1.4], [-1, -15.0, 1.9], [1, 4.5, 2.6]];
-          let fx = 0, fy = 0, fz = 0, n = 0;
-          spots.forEach(([side, dz, delay], i) => {
-            const z = sc.z + dz + zOff, cx = riverCenterX(z);
-            const near = i === 5;
-            const x = cx + side * (near ? 2.6 : 2.3 + hash2(i, 310.0) * 0.8);
-            const up = ease(st, 0.6 + delay, 1.3 + delay), down = ease(st, 7.0 + delay * 0.4, 7.9 + delay * 0.4);
-            const h = near ? 8.0 : 9.0 + hash2(i, 311.0) * 4.0;
+          // vier Tentakel dicht am Boot: je einer links und rechts, zwei vorn. Sie peitschen im selben Takt,
+          // und das Boot kippt im Takt mit (sceneRock, siehe boat.js)
+          const bx = riverCenterX(cam[2]);
+          const spots = [
+            [-1, cam[0] - 3.4, cam[2] + 0.5, 0.0, 8.0],
+            [1, cam[0] + 3.4, cam[2] - 1.0, 0.25, 8.0],
+            [-1, bx - 1.8, cam[2] - 9.0, 0.6, 11.0],
+            [1, bx + 1.9, cam[2] - 12.0, 0.85, 12.0]
+          ];
+          let fx = 0, fy = 0, fz = 0, n = 0, rockAmp = 0;
+          spots.forEach(([side, x, z, delay, h], i) => {
+            const up = ease(st, 0.6 + delay, 1.4 + delay), down = ease(st, 7.6 + delay * 0.3, 8.6 + delay * 0.3);
             const lift = up * (1.0 - down);
-            ripple(x, z, (st > 0.3 + delay && st < 2.5 + delay ? 1.0 : 0) + (st > 7.0 + delay * 0.5 && st < 9.5 + delay * 0.5 ? 0.8 : 0));
+            ripple(x, z, (st > 0.3 + delay && st < 2.5 + delay ? 1.0 : 0) + (st > 7.6 && st < 10.0 ? 0.8 : 0));
             if (lift <= 0.001) return;
             const g = take(creatureMeshes.tentacle, side > 0 ? [0.6, 0.12, 0.9] : [0.05, 0.55, 0.8]);
-            // der nahe Tentakel neigt sich über das Boot und schlägt zu
-            const slap = near ? ease(st, 4.4, 5.0) * (1.0 - ease(st, 5.6, 6.4)) : 0.0;
-            Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * (0.15 + slap * 0.9) * lift, [h, h * 1.1, h]);
-            g.anim[0] = i * 1.9;
-            g.anim[1] = 0.8 + 0.8 * ease(st, 2.0 + delay, 2.8 + delay);
-            if (near && st > 5.0 && st < 6.0) ripple(cx, z - 1.0, 1.0);
-            // das Boot schüttelt sich beim Auftauchen und beim Schlag
-            sceneShake = Math.max(sceneShake, (near ? slap * 1.0 : 0.0) + up * (1.0 - ease(st, 1.3 + delay, 2.4 + delay)) * 0.5);
-            fx += x; fy += h * lift * 0.6; fz += z; n++;
+            // die seitlichen neigen sich über das Boot, die vorderen bäumen sich vor dem Bug auf
+            const lean = i < 2 ? 0.45 : 0.15;
+            Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * lean * lift, [h, h * 1.1, h]);
+            // alle im selben Takt (Phase 0 bzw. gegenphasig je Seite)
+            g.anim[0] = side > 0 ? 0.0 : Math.PI;
+            g.anim[1] = 0.9 + 0.7 * ease(st, 2.0, 2.8);
+            fx += x; fy += h * lift * 0.5; fz += z; n++;
+            rockAmp = Math.max(rockAmp, lift);
           });
-          if (n) focus(fx / n, fy / n, fz / n); else focus(riverCenterX(sc.z + zOff), 2.0, sc.z - 6 + zOff);
+          // Boot kippt im Takt der Schläge (gleiche Frequenz wie die Peitschenwelle im Shader)
+          sceneRock = Math.sin(t * 4.0) * rockAmp * ease(st, 1.5, 2.5);
+          sceneShake = Math.max(sceneShake, rockAmp * (1.0 - ease(st, 1.4, 2.6)) * 0.6);
+          if (n) focus(fx / n, Math.max(fy / n, 2.0), Math.min(fz / n, cam[2] - 6.0)); else focus(bx, 2.0, cam[2] - 10.0);
         } else if (sc.type === "herd") {
           // eine Herde zieht in der Ferne schräg über die Ebene
           let cxs = 0, cys = 0, czs = 0, n = 0;
@@ -4570,7 +4581,7 @@
       gl.uniform1i(progComposite.u.uBloomTex, 1);
       gl.uniform1f(progComposite.u.uTime, state.time);
       gl.uniform2f(progComposite.u.uScreen, canvas.width, canvas.height);
-      gl.uniform1f(progComposite.u.uExposure, zoneMix(2.4, 1.6, 0.85));
+      gl.uniform1f(progComposite.u.uExposure, zoneMix(1.5, 1.6, 0.8));
       fullscreenPass(null, canvas.width, canvas.height);
       gl.activeTexture(gl.TEXTURE0);
 

@@ -8,7 +8,7 @@ const SCENES = [
   { type: "wolf", z: -62, side: -1, dur: 10.5, trigger: 15, slow: 0.25, zoom: 0.55 },
   { type: "castle", z: -150, side: 1, dur: 12.5, trigger: 54, slow: 0.35, zoom: 0.3 },
   { type: "fish", z: -214, side: 1, dur: 6.5, trigger: 14, slow: 0.4, zoom: 0.25 },
-  { type: "tentacles", z: -266, side: 1, dur: 10.5, trigger: 15, slow: 0.12, zoom: 0.0 },
+  { type: "tentacles", z: -266, side: 1, dur: 10.5, trigger: 15, slow: 0.02, zoom: 0.0 },
   { type: "herd", z: -362, side: -1, dur: 12.0, trigger: 30, slow: 0.45, zoom: 0.45 },
   { type: "mantas", z: -422, side: 1, dur: 12.0, trigger: 36, slow: 0.45, zoom: 0.15 }
 ];
@@ -121,6 +121,7 @@ function buildWorld() {
     const dirX = Math.sin(yaw), dirZ = Math.cos(yaw);
     const crestX = cliffX + dirX * 0.25, crestZ = fz + dirZ * 0.25;
     bankCliffHousings.push({ x: cliffX, y: -0.6, z: fz, rotY: yaw, sx: 5.2, sy: h + 1.2, sz: 3.6 });
+    CLEARINGS.push({ x: cliffX, z: fz, r: 9.0 }); // keine Bäume im Wasserfallfelsen
     waterfalls.push({ x: crestX, y: h - 0.55, z: crestZ, rotY: yaw, sx: 2.9, sy: h - 0.55, sz: 1.8, isSkyFall: false });
     plungeRipples.push({ x: crestX + dirX * 0.85, y: 0.02, z: crestZ + dirZ * 0.85, sx: 3.4, sz: 3.0 });
     for (const off of [-5.5, 5.0]) {
@@ -257,15 +258,15 @@ function buildWorld() {
     pk.x = riverCenterX(pk.z) + pk.offsetX;
     pk.rot = idx * 1.4;
     // zum Fluss und zur Kamera gekippt, damit man sieht, was oben steht
-    pk.tiltX = 0.18;
-    pk.tiltZ = pk.offsetX < 0 ? -0.38 : 0.38;
+    pk.tiltX = 0.22;
+    pk.tiltZ = pk.offsetX < 0 ? -0.46 : 0.46;
     const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
     const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
     const topH = pk.sy * 0.33;
     // kleine, feine Bauwerke, etwas aus der Mitte gerückt
     const at = (h, ox, oz) => [pk.x + R[0] * ox + R[4] * h + R[8] * oz, pk.y + R[1] * ox + R[5] * h + R[9] * oz, pk.z + R[2] * ox + R[6] * h + R[10] * oz];
-    if (pk.build === "fortress") pushInst("citadel", at(topH - 0.6, pk.sx * 0.15, 0), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.42, pk.sx * 0.5, pk.sx * 0.42], STONE_C);
-    if (pk.build === "ruins") pushInst("monoliths", at(topH - 0.4, -pk.sx * 0.12, 0), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 0.42, pk.sx * 0.42, pk.sx * 0.42], STONE_C);
+    if (pk.build === "fortress") pushInst("citadel", at(topH - 0.6, pk.sx * 0.12, 0), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.6, pk.sx * 0.75, pk.sx * 0.6], STONE_C);
+    if (pk.build === "ruins") pushInst("monoliths", at(topH - 0.4, -pk.sx * 0.1, 0), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 0.6, pk.sx * 0.62, pk.sx * 0.6], STONE_C);
     // kleine Bäume und Felsbrocken auf dem Rand der Oberseite
     for (let k = 0; k < 6; k++) {
       const a = hash2(idx * 13 + k, 400.0) * Math.PI * 2, r = 0.45 + hash2(idx * 13 + k, 401.0) * 0.3;

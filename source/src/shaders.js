@@ -243,8 +243,8 @@ vec3 skyColor(vec3 dir, float t) {
 vec3 skyHaze(vec3 dir) {
   float g = max(dot(dir, GIANT_DIR), 0.0);
   vec3 hb = vec3(0.010, 0.026, 0.055) + vec3(0.020, 0.055, 0.10) * pow(g, 6.0);
-  vec3 ha = vec3(0.075, 0.085, 0.105) + vec3(0.05, 0.06, 0.08) * pow(max(dot(dir, SUN_A), 0.0), 4.0);
-  vec3 hc = vec3(0.58, 0.66, 0.90);
+  vec3 ha = vec3(0.028, 0.032, 0.04) + vec3(0.03, 0.025, 0.015) * pow(max(dot(dir, SUN_A), 0.0), 8.0);
+  vec3 hc = vec3(0.42, 0.5, 0.72);
   return ha * uZoneW.x + hb * uZoneW.y + hc * uZoneW.z;
 }
 
@@ -260,15 +260,18 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
   float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
   // Dichte nach der Zone der Kamera; der Nebelwald ist auch von außen gesehen eine dichte Nebelwand
-  float zoneDens = uZoneW.x * 2.4 + uZoneW.y + uZoneW.z * 0.12;
+  float zoneDens = uZoneW.x * 1.3 + uZoneW.y + uZoneW.z * 0.12;
   vec3 fw = zoneWeights(wp.z);
   zoneDens = max(zoneDens, fw.x * 6.0 * (1.0 - uZoneW.x));
-  // bodennahe Nebelschwaden im Nebelwald
-  float ground = exp(-max(wp.y, 0.0) * 0.35) * (0.6 + 0.8 * vnoise(wp.xz * 0.08 + vec2(t * 0.05, 0.0)));
-  zoneDens += fw.x * uZoneW.x * ground * 2.5;
+  // Nebelschwaden im Nebelwald: in Bänden am Boden, mit deutlichen Lücken dazwischen
+  float wisp = smoothstep(0.42, 0.75, fbm(wp.xz * 0.035 + vec2(t * 0.025, t * 0.01)));
+  float ground = exp(-max(wp.y, 0.0) * 0.45) * wisp;
+  zoneDens += fw.x * uZoneW.x * ground * 5.0;
   float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
   vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
+  // der Nebelwald ist von der Ebene aus eine graue, nicht leuchtende Wand
+  fc = mix(fc, vec3(0.2, 0.22, 0.26), fw.x * (1.0 - uZoneW.x));
   return mix(col, fc, clamp(f, 0.0, 0.97));
 }
 `;
@@ -340,8 +343,8 @@ void main() {
   } else if (matId == 34 && uAnim.y > 0.0) {
     // Tentakel in der Szene: Peitschenwelle läuft vom Ansatz zur Spitze (uAnim.y = Stärke)
     float hgt = aExtra.z, w = hgt * hgt;
-    p.x += uAnim.y * w * sin(uTime * 8.0 + uAnim.x - hgt * 5.5) * 0.3;
-    p.z += uAnim.y * w * cos(uTime * 6.2 + uAnim.x - hgt * 4.5) * 0.16;
+    p.x += uAnim.y * w * sin(uTime * 4.0 + uAnim.x - hgt * 4.0) * 0.34;
+    p.z += uAnim.y * w * cos(uTime * 4.0 + uAnim.x - hgt * 3.5) * 0.12;
   } else if (matId == 34) {
     // Tentakel: schwingt langsam, die Spitze stärker als der Ansatz
     float ph = origin.x * 0.31 + origin.z * 0.17;
@@ -698,7 +701,7 @@ void main() {
     base = vec3(0.2, 0.12, 0.05);
     albA = albC = vec3(0.6, 0.45, 0.25);
     float flick = 0.85 + 0.15 * sin(t * 9.0 + vSeed * 40.0) * sin(t * 5.3 + vSeed * 11.0);
-    vec3 lightCol = glowMask > 1.5 ? vec3(0.45, 0.65, 1.0) * 0.8 : vec3(1.0, 0.55, 0.18) * 3.0;
+    vec3 lightCol = glowMask > 1.5 ? vec3(0.45, 0.65, 1.0) * (0.8 + 2.5 * zw.z) : vec3(1.0, 0.55, 0.18) * 3.0;
     emissive += lightCol * flick / max(emScale, 0.3);
   } else if (matId == 20) {
     // Boot: Holz aus der Textur, die türkisen Einlagen leuchten
