@@ -363,6 +363,14 @@ void main() {
     p.y += (sin(ph * 2.0) * 0.018 * front + sin(ph * 2.0 + 1.6) * 0.018 * (1.0 - front)) * run;
     p.x += sin(ph) * 0.01 * run;
     p.y += sin(uTime * 1.4 + uAnim.x) * 0.006 * smoothstep(0.3, 0.6, p.y);
+    if (matId == 24 && aExtra.y > 0.5 && aExtra.y < 1.5) {
+      // Ohren anlegen, sobald der Kopf zum Heulen gehoben wird: um den Ohransatz nach hinten klappen
+      float earBack = smoothstep(0.25, 0.7, uAnim.w) * 1.15;
+      vec3 ep = vec3(sign(p.x) * 0.065, 0.9, -0.62);
+      vec3 r = p - ep;
+      float c = cos(earBack), s = sin(earBack);
+      p = ep + vec3(r.x * (1.0 - earBack * 0.3), r.y * c - r.z * s, r.y * s + r.z * c);
+    }
     if (matId == 24) {
       vec3 pivot = vec3(0.0, 0.72, -0.4);
       vec3 r = p - pivot;
@@ -1009,12 +1017,13 @@ const FS_DUST = `#version 300 es
 precision highp float;
 in float vAlpha;
 uniform vec3 uColor;
+uniform float uFade;
 out vec4 fragColor;
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float r2 = dot(p, p);
   if (r2 > 1.0) discard;
-  float a = (1.0 - r2) * (1.0 - r2) * vAlpha;
+  float a = (1.0 - r2) * (1.0 - r2) * vAlpha * uFade;
   fragColor = vec4(uColor * a, a);
 }`;
 

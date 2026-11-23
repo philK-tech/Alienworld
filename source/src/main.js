@@ -290,7 +290,8 @@ function drawScene(pass) {
   gl.drawArrays(gl.POINTS, 0, world.particleCount);
 
   // Wolkenschleier unter den Schwebefelsen
-  if (!pass.reflect && world.cloudCount > 0 && copies[1].on) {
+  // nur in der offenen Ebene, beim Übergang ausgeblendet (sonst leuchten sie weiß in die Nacht des Pilzwalds)
+  if (!pass.reflect && world.cloudCount > 0 && camZone[2] > 0.02) {
     const su = progDust.u;
     gl.useProgram(progDust.prog);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -298,6 +299,7 @@ function drawScene(pass) {
     gl.uniform3fv(su.uCamPos, cam);
     gl.uniform1f(su.uViewH, viewH);
     gl.uniform3f(su.uColor, 0.95, 0.96, 1.0);
+    gl.uniform1f(su.uFade, camZone[2]);
     gl.bindVertexArray(world.cloudVao);
     gl.drawArrays(gl.POINTS, 0, world.cloudCount);
   }
@@ -310,6 +312,7 @@ function drawScene(pass) {
     gl.uniform3fv(su.uCamPos, cam);
     gl.uniform1f(su.uViewH, viewH);
     gl.uniform3f(su.uColor, 0.42, 0.33, 0.21);
+    gl.uniform1f(su.uFade, 1.0);
     gl.bindVertexArray(dustVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, dustBuf);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, dustData.subarray(0, dustCount * 5));

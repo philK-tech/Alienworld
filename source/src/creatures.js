@@ -98,12 +98,12 @@ function buildWolfMesh() {
     const [a, b2, c2] = L.pts;
     return Math.min(sdTaper(p, a, b2, L.r[0], L.r[1]), sdTaper(p, b2, c2, L.r[1], L.r[2]), sdEllipsoid(p, [c2[0], 0.03, c2[2] - 0.03], [0.038, 0.028, 0.055]));
   };
+  const earD = (p) => Math.min(...[-1, 1].map((s) => sdFlat(p, [s * 0.06, 0.9, -0.62], [s * 0.085, 1.07, -0.6], 0.042, 2, 2.2)));
   const headD = (p) => {
     let d = sdTaper(p, [0, 0.62, -0.38], [0, 0.82, -0.6], 0.16, 0.11);
     d = smin(d, sdEllipsoid(p, [0, 0.84, -0.66], [0.1, 0.1, 0.13]), 0.06);
     d = smin(d, sdTaper(p, [0, 0.82, -0.74], [0, 0.77, -0.96], 0.065, 0.034), 0.04);
-    for (const s of [-1, 1]) d = smin(d, sdFlat(p, [s * 0.06, 0.9, -0.62], [s * 0.085, 1.07, -0.6], 0.042, 2, 2.2), 0.02);
-    return d;
+    return smin(d, earD(p), 0.02);
   };
   const bodyD = (p) => {
     let d = sdEllipsoid(p, [0, 0.58, -0.22], [0.17, 0.23, 0.3]);
@@ -122,7 +122,9 @@ function buildWolfMesh() {
     for (const L of legs) { const dl = legD(p, L); if (dl < best) { best = dl; leg = L; } }
     const isHead = !leg && dh <= db;
     const swing = leg ? leg.ph * (0.05 + clamp01((0.56 - p[1]) / 0.56)) : 0.0;
-    b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.atan2(p[0], p[1]) / 6.283 + 0.5, p[2] + 1.0, 0.45 + 0.55 * clamp01(p[1] / 0.8), 0.0, swing, isHead ? 24 : 23);
+    // Ohren (extra.y = 1) werden beim Heulen im Shader nach hinten angelegt; Gewicht wächst zur Ohrspitze
+    const ear = isHead && p[1] > 0.88 && earD(p) < 0.012 ? 1.0 : 0.0;
+    b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.atan2(p[0], p[1]) / 6.283 + 0.5, p[2] + 1.0, 0.45 + 0.55 * clamp01(p[1] / 0.8), ear, swing, isHead ? 24 : 23);
   });
   // glühende Augen
   for (const s of [-1, 1]) addBox(b, [s * 0.052, 0.865, -0.765], [0.035, 0.02, 0.02], s * 0.4, 0, 24, 3.0);
