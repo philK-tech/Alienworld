@@ -419,6 +419,10 @@ function render(now) {
   }
   const yaw = heading + gaze.yaw + look.yaw;
   camEye[1] -= sceneDuck * 0.5;
+  // Aufstehen (+0.55) und ein kleiner Schritt nach hinten im Boot (weiter ginge nicht, dort steht die Heckschnecke)
+  camEye[0] += Math.sin(heading) * sceneStand * 0.55;
+  camEye[1] += sceneStand * 0.55;
+  camEye[2] += Math.cos(heading) * sceneStand * 0.55;
   const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12));
   camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
   camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;

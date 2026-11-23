@@ -684,6 +684,8 @@ void main() {
     if (abs(N.y) > 0.7) joint = 1.0;
     float blockVar = 0.85 + 0.3 * hash21(floor(bp) + vSeed * 13.0);
     vec3 stone = vTint.rgb * blockVar * (0.55 + 0.45 * joint) * (0.8 + 0.4 * tex);
+    // dunkles Gemäuer: herablaufende Schmutz- und Wasserschlieren
+    if (vTint.r < 0.5) stone *= 0.6 + 0.4 * smoothstep(0.25, 0.7, vnoise(vec2(lp.x * 2.5 + lp.z * 2.5, lp.y * 0.25)));
     float moss = smoothstep(0.55, 0.85, N.y + (fine - 0.5) * 0.5);
     vec3 mossC = zw.y > 0.5 ? vec3(0.04, 0.10, 0.08) : vec3(0.22, 0.30, 0.08);
     albA = albC = mix(stone, mossC, moss * 0.85);

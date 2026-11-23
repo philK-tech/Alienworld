@@ -93,7 +93,7 @@ function buildWorld() {
   }
   const CYAN = [0.10, 0.85, 1.0, 1], BLUE = [0.15, 0.45, 1.0, 1], VIOLET = [0.75, 0.28, 1.0, 1], MAGENTA = [1.0, 0.3, 0.8, 1];
   const rot = (i, salt) => hash2(i, salt) * Math.PI * 2;
-  const STONE_A = [0.22, 0.22, 0.26, 1], STONE_C = [0.80, 0.78, 0.72, 1];
+  const STONE_A = [0.13, 0.13, 0.16, 1], STONE_C = [0.80, 0.78, 0.72, 1];
 
   const waterfalls = [];
   const clouds = [];
@@ -180,7 +180,7 @@ function buildWorld() {
     pushInst("rocks", [p.x, p.y - 0.3, p.z], rot(i, 3.1), 0, 0, [s, s * 0.7, s * 0.9], [0.8, 0.85, 0.95, 1]);
   }
   // zwei Laternen
-  [[-18, 1], [-128, -1]].forEach(([z, side]) => {
+  [[-18, 1]].forEach(([z, side]) => {
     const x = riverCenterX(z) + side * (riverHalfWidth(z) + 1.3);
     pushInst("lanterns", [x, terrainHeight(x, z) - 0.05, z], side > 0 ? Math.PI : 0, 0, 0, [2.3, 2.3, 2.3], [1, 1, 1, 1]);
   });

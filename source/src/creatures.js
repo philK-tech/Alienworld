@@ -214,6 +214,7 @@ let sceneFocusOn = false;
 let sceneDuck = 0.0;
 let sceneShake = 0.0; // Schütteln des Boots (Tentakel)
 let sceneRock = 0.0;  // Kippen des Boots im Takt der Tentakel (-1..1)
+let sceneStand = 0.0; // Aufstehen und einen Schritt zurück im Boot (0..1)
 // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
 const DUST_MAX = 240;
 const dustData = new Float32Array(DUST_MAX * 5);
@@ -231,6 +232,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
   sceneDuck = 0.0;
   sceneShake = 0.0;
   sceneRock = 0.0;
+  sceneStand = 0.0;
   dustCount = 0;
   const dust = (x, y, z, size, a) => {
     if (dustCount >= DUST_MAX || a <= 0.002) return;
@@ -288,35 +290,43 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       if (!active && d > 0) sc.howled = false;
       if (active) focus(x, y + 1.4, z);
     } else if (sc.type === "castle") {
-      // das Schloss tritt aus dem Nebel; dann stürzt ein Fledermausschwarm von den Zinnen auf das Boot zu
-      const top = [CASTLE.x, CASTLE.top + 8.0, CASTLE.z + zOff];
+      // das Schloss tritt aus dem Nebel; ein Fledermausschwarm steigt von den Zinnen vor den Mond (als Silhouette),
+      // dann stürzt er auf Augenhöhe direkt auf das Boot zu und rauscht knapp über den Kopf hinweg
+      const top = [CASTLE.x, CASTLE.top + 2.0, CASTLE.z + zOff];
+      const moonPt = [cam[0] + MOON_A[0] * 70, cam[1] + MOON_A[1] * 70, cam[2] + MOON_A[2] * 70];
       const N = 90;
-      let lead = null;
       for (let i = 0; i < N; i++) {
         const h1 = hash2(i, 300.0), h2 = hash2(i, 301.0), h3 = hash2(i, 302.0);
-        const q = clamp01((st - 3.5 - h1 * 2.5) / 4.2);
+        const q = clamp01((st - 3.0 - h1 * 1.8) / 5.2);
         if (q <= 0 || q >= 1) continue;
-        // Bahn: vom Turm aufsteigen, auf das Boot zu, kurz davor in Ströme aufteilen und vorbei
-        const split = [(h2 - 0.5) * 2.0, h3 > 0.7 ? 1.0 : 0.0];
-        const P0 = [top[0] + (h2 - 0.5) * 8, top[1] + h3 * 6, top[2] + (h1 - 0.5) * 8];
-        const P1 = [lerp(top[0], cam[0], 0.3) + (h3 - 0.5) * 14, top[1] + 10, lerp(top[2], cam[2], 0.3)];
-        const P2 = [cam[0] + split[0] * 6 + (h1 - 0.5) * 3, cam[1] + 2.5 + split[1] * 4 + h2 * 2, cam[2] - 10];
-        const P3 = [cam[0] + split[0] * 14, cam[1] + 3 + split[1] * 6, cam[2] + 25];
-        const x = bez3(P0[0], P1[0], P2[0], P3[0], q), y = bez3(P0[1], P1[1], P2[1], P3[1], q) + Math.sin(t * 9 + i) * 0.3;
-        const z = bez3(P0[2], P1[2], P2[2], P3[2], q) + Math.cos(t * 7 + i) * 0.3;
-        const q2 = Math.min(q + 0.02, 1);
-        const vx = bez3(P0[0], P1[0], P2[0], P3[0], q2) - x, vz = bez3(P0[2], P1[2], P2[2], P3[2], q2) - z;
+        const sx = (h2 - 0.5) * 2.0, sy = (h3 - 0.5);
+        // Teil 1 (q < 0.55): vom Turm zum Mond, Teil 2: vom Mond direkt auf den Kopf zu und darüber hinweg
+        let x, y, z, px, pz;
+        const P = (u) => {
+          if (u < 0.55) {
+            const v = u / 0.55;
+            return [bez3(top[0] + sx * 5, top[0], moonPt[0] + sx * 8, moonPt[0] + sx * 6, v), bez3(top[1] + h3 * 4, top[1] + 10, moonPt[1] + sy * 8, moonPt[1] + sy * 6, v),
+              bez3(top[2] + (h1 - 0.5) * 6, top[2] + 6, moonPt[2] + 4, moonPt[2], v)];
+          }
+          const v = (u - 0.55) / 0.45;
+          return [bez3(moonPt[0] + sx * 6, lerp(moonPt[0], cam[0], 0.5) + sx * 4, cam[0] + sx * 2.2, cam[0] + sx * 5, v),
+            bez3(moonPt[1] + sy * 6, lerp(moonPt[1], cam[1], 0.6), cam[1] + 0.55 + sy * 0.6, cam[1] + 1.4 + sy, v),
+            bez3(moonPt[2], lerp(moonPt[2], cam[2], 0.5), cam[2] - 3.0, cam[2] + 12.0, v)];
+        };
+        [x, y, z] = P(q);
+        [px, , pz] = P(Math.min(q + 0.01, 1));
+        y += Math.sin(t * 9 + i) * 0.15;
         const g = take(creatureMeshes.bat, [0.02, 0.02, 0.025, 0]);
         if (!g) break;
         const s = 0.9 + h1 * 0.6;
-        Mat4.compose(g.model, [x, y, z], Math.atan2(-vx, -vz), 0, Math.sin(t * 5 + i) * 0.4, [s, s, s]);
+        Mat4.compose(g.model, [x, y, z], Math.atan2(-(px - x), -(pz - z)), 0, Math.sin(t * 5 + i) * 0.4, [s, s, s]);
         g.anim[0] = i * 1.7;
         g.anim[2] = 5.0;
-        if (i === 7) lead = [x, y, z];
       }
       // das Schloss bleibt im Blick; wenn der Schwarm vorbeirauscht, duckt sich die Kamera kurz
       focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
-      sceneDuck = ease(st, 6.2, 7.0) * (1.0 - ease(st, 8.6, 9.8));
+      // gerade so ducken, wenn der Schwarm ankommt
+      sceneDuck = ease(st, 7.3, 7.9) * (1.0 - ease(st, 9.6, 10.6));
     } else if (sc.type === "fish") {
       // ein Leuchtfisch steigt vor dem Bug auf, springt im Bogen über die Fahrspur und taucht wieder ein
       const zJ = cam[2] - 9.0, cx = riverCenterX(zJ);
@@ -337,8 +347,8 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       // und das Boot kippt im Takt mit (sceneRock, siehe boat.js)
       const bx = riverCenterX(cam[2]);
       const spots = [
-        [-1, cam[0] - 3.4, cam[2] + 0.5, 0.0, 8.0],
-        [1, cam[0] + 3.4, cam[2] - 1.0, 0.25, 8.0],
+        [-1, cam[0] - 4.6, cam[2] - 4.0, 0.0, 8.0],
+        [1, cam[0] + 4.4, cam[2] - 5.0, 0.25, 8.0],
         [-1, bx - 1.8, cam[2] - 9.0, 0.6, 11.0],
         [1, bx + 1.9, cam[2] - 12.0, 0.85, 12.0]
       ];
@@ -350,16 +360,18 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         if (lift <= 0.001) return;
         const g = take(creatureMeshes.tentacle, side > 0 ? [0.6, 0.12, 0.9] : [0.05, 0.55, 0.8]);
         // die seitlichen neigen sich über das Boot, die vorderen bäumen sich vor dem Bug auf
-        const lean = i < 2 ? 0.45 : 0.15;
+        const lean = i < 2 ? 0.3 : 0.15;
         Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * lean * lift, [h, h * 1.1, h]);
         // alle im selben Takt (Phase 0 bzw. gegenphasig je Seite)
         g.anim[0] = side > 0 ? 0.0 : Math.PI;
-        g.anim[1] = 0.9 + 0.7 * ease(st, 2.0, 2.8);
+        g.anim[1] = (i < 2 ? 0.5 : 0.9) + (i < 2 ? 0.35 : 0.7) * ease(st, 2.0, 2.8);
         fx += x; fy += h * lift * 0.5; fz += z; n++;
         rockAmp = Math.max(rockAmp, lift);
       });
       // Boot kippt im Takt der Schläge (gleiche Frequenz wie die Peitschenwelle im Shader)
       sceneRock = Math.sin(t * 4.0) * rockAmp * ease(st, 1.5, 2.5);
+      // man steht auf und tritt einen Schritt zurück, um die Tentakel besser zu sehen
+      sceneStand = ease(st, 0.8, 2.2) * (1.0 - ease(st, 9.0, 10.4));
       sceneShake = Math.max(sceneShake, rockAmp * (1.0 - ease(st, 1.4, 2.6)) * 0.6);
       if (n) focus(fx / n, Math.max(fy / n, 2.0), Math.min(fz / n, cam[2] - 6.0)); else focus(bx, 2.0, cam[2] - 10.0);
     } else if (sc.type === "herd") {

@@ -964,28 +964,60 @@ function buildDeadTreeMesh() {
   return b;
 }
 
-// Gotisches Schloss (Nebelwald): Hauptbau mit steilem Dach, Wehrtürme mit hohen Spitzhelmen,
-// Strebepfeiler, wenige kalt leuchtende Fenster. Grundfläche ~1 x 0.7, Höhe ~1.
+// Gotisches Schloss (Nebelwald), sauber zusammengesetzt: Sockel, Ringmauer mit Zinnen, vier Ecktürme an den
+// Mauerecken (einer zerbrochen, ohne Dach), Palas mit steilem Dach, hoher Hauptturm, Kapelle mit Dachreiter,
+// dürre Spitzen und wenige kalt leuchtende Fenster. Grundfläche ~1 x 0.7, Höhe ~1.2.
 function buildGothicCastleMesh() {
   const b = createGeometryBuilder();
-  // Fundament, das in den Felsen reicht (damit auf unebenem Grund nichts schwebt)
-  addBox(b, [-0.05, -0.2, 0.0], [1.05, 0.42, 0.72], 0, 0, 36);
-  addBox(b, [0, 0.17, 0], [0.46, 0.34, 0.26], 0, 0, 36);
-  // First entlang des Hauptbaus (x): Breite = Tiefe des Baus, Länge = seine Länge
-  addPrismRoof(b, [0, 0.34, 0], 0.3, 0.22, 0.5, Math.PI / 2, 37);
-  addBox(b, [-0.3, 0.12, 0.08], [0.22, 0.24, 0.2], 0.3, 0, 36);
-  addPrismRoof(b, [-0.3, 0.24, 0.08], 0.22, 0.15, 0.22, 0.3, 37);
-  const towers = [[0.27, -0.14, 0.62, 0.07], [-0.24, -0.15, 0.78, 0.075], [0.3, 0.17, 0.5, 0.06], [0.0, -0.2, 1.0, 0.085], [-0.45, 0.2, 0.55, 0.06]];
-  towers.forEach(([x, z, h, r], k) => {
-    addLathe(b, 6, 8, (t) => [x, -0.3 + t * (h * 0.72 + 0.3), z], (t) => { const rr = r * (1.08 - t * 0.2); return [rr, rr]; }, 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
-    addLathe(b, 2, 8, (t) => [x, h * 0.72 + t * 0.03, z], () => [r * 1.25, r * 1.25], 36, () => [0.9, 0.0, 0.0]);
-    addLathe(b, 6, 8, (t) => [x, h * 0.75 + t * h * 0.42, z], (t) => { const rr = r * 1.3 * Math.pow(1.0 - t, 1.5) + 0.002; return [rr, rr]; }, 37, (t) => [0.8, 0.0, 0.0]);
-    if (k % 2 === 0) addBox(b, [x + r * 0.97, h * 0.55, z], [0.006, 0.05, 0.02], 0, 0, 38, 2.0);
-    if (k === 3) addBox(b, [x - r * 0.97, h * 0.4, z], [0.006, 0.05, 0.02], 0, 0, 38, 2.0);
-  });
-  for (let k = 0; k < 5; k++) addBox(b, [-0.18 + k * 0.09, 0.12, -0.145], [0.03, 0.26, 0.05], 0, 0, 36);
-  addBox(b, [0.08, 0.22, -0.131], [0.03, 0.09, 0.005], 0, 0, 38, 2.0);
-  addBox(b, [-0.12, 0.2, -0.131], [0.03, 0.08, 0.005], 0, 0, 36);
+  const W = 0.46, D = 0.32;                       // halbe Breite und Tiefe des Mauerrings
+  addBox(b, [0, -0.2, 0], [W * 2 + 0.16, 0.42, D * 2 + 0.16], 0, 0, 36);   // Sockel bis in den Felsen
+  // Ringmauer mit Zinnen und Wehrgang
+  const wall = (x0, z0, x1, z1) => {
+    const len = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(-(z1 - z0), x1 - x0);
+    addBox(b, [(x0 + x1) / 2, 0.11, (z0 + z1) / 2], [len, 0.22, 0.05], ang, 0, 36);
+    const n = Math.floor(len / 0.06);
+    for (let k = 0; k < n; k += 2) {
+      const f = (k + 0.5) / n;
+      addBox(b, [lerp(x0, x1, f), 0.245, lerp(z0, z1, f)], [0.03, 0.05, 0.05], ang, 0, 36);
+    }
+  };
+  wall(-W, -D, W, -D); wall(W, -D, W, D); wall(W, D, -W, D); wall(-W, D, -W, -D);
+  // Ecktürme genau auf den Mauerecken
+  const tower = (x, z, h, r, roof, broken) => {
+    addLathe(b, 6, 8, (t) => [x, -0.05 + t * (h + 0.05), z], (t) => { const rr = r * (1.06 - t * 0.12); return [rr, rr]; }, 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
+    if (broken) {
+      // ausgebrochene Krone: unregelmäßige Mauerreste
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2, hh = 0.03 + 0.08 * Math.abs(Math.sin(k * 2.3));
+        if (k % 3 === 1) continue;
+        addBox(b, [x + Math.cos(a) * r * 0.85, h + hh / 2, z + Math.sin(a) * r * 0.85], [r * 0.55, hh, r * 0.3], -a, 0, 36);
+      }
+      return;
+    }
+    addLathe(b, 2, 8, (t) => [x, h + t * 0.03, z], () => [r * 1.22, r * 1.22], 36, () => [0.9, 0.0, 0.0]);
+    if (roof) {
+      addLathe(b, 7, 8, (t) => [x, h + 0.03 + t * roof, z], (t) => { const rr = r * 1.3 * Math.pow(1.0 - t, 1.6) + 0.002; return [rr, rr]; }, 37, (t) => [0.8, 0.0, 0.0]);
+      addLathe(b, 3, 4, (t) => [x, h + 0.03 + roof + t * 0.06, z], () => [0.004, 0.004], 37, () => [0.8, 0.0, 0.0]);   // dürre Spitze
+    }
+  };
+  tower(-W, -D, 0.42, 0.075, 0.32, false);
+  tower(W, -D, 0.38, 0.07, 0.28, false);
+  tower(-W, D, 0.36, 0.07, 0.26, false);
+  tower(W, D, 0.3, 0.075, 0, true);
+  // Palas mit steilem Satteldach (First entlang x) und Giebel
+  addBox(b, [-0.05, 0.19, -0.08], [0.46, 0.38, 0.26], 0, 0, 36);
+  addPrismRoof(b, [-0.05, 0.38, -0.08], 0.3, 0.26, 0.5, Math.PI / 2, 37);
+  for (let k = 0; k < 4; k++) addBox(b, [-0.22 + k * 0.11, 0.08, -0.215], [0.03, 0.16, 0.03], 0, 0, 36);   // Strebepfeiler, stehen auf dem Boden
+  // Hauptturm, hinten am Palas angesetzt
+  tower(0.12, 0.0, 0.78, 0.085, 0.42, false);
+  // Kapelle mit Dachreiter
+  addBox(b, [-0.24, 0.13, 0.17], [0.2, 0.26, 0.16], 0, 0, 36);
+  addPrismRoof(b, [-0.24, 0.26, 0.17], 0.18, 0.2, 0.22, Math.PI / 2, 37);
+  addLathe(b, 5, 6, (t) => [-0.24, 0.43 + t * 0.14, 0.17], (t) => { const rr = 0.025 * (1 - t) + 0.002; return [rr, rr]; }, 37, () => [0.8, 0.0, 0.0]);
+  // wenige kalt leuchtende Fenster (Spitzbögen), einer im Hauptturm
+  addBox(b, [0.02, 0.24, -0.212], [0.035, 0.09, 0.004], 0, 0, 38, 2.0);
+  addBox(b, [0.12 - 0.087, 0.6, 0.0], [0.004, 0.07, 0.025], 0, 0, 38, 2.0);
+  addBox(b, [-0.24, 0.15, 0.252], [0.03, 0.08, 0.004], 0, 0, 38, 2.0);
   return b;
 }
 
