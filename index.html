@@ -312,6 +312,23 @@
       }
     };
 
+    // Das Schloss auf seinem Felsen am Ende des Nebelwalds
+    const CASTLE = (() => {
+      const z = -150, side = 1;
+      const x = riverCenterX(z) + side * (riverHalfWidth(z) + 19.0);
+      const gy = terrainHeight(x, z);
+      return { x, z, side, gy, rockH: 16.0, top: gy - 2.0 + 16.0 * 0.93 + 28.0 };
+    })();
+
+    // Richtung zum gelben Mond im Nebelwald: von der Anfahrt aus gesehen steht er genau hinter den Schlosstürmen.
+    // Wird in den Shader eingesetzt (SUN_A) und für die Lichtkegel verwendet.
+    const MOON_A = (() => {
+      const vz = CASTLE.z + 58.0, vx = riverCenterX(vz);
+      const v = [CASTLE.x - vx, CASTLE.top + 6.0 - 2.0, CASTLE.z - 40.0 - vz];
+      const l = Math.hypot(v[0], v[1], v[2]);
+      return v.map((c) => c / l);
+    })();
+
     // --- Geometry Builder ---
     // Vertex layout (12 floats per vertex):
     // pos(3), normal(3), uv(2), extra(3: ao, glow/edge, sway/layer), matId(1)
@@ -728,8 +745,10 @@
           const ang = u * Math.PI * 2.0;
           const ca = Math.cos(ang), sa = Math.sin(ang);
           const n = fbm2(ca * 2.2 + v * 3.0, sa * 2.2 + 8.2, 5);
-          const strata = 1.0 + 0.015 * Math.sin(v * 23.0 + n * 6.0);
-          const jag = (0.62 + 0.58 * n) * strata;
+          // Unterseite: senkrechte Felsrippen und Zacken, oben ein leicht überhängender Rand
+          const ribs = v < 0.72 ? (fbm2(ang * 4.0, v * 1.2 + 3.0, 3) - 0.5) * 0.35 * (1.0 - v) : 0.0;
+          const lip = smoothstep(0.66, 0.74, v) * (1.0 - smoothstep(0.74, 0.86, v)) * 0.08;
+          const jag = (0.62 + 0.58 * n) * (1.0 + ribs + lip);
           const rx = ca * radius * jag;
           const rz = sa * radius * jag * 0.86;
           const glow = smoothstep(0.55, 0.85, n) * 0.6;
@@ -1493,18 +1512,21 @@
     // Strebepfeiler, wenige kalt leuchtende Fenster. Grundfläche ~1 x 0.7, Höhe ~1.
     function buildGothicCastleMesh() {
       const b = createGeometryBuilder();
+      // Fundament, das in den Felsen reicht (damit auf unebenem Grund nichts schwebt)
+      addBox(b, [-0.05, -0.2, 0.0], [1.05, 0.42, 0.72], 0, 0, 36);
       addBox(b, [0, 0.17, 0], [0.46, 0.34, 0.26], 0, 0, 36);
       addPrismRoof(b, [0, 0.34, 0], 0.48, 0.22, 0.28, Math.PI / 2, 37);
       addBox(b, [-0.3, 0.12, 0.08], [0.22, 0.24, 0.2], 0.3, 0, 36);
       addPrismRoof(b, [-0.3, 0.24, 0.08], 0.22, 0.15, 0.22, 0.3, 37);
       const towers = [[0.27, -0.14, 0.62, 0.07], [-0.24, -0.15, 0.78, 0.075], [0.3, 0.17, 0.5, 0.06], [0.0, -0.2, 1.0, 0.085], [-0.45, 0.2, 0.55, 0.06]];
       towers.forEach(([x, z, h, r], k) => {
-        addLathe(b, 6, 8, (t) => [x, t * h * 0.72, z], (t) => { const rr = r * (1.0 - t * 0.12); return [rr, rr]; }, 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
+        addLathe(b, 6, 8, (t) => [x, -0.3 + t * (h * 0.72 + 0.3), z], (t) => { const rr = r * (1.08 - t * 0.2); return [rr, rr]; }, 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
         addLathe(b, 2, 8, (t) => [x, h * 0.72 + t * 0.03, z], () => [r * 1.25, r * 1.25], 36, () => [0.9, 0.0, 0.0]);
         addLathe(b, 6, 8, (t) => [x, h * 0.75 + t * h * 0.42, z], (t) => { const rr = r * 1.3 * Math.pow(1.0 - t, 1.5) + 0.002; return [rr, rr]; }, 37, (t) => [0.8, 0.0, 0.0]);
         if (k % 2 === 0) addBox(b, [x + r * 0.97, h * 0.55, z], [0.006, 0.05, 0.02], 0, 0, 38, 2.0);
+        if (k === 3) addBox(b, [x - r * 0.97, h * 0.4, z], [0.006, 0.05, 0.02], 0, 0, 38, 2.0);
       });
-      for (let k = 0; k < 5; k++) addBox(b, [-0.18 + k * 0.09, 0.12, -0.14], [0.03, 0.24, 0.05], 0, 0.12, 36);
+      for (let k = 0; k < 5; k++) addBox(b, [-0.18 + k * 0.09, 0.12, -0.145], [0.03, 0.26, 0.05], 0, 0, 36);
       addBox(b, [0.08, 0.22, -0.131], [0.03, 0.09, 0.005], 0, 0, 38, 2.0);
       addBox(b, [-0.12, 0.2, -0.131], [0.03, 0.08, 0.005], 0, 0, 36);
       return b;
@@ -1513,6 +1535,7 @@
     // Festung auf dem zweiten Schwebefelsen: Bergfried mit Dach, runder Mauerring mit Zinnen, vier Rundtürme mit Kegeldächern. Höhe ~1.
     function buildFortressMesh() {
       const b = createGeometryBuilder();
+      addLathe(b, 2, 16, (t) => [0, -0.35 + t * 0.37, 0], () => [0.56, 0.56], 36, () => [0.9, 0.0, 0.0]);
       addBox(b, [0, 0.25, 0], [0.3, 0.5, 0.3], 0.3, 0, 36);
       addPrismRoof(b, [0, 0.5, 0], 0.32, 0.2, 0.32, 0.3, 37);
       const R = 0.48;
@@ -1535,6 +1558,7 @@
     // eine Mauer mit Bogenfenster, umgestürzte Säulentrommeln. Grundfläche ~1 x 0.7.
     function buildRuinSiteMesh() {
       const b = createGeometryBuilder();
+      addBox(b, [0, -0.15, 0], [1.08, 0.42, 0.78], 0, 0, 36);
       addBox(b, [0, 0.03, 0], [1.0, 0.06, 0.7], 0, 0, 36);
       addBox(b, [0, 0.08, 0], [0.9, 0.05, 0.6], 0, 0, 36);
       addBox(b, [0, 0.12, 0], [0.8, 0.04, 0.5], 0, 0, 36);
@@ -1817,7 +1841,7 @@
     const vec3 MOON_DIR = vec3(-0.43, 0.55, -0.72);
     ` + GLSL_ZONE + `
     // Sonnenrichtungen und Lichtfarben der Tagzonen
-    const vec3 SUN_A = vec3(-0.30, 0.55, -0.78);   // Mond hinter Wolken (Nebelwald)
+    const vec3 SUN_A = vec3(` + MOON_A.map((v) => v.toFixed(4)).join(', ') + `);   // gelber Mond hinter dem Schloss (Nebelwald)
     const vec3 SUN_C = vec3(0.45, 0.72, -0.53);
 
     // Bergkämme für die gemalten Hintergründe: Höhe über dem Horizont je Blickwinkel
@@ -1841,14 +1865,17 @@
       vec3 sky = mix(hor, zen, pow(clamp(el, 0.0, 1.0), 0.5));
       // Mond mit Hof
       float md = max(dot(dir, SUN_A), 0.0);
-      float moon = smoothstep(0.9993, 0.9996, md);
-      sky += vec3(0.85, 0.9, 1.0) * moon * 3.0 + vec3(0.25, 0.28, 0.35) * pow(md, 60.0) + vec3(0.06, 0.07, 0.09) * pow(md, 6.0);
+      float ma = acos(clamp(md, -1.0, 1.0));
+      float moon = smoothstep(0.052, 0.048, ma);
+      float crater = fbm(dir.xy * 160.0 + dir.z * 90.0);
+      sky += vec3(1.0, 0.82, 0.45) * moon * (2.2 + 0.8 * crater) + vec3(0.55, 0.42, 0.2) * pow(md, 300.0) + vec3(0.12, 0.1, 0.07) * pow(md, 12.0);
       // schwere Wolken, am Rand vom Mond angeleuchtet
       vec2 cp = dir.xz / (el + 0.15) * 1.3 + vec2(t * 0.006, t * 0.002);
       float c1 = fbm(cp * 1.2), c2 = fbm(cp * 2.7 + 5.0);
       float cl = smoothstep(0.35, 0.7, c1 * 0.7 + c2 * 0.3);
-      vec3 cloudCol = mix(vec3(0.03, 0.035, 0.045), vec3(0.16, 0.18, 0.22), pow(md, 4.0) * (1.0 - cl * 0.5) + c2 * 0.15);
-      sky = mix(sky, cloudCol, cl * smoothstep(-0.02, 0.12, el));
+      vec3 cloudCol = mix(vec3(0.03, 0.035, 0.045), vec3(0.22, 0.2, 0.17), pow(md, 6.0) * (1.0 - cl * 0.5) + c2 * 0.12);
+      // vor dem Mond nur dünne Wolkenschleier
+      sky = mix(sky, cloudCol, cl * smoothstep(-0.02, 0.12, el) * (1.0 - 0.75 * smoothstep(0.985, 0.999, md)));
       // Bergkämme in zwei Schichten
       float hFar = 0.04 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.18;
       if (el < hFar) sky = mix(vec3(0.05, 0.055, 0.07), hor, 0.4 + 0.4 * smoothstep(hFar, 0.0, el));
@@ -1991,9 +2018,12 @@
       float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
       float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
       // Dichte nach der Zone der Kamera; der Nebelwald ist auch von außen gesehen eine dichte Nebelwand
-      float zoneDens = uZoneW.x * 2.2 + uZoneW.y + uZoneW.z * 0.4;
+      float zoneDens = uZoneW.x * 2.4 + uZoneW.y + uZoneW.z * 0.12;
       vec3 fw = zoneWeights(wp.z);
       zoneDens = max(zoneDens, fw.x * 6.0 * (1.0 - uZoneW.x));
+      // bodennahe Nebelschwaden im Nebelwald
+      float ground = exp(-max(wp.y, 0.0) * 0.35) * (0.6 + 0.8 * vnoise(wp.xz * 0.08 + vec2(t * 0.05, 0.0)));
+      zoneDens += fw.x * uZoneW.x * ground * 2.5;
       float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
       float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
       vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
@@ -2078,18 +2108,32 @@
         p.z += cos(uTime * 0.45 + ph * 1.3) * 0.18 * w;
         p.y -= (1.0 - cos(uTime * 0.5 + ph)) * 0.04 * w;
       } else if (matId == 23 || matId == 24) {
-        // Wolf: Laufzyklus der Beine (uAnim.y = wie stark er läuft), leichtes Atmen im Stehen
-        float swing = sin(uTime * 7.0 + uAnim.x) * 0.5 * uAnim.y;
+        // Vierbeiner: diagonaler Trab (uAnim.y = Tempo 0..1), Schulter und Hüfte wippen versetzt,
+        // im Stehen leichtes Atmen. Beim Wolf dreht sich der Kopf (uAnim.w heben/senken, uAnim.z zur Seite).
+        float ph = uTime * 5.2 + uAnim.x;
+        float run = uAnim.y;
+        float swing = sin(ph) * 0.32 * run;
+        // Fuß hebt sich im Vorschwung, statt nur zu pendeln
+        float lift = max(0.0, cos(ph) * sign(aExtra.z)) * abs(aExtra.z) * 0.12 * run;
         p.z += swing * aExtra.z;
+        p.y += lift;
+        float front = smoothstep(0.1, -0.3, p.z);
+        p.y += (sin(ph * 2.0) * 0.018 * front + sin(ph * 2.0 + 1.6) * 0.018 * (1.0 - front)) * run;
+        p.x += sin(ph) * 0.01 * run;
+        p.y += sin(uTime * 1.4 + uAnim.x) * 0.006 * smoothstep(0.3, 0.6, p.y);
         if (matId == 24) {
-          // Kopf um das Nackengelenk heben oder senken (uAnim.w)
-          vec3 pivot = vec3(0.0, 0.74, -0.42);
-          float c = cos(uAnim.w), s = sin(uAnim.w);
+          vec3 pivot = vec3(0.0, 0.72, -0.4);
           vec3 r = p - pivot;
-          p = pivot + vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
-          nrm = vec3(nrm.x, nrm.y * c - nrm.z * s, nrm.y * s + nrm.z * c);
+          vec3 rn = nrm;
+          float c = cos(uAnim.w), s = sin(uAnim.w);
+          r = vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
+          rn = vec3(rn.x, rn.y * c - rn.z * s, rn.y * s + rn.z * c);
+          float cy = cos(uAnim.z), sy = sin(uAnim.z);
+          r = vec3(r.x * cy + r.z * sy, r.y, -r.x * sy + r.z * cy);
+          rn = vec3(rn.x * cy + rn.z * sy, rn.y, -rn.x * sy + rn.z * cy);
+          p = pivot + r;
+          nrm = rn;
         }
-        p.y += abs(sin(uTime * 7.0 + uAnim.x)) * 0.03 * uAnim.y + sin(uTime * 1.6 + uAnim.x) * 0.006;
       }
 
       vec4 wp = modelMat * vec4(p, 1.0);
@@ -2490,7 +2534,7 @@
         float ndl = max((dot(N, SUN_A) + wrap) / (1.0 + wrap), 0.0);
         vec3 amb = mix(vec3(0.018, 0.02, 0.025), vec3(0.05, 0.06, 0.08), hemi) * ao;
         float spec = pow(max(dot(N, normalize(SUN_A + V)), 0.0), specPow) * (0.02 + wet * 0.35);
-        vec3 c = albA * (amb + vec3(0.32, 0.38, 0.5) * ndl * mix(1.0, ao, 0.5)) + vec3(0.5, 0.6, 0.75) * spec * ao * 0.6;
+        vec3 c = albA * (amb + vec3(0.38, 0.38, 0.42) * ndl * mix(1.0, ao, 0.5)) + vec3(0.6, 0.6, 0.6) * spec * ao * 0.6;
         c += vec3(0.12, 0.14, 0.18) * rim * 0.08 * ao;
         col += c * zw.x;
       }
@@ -2702,6 +2746,36 @@
       fragColor = vec4(vColor * exp(-r2 * 4.0) * 0.35, 0.0);
     }`;
 
+    // weiche Staubwolken (normale Alpha-Mischung, nicht additiv): Position, Größe, Deckkraft je Punkt
+    const VS_DUST = `#version 300 es
+    precision highp float;
+    layout(location = 0) in vec4 aPosSize;
+    layout(location = 1) in float aAlpha;
+    uniform mat4 uViewProj;
+    uniform vec3 uCamPos;
+    uniform float uPixelRatio;
+    uniform float uViewH;
+    out float vAlpha;
+    void main() {
+      float dist = length(aPosSize.xyz - uCamPos);
+      vAlpha = aAlpha;
+      gl_Position = uViewProj * vec4(aPosSize.xyz, 1.0);
+      gl_PointSize = clamp(aPosSize.w * uViewH / max(dist, 1.0), 1.0, 256.0);
+    }`;
+
+    const FS_DUST = `#version 300 es
+    precision highp float;
+    in float vAlpha;
+    uniform vec3 uColor;
+    out vec4 fragColor;
+    void main() {
+      vec2 p = gl_PointCoord * 2.0 - 1.0;
+      float r2 = dot(p, p);
+      if (r2 > 1.0) discard;
+      float a = (1.0 - r2) * (1.0 - r2) * vAlpha;
+      fragColor = vec4(uColor * a, a);
+    }`;
+
     const VS_QUAD = `#version 300 es
     precision highp float;
     layout(location = 0) in vec2 aPos;
@@ -2827,12 +2901,13 @@
       return { prog, u };
     }
 
-    let progOpaque, progFx, progParticles, progGlowDots, progBloomDown, progBloomUp, progComposite;
+    let progOpaque, progFx, progParticles, progGlowDots, progDust, progBloomDown, progBloomUp, progComposite;
     try {
       progOpaque = createProgram(gl, VS_WORLD, FS_OPAQUE);
       progFx = createProgram(gl, VS_FX, FS_FX);
       progParticles = createProgram(gl, VS_PARTICLES, FS_PARTICLES);
       progGlowDots = createProgram(gl, VS_GLOWDOTS, FS_GLOWDOTS);
+      progDust = createProgram(gl, VS_DUST, FS_DUST);
       progBloomDown = createProgram(gl, VS_QUAD, FS_BLOOM_DOWN);
       progBloomUp = createProgram(gl, VS_QUAD, FS_BLOOM_UP);
       progComposite = createProgram(gl, VS_QUAD, FS_COMPOSITE);
@@ -2860,21 +2935,12 @@
       const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 4.0);
       return { x, z: sc.z, y: terrainHeight(x, sc.z) + 0.6 }; // y: Oberkante des Felsvorsprungs
     }
-    // Richtung zum Mond im Nebelwald (wie SUN_A im Shader): Lichtkegel fallen aus dieser Richtung
-    const MOON_DIR_A = (() => { const v = [-0.30, 0.55, -0.78], l = Math.hypot(...v); return v.map((c) => c / l); })();
     function wolfDen(sc) {
       const z = sc.z - 5.0;
       const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 15.0);
       return { x, z };
     }
 
-    // Das Schloss auf seinem Felsen am Ende des Nebelwalds
-    const CASTLE = (() => {
-      const z = -150, side = 1;
-      const x = riverCenterX(z) + side * (riverHalfWidth(z) + 19.0);
-      const gy = terrainHeight(x, z);
-      return { x, z, side, gy, rockH: 16.0, top: gy - 2.0 + 16.0 * 0.93 + 28.0 };
-    })();
 
     // freie Stellen: Lichtung des Wolfs, Weg ins Versteck, Fuß des Schlossfelsens
     const CLEARINGS = [
@@ -2952,7 +3018,7 @@
       const lightShafts = [];
       // Lichtkegel: die Achse des Kegels zeigt genau zum Mond
       const addShaft = (x, z, sx, intensity) => {
-        const up = MOON_DIR_A;
+        const up = MOON_A;
         let rx = [up[1], -up[0], 0]; const rl = Math.hypot(rx[0], rx[1]) || 1; rx = [rx[0] / rl, rx[1] / rl, 0];
         const fz = [rx[1] * up[2], -rx[0] * up[2], rx[0] * up[1] - rx[1] * up[0]];
         const sy = 1.0 + sx * 0.25, y = terrainHeight(x, z);
@@ -3041,21 +3107,26 @@
       // ---------------- Zone 2: Pilzwald ----------------
       // dichte Riesenpilze direkt am Ufer; manche neigen sich als Baldachin über den Fluss
       const MUSH_TINTS = [CYAN, VIOLET, MAGENTA, BLUE];
-      for (let i = 0; i < 420; i++) {
-        const p = bankSpot(i, 90.0, 0.5, 45.0, 2.2, -158.0, -322.0);
+      // Mindestabstand: Hüte dürfen sich nicht gegenseitig durchdringen (Abstand der Hutmitten > Summe der Hutradien)
+      const caps = [];
+      for (let i = 0; i < 700; i++) {
+        const p = bankSpot(i, 90.0, 0.5, 45.0, 2.0, -158.0, -322.0);
         if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 90.7))) continue;
-        const canopy = p.bank < 5.0 && hash2(i, 91.5) < 0.45;
-        let h = canopy ? 9.0 + hash2(i, 91.0) * 6.0 : (p.bank > 15 ? 9.0 : 4.0) + hash2(i, 91.0) * 8.0;
+        const canopy = p.bank < 4.0 && hash2(i, 91.5) < 0.5;
+        let h = canopy ? 7.5 + hash2(i, 91.0) * 3.0 : (p.bank > 15 ? 7.0 : 3.5) + hash2(i, 91.0) * 5.0;
         // Baldachin: zum Fluss geneigt, der Hut hängt über dem Wasser, bleibt aber hoch über dem Boot
-        const lean = canopy ? 0.28 + hash2(i, 92.5) * 0.12 : (hash2(i, 93.0) - 0.5) * 0.12;
-        if (!canopy) h = Math.min(h, p.reach / 0.62 + 3.0);
+        const lean = canopy ? 0.24 + hash2(i, 92.5) * 0.1 : (hash2(i, 93.0) - 0.5) * 0.1;
+        if (!canopy) h = Math.min(h, p.reach / 0.62 + 2.0);
+        const capR = 0.66 * h, capX = p.x - p.side * Math.sin(lean) * h * 0.85, capY = p.y + h * 0.85;
+        if (caps.some((c) => Math.hypot(c.x - capX, c.z - p.z) < (c.r + capR) * 0.92 && Math.abs(c.y - capY) < (c.r + capR) * 0.5)) continue;
+        caps.push({ x: capX, y: capY, z: p.z, r: capR });
         pushInst("giantMushrooms", [p.x, p.y - 0.2, p.z], rot(i, 92.0), 0, p.side * lean, [h, h, h], MUSH_TINTS[Math.floor(hash2(i, 94.0) * 4)]);
       }
       // Torbögen aus Pilzstämmen, unter denen die Fahrt hindurchführt
       [-196, -244, -292].forEach((z, i) => {
         const hw = riverHalfWidth(z) + 2.5;
         pushInst("mushroomArches", [riverCenterX(z), terrainHeight(riverCenterX(z) + hw, z) - 0.3, z], -Math.atan(riverSlopeX(z)), 0, 0,
-          [hw, 11.0 + i, hw * 0.9], i === 1 ? VIOLET : CYAN);
+          [hw, 9.5 + i, hw * 0.9], i === 1 ? VIOLET : CYAN);
       });
       // leuchtendes Schilf und Blütenkelche am Wasser, kleine Pilze
       for (let i = 0; i < 380; i++) {
@@ -3093,16 +3164,16 @@
       // ---------------- Zone 3: offene Ebene mit drei Schwebefelsen ----------------
       // Felsen 1 links mit Wasserfall, Felsen 2 rechts mit Schloss, Felsen 3 rechts mit Ruine; alle eher entfernt
       const floatingPeaks = [
-        { z: -352, offsetX: -52, y: 30, sx: 15, sy: 20, sz: 13, fall: true, build: null },
-        { z: -398, offsetX: 62, y: 40, sx: 17, sy: 22, sz: 15, fall: false, build: "fortress" },
-        { z: -446, offsetX: 44, y: 26, sx: 12, sy: 16, sz: 11, fall: false, build: "ruins" }
+        { z: -360, offsetX: -78, y: 38, sx: 18, sy: 24, sz: 16, fall: true, build: null },
+        { z: -404, offsetX: 88, y: 46, sx: 20, sy: 26, sz: 18, fall: false, build: "fortress" },
+        { z: -452, offsetX: 70, y: 32, sx: 15, sy: 20, sz: 13, fall: false, build: "ruins" }
       ];
       floatingPeaks.forEach((pk, idx) => {
         pk.x = riverCenterX(pk.z) + pk.offsetX;
         pk.rot = idx * 1.4;
         // zum Fluss und zur Kamera gekippt, damit man sieht, was oben steht
-        pk.tiltX = 0.22;
-        pk.tiltZ = pk.offsetX < 0 ? -0.26 : 0.26;
+        pk.tiltX = 0.18;
+        pk.tiltZ = pk.offsetX < 0 ? -0.38 : 0.38;
         const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
         const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
         const topH = pk.sy * 0.33;
@@ -3595,9 +3666,14 @@
     const ripplePool = Array.from({ length: 16 }, () => ({ x: 0, z: 0, a: 0 }));
     const rippleDraws = [];
 
-    // Blickziel der laufenden Szene (die Kamera richtet sich fest darauf)
+    // Blickziel der laufenden Szene (die Kamera richtet sich fest darauf) und kurzes Ducken der Kamera (0..1)
     const sceneFocus = [0, 0, 0];
     let sceneFocusOn = false;
+    let sceneDuck = 0.0;
+    // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
+    const DUST_MAX = 240;
+    const dustData = new Float32Array(DUST_MAX * 5);
+    let dustCount = 0;
 
     // weicher Verlauf 0..1 zwischen den Zeiten t0 und t1
     const ease = (t, t0, t1) => smoothstep(t0, t1, t);
@@ -3608,6 +3684,13 @@
       pois.length = 0;
       rippleDraws.length = 0;
       sceneFocusOn = false;
+      sceneDuck = 0.0;
+      dustCount = 0;
+      const dust = (x, y, z, size, a) => {
+        if (dustCount >= DUST_MAX || a <= 0.002) return;
+        dustData.set([x, y, z, size, a], dustCount * 5);
+        dustCount++;
+      };
       let k = 0;
       const take = (mesh, tint) => {
         if (k >= drawPool.length) return null;
@@ -3631,30 +3714,32 @@
         if (d > 200 || d < -80) return;
         const zOff = (camZ - d) - sc.z; // Versatz, falls die Szene in einer anderen Runde der Schleife liegt
         const active = si === sceneIdx;
-        if (!active && sc.type !== "wolf" && sc.type !== "mantas") return; // Wolf und Mantas sind auch vor und nach ihrer Szene da
+        if (!active && sc.type !== "wolf") return; // der Wolf bleibt nach seiner Szene stehen und sieht dem Boot nach
         const st = active ? sceneT : d > 0 ? 0 : sc.dur;
 
         if (sc.type === "wolf") {
-          // tritt aus dem Nebel auf die Lichtung, fixiert das Boot, heult, zieht sich wieder zurück
-          if (!active && d <= 0) return;
+          // tritt ruhig aus dem Wald auf den Felsvorsprung, heult, bleibt stehen und sieht dem Boot nach
+          if (!active && d > 0) return;
+          if (d < -45) return;
           const spot = wolfSpot(sc), den = wolfDen(sc);
-          const outT = ease(st, 0.5, 3.0), backT = ease(st, 8.0, 10.0);
-          const f = outT * (1.0 - backT);
+          const f = ease(st, 0.5, 4.2);
           const x = lerp(den.x, spot.x, f), z = lerp(den.z, spot.z, f) + zOff;
           // auf den letzten Schritten steigt der Wolf auf den Felsvorsprung
           const y = lerp(terrainHeight(x, z) - 0.05, spot.y, ease(f, 0.75, 1.0));
           const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
           const yawOut = Math.atan2(-(spot.x - den.x), -(spot.z - den.z));
           const toBoat = Math.atan2(-(cam[0] - x), -(cam[2] - z));
-          let yaw = yawOut;
-          if (st > 2.6) yaw = lerp(yawOut, toBoat, ease(st, 2.6, 3.6));
-          if (st > 7.6) yaw = lerp(toBoat, yawOut + Math.PI, ease(st, 7.6, 8.3));
-          Mat4.compose(g.model, [x, y, z], yaw, 0, 0, [2.4, 2.4, 2.4]);
+          // Körper dreht sich halb zum Boot, den Rest übernimmt der Kopf
+          const turn = ease(st, 3.8, 5.0);
+          const bodyYaw = lerp(yawOut, yawOut + wrapAngle(toBoat - yawOut) * 0.55, turn);
+          const headYaw = Math.max(-1.1, Math.min(1.1, wrapAngle(toBoat - bodyYaw))) * turn;
+          Mat4.compose(g.model, [x, y, z], bodyYaw, 0, 0, [2.4, 2.4, 2.4]);
           g.anim[0] = 1.0;
-          g.anim[1] = (st > 0.5 && st < 3.0) || (st > 8.0 && st < 10.0) ? 1.0 : 0.0;
-          g.anim[3] = -0.15 + 1.0 * (ease(st, 4.4, 5.2) - ease(st, 6.8, 7.5));
-          if (active && st > 4.6 && !sc.howled) { sc.howled = true; if (typeof playHowl === "function") playHowl(); }
-          if (!active) sc.howled = false;
+          g.anim[1] = (1.0 - ease(st, 3.4, 4.4)) * ease(st, 0.3, 0.9) * 0.8;
+          g.anim[2] = headYaw;
+          g.anim[3] = -0.12 + 0.95 * (ease(st, 5.4, 6.3) - ease(st, 8.0, 8.8));
+          if (active && st > 5.6 && !sc.howled) { sc.howled = true; if (typeof playHowl === "function") playHowl(); }
+          if (!active && d > 0) sc.howled = false;
           if (active) focus(x, y + 1.4, z);
         } else if (sc.type === "castle") {
           // das Schloss tritt aus dem Nebel; dann stürzt ein Fledermausschwarm von den Zinnen auf das Boot zu
@@ -3683,12 +3768,9 @@
             g.anim[2] = 5.0;
             if (i === 7) lead = [x, y, z];
           }
-          // erst das Schloss im Blick halten, dann dem Schwarm entgegensehen
-          const castleLook = [CASTLE.x, CASTLE.top - 4.0, CASTLE.z + zOff];
-          if (lead && st > 6.0) {
-            const w = ease(st, 6.0, 7.5);
-            focus(lerp(castleLook[0], lead[0], w), lerp(castleLook[1], lead[1], w), lerp(castleLook[2], lead[2], w));
-          } else focus(castleLook[0], castleLook[1], castleLook[2]);
+          // das Schloss bleibt im Blick; wenn der Schwarm vorbeirauscht, duckt sich die Kamera kurz
+          focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
+          sceneDuck = ease(st, 6.2, 7.0) * (1.0 - ease(st, 8.6, 9.8));
         } else if (sc.type === "fish") {
           // ein Leuchtfisch steigt vor dem Bug auf, springt im Bogen über die Fahrspur und taucht wieder ein
           const zJ = cam[2] - 9.0, cx = riverCenterX(zJ);
@@ -3737,37 +3819,41 @@
             const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
             if (!g) break;
             const s = 3.2 + hash2(i, 322.0) * 0.8;
-            Mat4.compose(g.model, [x, y + Math.abs(Math.sin(t * 6 + i)) * 0.2, z], Math.atan2(-(x1 - x0), -(z1 - z0)), 0, 0, [s, s, s]);
+            const ph = t * 5.2 + i * 1.3;
+            Mat4.compose(g.model, [x, y + Math.max(0, Math.sin(ph * 2.0)) * 0.25, z], Math.atan2(-(x1 - x0), -(z1 - z0)), Math.sin(ph * 2.0) * 0.04, 0, [s, s, s]);
             g.anim[0] = i * 1.3;
             g.anim[1] = 1.0;
+            // Staub hinter jedem Tier: Wolken entstehen an den Hufen, steigen auf, wachsen und verblassen
+            for (let k = 0; k < 6; k++) {
+              const age = (t * 0.55 + k / 6 + i * 0.137) % 1.0;
+              const back = age * 7.0;
+              const dx = (x1 - x0), dz = (z1 - z0), dl = Math.hypot(dx, dz);
+              dust(x - dx / dl * back + Math.sin(k * 3.1 + i) * 1.2, y + 0.4 + age * 2.2, z - dz / dl * back, 3.0 + age * 9.0, (1.0 - age) * (1.0 - age) * 0.22);
+            }
             cxs += x; cys += y; czs += z; n++;
           }
           if (n) focus(cxs / n, cys / n + 2.0, czs / n);
         } else if (sc.type === "mantas") {
-          // schwarze Mantas: kreisen zuerst hinter dem Schlossfelsen, gleiten dann in einem Bogen über den Fluss
-          // und verschwinden hinter dem Ruinenfelsen, wo sie weiterkreisen
-          const rockA = world.floatingPeaks[1], rockB = world.floatingPeaks[2];
+          // schwarze Mantas: kommen schräg von links vorn aus der Ferne, gleiten über den Fluss
+          // und ziehen schräg rechts hinter das Boot, wo sie aus dem Bild verschwinden
           let lead = null;
           for (let i = 0; i < 4; i++) {
-            const q = clamp01((st - 0.8 - i * 0.7) / 9.5);
-            const orbit = (pk, a, r, h) => [pk.x + Math.cos(a) * r, pk.y + h, pk.z + zOff + Math.sin(a) * r];
-            const aOrb = t * 0.12 + i * 1.6;
-            const A = orbit(rockA, aOrb, 34 + i * 4, 6 + i * 2), B = orbit(rockB, aOrb + 2.0, 30 + i * 4, 8 + i * 2);
-            const cx = riverCenterX(sc.z);
-            const M1 = [cx + 18, 24 + i * 1.5, sc.z - 34 + zOff + i * 3], M2 = [cx - 10, 20 + i, sc.z - 40 + zOff];
-            let x, y, z, vx, vz;
-            const pos = (u) => [bez3(A[0], M1[0], M2[0], B[0], u), bez3(A[1], M1[1], M2[1], B[1], u), bez3(A[2], M1[2], M2[2], B[2], u)];
-            if (q <= 0) { [x, y, z] = A; const A2 = orbit(rockA, aOrb + 0.05, 34 + i * 4, 6 + i * 2); vx = A2[0] - x; vz = A2[2] - z; }
-            else if (q >= 1) { [x, y, z] = B; const B2 = orbit(rockB, aOrb + 2.05, 30 + i * 4, 8 + i * 2); vx = B2[0] - x; vz = B2[2] - z; }
-            else { [x, y, z] = pos(q); const p2 = pos(Math.min(q + 0.01, 1)); vx = p2[0] - x; vz = p2[2] - z; }
+            const q = clamp01((st - 0.3 - i * 0.6) / 10.0);
+            if (q <= 0 || q >= 1) continue;
+            const bz = cam[2], bx = cam[0];
+            const P0 = [bx - 110 - i * 8, 48 + i * 4, bz - 150 + i * 6], P1 = [bx - 40, 30 + i * 2, bz - 70];
+            const P2 = [bx + 12, 16 + i * 1.5, bz - 18 + i * 3], P3 = [bx + 60 + i * 6, 20 + i * 2, bz + 60];
+            const pos = (u) => [bez3(P0[0], P1[0], P2[0], P3[0], u), bez3(P0[1], P1[1], P2[1], P3[1], u), bez3(P0[2], P1[2], P2[2], P3[2], u)];
+            const [x, y, z] = pos(q), p2 = pos(Math.min(q + 0.01, 1));
             const g = take(creatureMeshes.manta, [0.015, 0.015, 0.02, 0]);
             const s = 5.5 + i * 0.7;
-            Mat4.compose(g.model, [x, y + Math.sin(t * 0.6 + i) * 0.8, z], Math.atan2(-vx, -vz), 0.05, -0.2 * Math.sin(q * Math.PI), [s, s, s]);
+            Mat4.compose(g.model, [x, y + Math.sin(t * 0.6 + i) * 0.6, z], Math.atan2(-(p2[0] - x), -(p2[2] - z)), -(p2[1] - y) * 0.3, -0.25 * Math.sin(q * Math.PI), [s, s, s]);
             g.anim[0] = i * 1.1;
             g.anim[2] = -0.72;
             if (i === 1) lead = [x, y, z];
           }
-          if (active && lead) focus(lead[0], lead[1], lead[2]);
+          // die Kamera folgt nur, solange die Mantas vor dem Boot sind, danach ziehen sie einfach vorbei
+          if (lead && lead[2] < cam[2] - 10) focus(lead[0], lead[1], lead[2]);
         }
       });
     }
@@ -3980,6 +4066,19 @@
     world.waterfalls.forEach((wf) => staticPois.push({ x: wf.x, y: wf.isSkyFall ? wf.y * 0.6 : wf.y * 0.5, z: wf.z, w: wf.isSkyFall ? 0.9 : 0.8 }));
     world.floatingPeaks.forEach((pk) => { if (pk.fall) staticPois.push({ x: pk.x, y: pk.y, z: pk.z, w: 0.7 }); });
 
+    // Puffer für die Staubwolken (wird jedes Bild neu befüllt)
+    const dustVao = gl.createVertexArray();
+    const dustBuf = gl.createBuffer();
+    gl.bindVertexArray(dustVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, dustBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, dustData.byteLength, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 20, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 16);
+    gl.bindVertexArray(null);
+    let viewH = 1.0;
+
     function drawScene(pass) {
       // pass.reflect: Spiegelbild für den Fluss (gespiegelte Kamera, alles unter Wasser verworfen)
       const vp = pass.reflect ? reflViewProj : viewProjMat;
@@ -4155,6 +4254,21 @@
       gl.bindVertexArray(world.particleVao);
       gl.drawArrays(gl.POINTS, 0, world.particleCount);
 
+      // Staubwolken mit normaler Mischung (verdecken, statt aufzuhellen)
+      if (!pass.reflect && dustCount > 0) {
+        const su = progDust.u;
+        gl.useProgram(progDust.prog);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.uniformMatrix4fv(su.uViewProj, false, vp);
+        gl.uniform3fv(su.uCamPos, cam);
+        gl.uniform1f(su.uViewH, viewH);
+        gl.uniform3f(su.uColor, 0.62, 0.55, 0.42);
+        gl.bindVertexArray(dustVao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, dustBuf);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, dustData.subarray(0, dustCount * 5));
+        gl.drawArrays(gl.POINTS, 0, dustCount);
+      }
+
       gl.depthMask(true);
       gl.disable(gl.BLEND);
     }
@@ -4209,6 +4323,7 @@
       const heading = Math.atan2(riverSlopeX(zCur - 3.0) + Math.cos(t * 0.21) * 0.04, 1.0);
       placeBoat(bx, zCur, heading, t, camEye);
       boatHeading = heading;
+      // kurzes Ducken der Kamera (Fledermausschwarm), wirkt nach dem Aufruf der Tiere im nächsten Bild
       ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
       updateCreatures(zCur, t, scene.idx, scene.t, camEye);
 
@@ -4252,7 +4367,8 @@
         look.pitch -= look.pitch * k;
       }
       const yaw = heading + gaze.yaw + look.yaw;
-      const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch));
+      camEye[1] -= sceneDuck * 0.5;
+      const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12));
       camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
       camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;
       camTarget[2] = camEye[2] - Math.cos(yaw) * Math.cos(pitch) * 10.0;
@@ -4261,7 +4377,9 @@
       camMirror[2] = camEye[2];
 
       const aspect = canvas.width / Math.max(canvas.height, 1);
-      Mat4.perspective(projMat, (((aspect < 1 ? 74 : 62) - 26 * scene.zoom) * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
+      const fovDeg = ((aspect < 1 ? 74 : 62) - 26 * scene.zoom);
+      viewH = canvas.height / (2.0 * Math.tan((fovDeg * Math.PI) / 360));
+      Mat4.perspective(projMat, (fovDeg * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
       Mat4.lookAt(viewMat, camEye, camTarget, [0, 1, 0]);
       Mat4.multiply(viewProjMat, projMat, viewMat);
       Mat4.multiply(reflViewProj, viewProjMat, mirrorMat);

@@ -18,21 +18,12 @@ function wolfSpot(sc) {
   const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 4.0);
   return { x, z: sc.z, y: terrainHeight(x, sc.z) + 0.6 }; // y: Oberkante des Felsvorsprungs
 }
-// Richtung zum Mond im Nebelwald (wie SUN_A im Shader): Lichtkegel fallen aus dieser Richtung
-const MOON_DIR_A = (() => { const v = [-0.30, 0.55, -0.78], l = Math.hypot(...v); return v.map((c) => c / l); })();
 function wolfDen(sc) {
   const z = sc.z - 5.0;
   const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 15.0);
   return { x, z };
 }
 
-// Das Schloss auf seinem Felsen am Ende des Nebelwalds
-const CASTLE = (() => {
-  const z = -150, side = 1;
-  const x = riverCenterX(z) + side * (riverHalfWidth(z) + 19.0);
-  const gy = terrainHeight(x, z);
-  return { x, z, side, gy, rockH: 16.0, top: gy - 2.0 + 16.0 * 0.93 + 28.0 };
-})();
 
 // freie Stellen: Lichtung des Wolfs, Weg ins Versteck, Fuß des Schlossfelsens
 const CLEARINGS = [
@@ -110,7 +101,7 @@ function buildWorld() {
   const lightShafts = [];
   // Lichtkegel: die Achse des Kegels zeigt genau zum Mond
   const addShaft = (x, z, sx, intensity) => {
-    const up = MOON_DIR_A;
+    const up = MOON_A;
     let rx = [up[1], -up[0], 0]; const rl = Math.hypot(rx[0], rx[1]) || 1; rx = [rx[0] / rl, rx[1] / rl, 0];
     const fz = [rx[1] * up[2], -rx[0] * up[2], rx[0] * up[1] - rx[1] * up[0]];
     const sy = 1.0 + sx * 0.25, y = terrainHeight(x, z);
@@ -199,21 +190,26 @@ function buildWorld() {
   // ---------------- Zone 2: Pilzwald ----------------
   // dichte Riesenpilze direkt am Ufer; manche neigen sich als Baldachin über den Fluss
   const MUSH_TINTS = [CYAN, VIOLET, MAGENTA, BLUE];
-  for (let i = 0; i < 420; i++) {
-    const p = bankSpot(i, 90.0, 0.5, 45.0, 2.2, -158.0, -322.0);
+  // Mindestabstand: Hüte dürfen sich nicht gegenseitig durchdringen (Abstand der Hutmitten > Summe der Hutradien)
+  const caps = [];
+  for (let i = 0; i < 700; i++) {
+    const p = bankSpot(i, 90.0, 0.5, 45.0, 2.0, -158.0, -322.0);
     if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 90.7))) continue;
-    const canopy = p.bank < 5.0 && hash2(i, 91.5) < 0.45;
-    let h = canopy ? 9.0 + hash2(i, 91.0) * 6.0 : (p.bank > 15 ? 9.0 : 4.0) + hash2(i, 91.0) * 8.0;
+    const canopy = p.bank < 4.0 && hash2(i, 91.5) < 0.5;
+    let h = canopy ? 7.5 + hash2(i, 91.0) * 3.0 : (p.bank > 15 ? 7.0 : 3.5) + hash2(i, 91.0) * 5.0;
     // Baldachin: zum Fluss geneigt, der Hut hängt über dem Wasser, bleibt aber hoch über dem Boot
-    const lean = canopy ? 0.28 + hash2(i, 92.5) * 0.12 : (hash2(i, 93.0) - 0.5) * 0.12;
-    if (!canopy) h = Math.min(h, p.reach / 0.62 + 3.0);
+    const lean = canopy ? 0.24 + hash2(i, 92.5) * 0.1 : (hash2(i, 93.0) - 0.5) * 0.1;
+    if (!canopy) h = Math.min(h, p.reach / 0.62 + 2.0);
+    const capR = 0.66 * h, capX = p.x - p.side * Math.sin(lean) * h * 0.85, capY = p.y + h * 0.85;
+    if (caps.some((c) => Math.hypot(c.x - capX, c.z - p.z) < (c.r + capR) * 0.92 && Math.abs(c.y - capY) < (c.r + capR) * 0.5)) continue;
+    caps.push({ x: capX, y: capY, z: p.z, r: capR });
     pushInst("giantMushrooms", [p.x, p.y - 0.2, p.z], rot(i, 92.0), 0, p.side * lean, [h, h, h], MUSH_TINTS[Math.floor(hash2(i, 94.0) * 4)]);
   }
   // Torbögen aus Pilzstämmen, unter denen die Fahrt hindurchführt
   [-196, -244, -292].forEach((z, i) => {
     const hw = riverHalfWidth(z) + 2.5;
     pushInst("mushroomArches", [riverCenterX(z), terrainHeight(riverCenterX(z) + hw, z) - 0.3, z], -Math.atan(riverSlopeX(z)), 0, 0,
-      [hw, 11.0 + i, hw * 0.9], i === 1 ? VIOLET : CYAN);
+      [hw, 9.5 + i, hw * 0.9], i === 1 ? VIOLET : CYAN);
   });
   // leuchtendes Schilf und Blütenkelche am Wasser, kleine Pilze
   for (let i = 0; i < 380; i++) {
@@ -251,16 +247,16 @@ function buildWorld() {
   // ---------------- Zone 3: offene Ebene mit drei Schwebefelsen ----------------
   // Felsen 1 links mit Wasserfall, Felsen 2 rechts mit Schloss, Felsen 3 rechts mit Ruine; alle eher entfernt
   const floatingPeaks = [
-    { z: -352, offsetX: -52, y: 30, sx: 15, sy: 20, sz: 13, fall: true, build: null },
-    { z: -398, offsetX: 62, y: 40, sx: 17, sy: 22, sz: 15, fall: false, build: "fortress" },
-    { z: -446, offsetX: 44, y: 26, sx: 12, sy: 16, sz: 11, fall: false, build: "ruins" }
+    { z: -360, offsetX: -78, y: 38, sx: 18, sy: 24, sz: 16, fall: true, build: null },
+    { z: -404, offsetX: 88, y: 46, sx: 20, sy: 26, sz: 18, fall: false, build: "fortress" },
+    { z: -452, offsetX: 70, y: 32, sx: 15, sy: 20, sz: 13, fall: false, build: "ruins" }
   ];
   floatingPeaks.forEach((pk, idx) => {
     pk.x = riverCenterX(pk.z) + pk.offsetX;
     pk.rot = idx * 1.4;
     // zum Fluss und zur Kamera gekippt, damit man sieht, was oben steht
-    pk.tiltX = 0.22;
-    pk.tiltZ = pk.offsetX < 0 ? -0.26 : 0.26;
+    pk.tiltX = 0.18;
+    pk.tiltZ = pk.offsetX < 0 ? -0.38 : 0.38;
     const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
     const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
     const topH = pk.sy * 0.33;

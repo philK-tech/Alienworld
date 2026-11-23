@@ -174,3 +174,20 @@ const Mat4 = {
     return out;
   }
 };
+
+// Das Schloss auf seinem Felsen am Ende des Nebelwalds
+const CASTLE = (() => {
+  const z = -150, side = 1;
+  const x = riverCenterX(z) + side * (riverHalfWidth(z) + 19.0);
+  const gy = terrainHeight(x, z);
+  return { x, z, side, gy, rockH: 16.0, top: gy - 2.0 + 16.0 * 0.93 + 28.0 };
+})();
+
+// Richtung zum gelben Mond im Nebelwald: von der Anfahrt aus gesehen steht er genau hinter den Schlosstürmen.
+// Wird in den Shader eingesetzt (SUN_A) und für die Lichtkegel verwendet.
+const MOON_A = (() => {
+  const vz = CASTLE.z + 58.0, vx = riverCenterX(vz);
+  const v = [CASTLE.x - vx, CASTLE.top + 6.0 - 2.0, CASTLE.z - 40.0 - vz];
+  const l = Math.hypot(v[0], v[1], v[2]);
+  return v.map((c) => c / l);
+})();

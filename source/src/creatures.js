@@ -206,9 +206,14 @@ const drawPool = Array.from({ length: 160 }, () => ({ mesh: null, model: Mat4.cr
 const ripplePool = Array.from({ length: 16 }, () => ({ x: 0, z: 0, a: 0 }));
 const rippleDraws = [];
 
-// Blickziel der laufenden Szene (die Kamera richtet sich fest darauf)
+// Blickziel der laufenden Szene (die Kamera richtet sich fest darauf) und kurzes Ducken der Kamera (0..1)
 const sceneFocus = [0, 0, 0];
 let sceneFocusOn = false;
+let sceneDuck = 0.0;
+// Staubwolken: je Wolke x, y, z, Größe, Deckkraft
+const DUST_MAX = 240;
+const dustData = new Float32Array(DUST_MAX * 5);
+let dustCount = 0;
 
 // weicher Verlauf 0..1 zwischen den Zeiten t0 und t1
 const ease = (t, t0, t1) => smoothstep(t0, t1, t);
@@ -219,6 +224,13 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
   pois.length = 0;
   rippleDraws.length = 0;
   sceneFocusOn = false;
+  sceneDuck = 0.0;
+  dustCount = 0;
+  const dust = (x, y, z, size, a) => {
+    if (dustCount >= DUST_MAX || a <= 0.002) return;
+    dustData.set([x, y, z, size, a], dustCount * 5);
+    dustCount++;
+  };
   let k = 0;
   const take = (mesh, tint) => {
     if (k >= drawPool.length) return null;
@@ -242,30 +254,32 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
     if (d > 200 || d < -80) return;
     const zOff = (camZ - d) - sc.z; // Versatz, falls die Szene in einer anderen Runde der Schleife liegt
     const active = si === sceneIdx;
-    if (!active && sc.type !== "wolf" && sc.type !== "mantas") return; // Wolf und Mantas sind auch vor und nach ihrer Szene da
+    if (!active && sc.type !== "wolf") return; // der Wolf bleibt nach seiner Szene stehen und sieht dem Boot nach
     const st = active ? sceneT : d > 0 ? 0 : sc.dur;
 
     if (sc.type === "wolf") {
-      // tritt aus dem Nebel auf die Lichtung, fixiert das Boot, heult, zieht sich wieder zurück
-      if (!active && d <= 0) return;
+      // tritt ruhig aus dem Wald auf den Felsvorsprung, heult, bleibt stehen und sieht dem Boot nach
+      if (!active && d > 0) return;
+      if (d < -45) return;
       const spot = wolfSpot(sc), den = wolfDen(sc);
-      const outT = ease(st, 0.5, 3.0), backT = ease(st, 8.0, 10.0);
-      const f = outT * (1.0 - backT);
+      const f = ease(st, 0.5, 4.2);
       const x = lerp(den.x, spot.x, f), z = lerp(den.z, spot.z, f) + zOff;
       // auf den letzten Schritten steigt der Wolf auf den Felsvorsprung
       const y = lerp(terrainHeight(x, z) - 0.05, spot.y, ease(f, 0.75, 1.0));
       const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
       const yawOut = Math.atan2(-(spot.x - den.x), -(spot.z - den.z));
       const toBoat = Math.atan2(-(cam[0] - x), -(cam[2] - z));
-      let yaw = yawOut;
-      if (st > 2.6) yaw = lerp(yawOut, toBoat, ease(st, 2.6, 3.6));
-      if (st > 7.6) yaw = lerp(toBoat, yawOut + Math.PI, ease(st, 7.6, 8.3));
-      Mat4.compose(g.model, [x, y, z], yaw, 0, 0, [2.4, 2.4, 2.4]);
+      // Körper dreht sich halb zum Boot, den Rest übernimmt der Kopf
+      const turn = ease(st, 3.8, 5.0);
+      const bodyYaw = lerp(yawOut, yawOut + wrapAngle(toBoat - yawOut) * 0.55, turn);
+      const headYaw = Math.max(-1.1, Math.min(1.1, wrapAngle(toBoat - bodyYaw))) * turn;
+      Mat4.compose(g.model, [x, y, z], bodyYaw, 0, 0, [2.4, 2.4, 2.4]);
       g.anim[0] = 1.0;
-      g.anim[1] = (st > 0.5 && st < 3.0) || (st > 8.0 && st < 10.0) ? 1.0 : 0.0;
-      g.anim[3] = -0.15 + 1.0 * (ease(st, 4.4, 5.2) - ease(st, 6.8, 7.5));
-      if (active && st > 4.6 && !sc.howled) { sc.howled = true; if (typeof playHowl === "function") playHowl(); }
-      if (!active) sc.howled = false;
+      g.anim[1] = (1.0 - ease(st, 3.4, 4.4)) * ease(st, 0.3, 0.9) * 0.8;
+      g.anim[2] = headYaw;
+      g.anim[3] = -0.12 + 0.95 * (ease(st, 5.4, 6.3) - ease(st, 8.0, 8.8));
+      if (active && st > 5.6 && !sc.howled) { sc.howled = true; if (typeof playHowl === "function") playHowl(); }
+      if (!active && d > 0) sc.howled = false;
       if (active) focus(x, y + 1.4, z);
     } else if (sc.type === "castle") {
       // das Schloss tritt aus dem Nebel; dann stürzt ein Fledermausschwarm von den Zinnen auf das Boot zu
@@ -294,12 +308,9 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         g.anim[2] = 5.0;
         if (i === 7) lead = [x, y, z];
       }
-      // erst das Schloss im Blick halten, dann dem Schwarm entgegensehen
-      const castleLook = [CASTLE.x, CASTLE.top - 4.0, CASTLE.z + zOff];
-      if (lead && st > 6.0) {
-        const w = ease(st, 6.0, 7.5);
-        focus(lerp(castleLook[0], lead[0], w), lerp(castleLook[1], lead[1], w), lerp(castleLook[2], lead[2], w));
-      } else focus(castleLook[0], castleLook[1], castleLook[2]);
+      // das Schloss bleibt im Blick; wenn der Schwarm vorbeirauscht, duckt sich die Kamera kurz
+      focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
+      sceneDuck = ease(st, 6.2, 7.0) * (1.0 - ease(st, 8.6, 9.8));
     } else if (sc.type === "fish") {
       // ein Leuchtfisch steigt vor dem Bug auf, springt im Bogen über die Fahrspur und taucht wieder ein
       const zJ = cam[2] - 9.0, cx = riverCenterX(zJ);
@@ -348,37 +359,41 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
         if (!g) break;
         const s = 3.2 + hash2(i, 322.0) * 0.8;
-        Mat4.compose(g.model, [x, y + Math.abs(Math.sin(t * 6 + i)) * 0.2, z], Math.atan2(-(x1 - x0), -(z1 - z0)), 0, 0, [s, s, s]);
+        const ph = t * 5.2 + i * 1.3;
+        Mat4.compose(g.model, [x, y + Math.max(0, Math.sin(ph * 2.0)) * 0.25, z], Math.atan2(-(x1 - x0), -(z1 - z0)), Math.sin(ph * 2.0) * 0.04, 0, [s, s, s]);
         g.anim[0] = i * 1.3;
         g.anim[1] = 1.0;
+        // Staub hinter jedem Tier: Wolken entstehen an den Hufen, steigen auf, wachsen und verblassen
+        for (let k = 0; k < 6; k++) {
+          const age = (t * 0.55 + k / 6 + i * 0.137) % 1.0;
+          const back = age * 7.0;
+          const dx = (x1 - x0), dz = (z1 - z0), dl = Math.hypot(dx, dz);
+          dust(x - dx / dl * back + Math.sin(k * 3.1 + i) * 1.2, y + 0.4 + age * 2.2, z - dz / dl * back, 3.0 + age * 9.0, (1.0 - age) * (1.0 - age) * 0.22);
+        }
         cxs += x; cys += y; czs += z; n++;
       }
       if (n) focus(cxs / n, cys / n + 2.0, czs / n);
     } else if (sc.type === "mantas") {
-      // schwarze Mantas: kreisen zuerst hinter dem Schlossfelsen, gleiten dann in einem Bogen über den Fluss
-      // und verschwinden hinter dem Ruinenfelsen, wo sie weiterkreisen
-      const rockA = world.floatingPeaks[1], rockB = world.floatingPeaks[2];
+      // schwarze Mantas: kommen schräg von links vorn aus der Ferne, gleiten über den Fluss
+      // und ziehen schräg rechts hinter das Boot, wo sie aus dem Bild verschwinden
       let lead = null;
       for (let i = 0; i < 4; i++) {
-        const q = clamp01((st - 0.8 - i * 0.7) / 9.5);
-        const orbit = (pk, a, r, h) => [pk.x + Math.cos(a) * r, pk.y + h, pk.z + zOff + Math.sin(a) * r];
-        const aOrb = t * 0.12 + i * 1.6;
-        const A = orbit(rockA, aOrb, 34 + i * 4, 6 + i * 2), B = orbit(rockB, aOrb + 2.0, 30 + i * 4, 8 + i * 2);
-        const cx = riverCenterX(sc.z);
-        const M1 = [cx + 18, 24 + i * 1.5, sc.z - 34 + zOff + i * 3], M2 = [cx - 10, 20 + i, sc.z - 40 + zOff];
-        let x, y, z, vx, vz;
-        const pos = (u) => [bez3(A[0], M1[0], M2[0], B[0], u), bez3(A[1], M1[1], M2[1], B[1], u), bez3(A[2], M1[2], M2[2], B[2], u)];
-        if (q <= 0) { [x, y, z] = A; const A2 = orbit(rockA, aOrb + 0.05, 34 + i * 4, 6 + i * 2); vx = A2[0] - x; vz = A2[2] - z; }
-        else if (q >= 1) { [x, y, z] = B; const B2 = orbit(rockB, aOrb + 2.05, 30 + i * 4, 8 + i * 2); vx = B2[0] - x; vz = B2[2] - z; }
-        else { [x, y, z] = pos(q); const p2 = pos(Math.min(q + 0.01, 1)); vx = p2[0] - x; vz = p2[2] - z; }
+        const q = clamp01((st - 0.3 - i * 0.6) / 10.0);
+        if (q <= 0 || q >= 1) continue;
+        const bz = cam[2], bx = cam[0];
+        const P0 = [bx - 110 - i * 8, 48 + i * 4, bz - 150 + i * 6], P1 = [bx - 40, 30 + i * 2, bz - 70];
+        const P2 = [bx + 12, 16 + i * 1.5, bz - 18 + i * 3], P3 = [bx + 60 + i * 6, 20 + i * 2, bz + 60];
+        const pos = (u) => [bez3(P0[0], P1[0], P2[0], P3[0], u), bez3(P0[1], P1[1], P2[1], P3[1], u), bez3(P0[2], P1[2], P2[2], P3[2], u)];
+        const [x, y, z] = pos(q), p2 = pos(Math.min(q + 0.01, 1));
         const g = take(creatureMeshes.manta, [0.015, 0.015, 0.02, 0]);
         const s = 5.5 + i * 0.7;
-        Mat4.compose(g.model, [x, y + Math.sin(t * 0.6 + i) * 0.8, z], Math.atan2(-vx, -vz), 0.05, -0.2 * Math.sin(q * Math.PI), [s, s, s]);
+        Mat4.compose(g.model, [x, y + Math.sin(t * 0.6 + i) * 0.6, z], Math.atan2(-(p2[0] - x), -(p2[2] - z)), -(p2[1] - y) * 0.3, -0.25 * Math.sin(q * Math.PI), [s, s, s]);
         g.anim[0] = i * 1.1;
         g.anim[2] = -0.72;
         if (i === 1) lead = [x, y, z];
       }
-      if (active && lead) focus(lead[0], lead[1], lead[2]);
+      // die Kamera folgt nur, solange die Mantas vor dem Boot sind, danach ziehen sie einfach vorbei
+      if (lead && lead[2] < cam[2] - 10) focus(lead[0], lead[1], lead[2]);
     }
   });
 }

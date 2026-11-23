@@ -100,6 +100,19 @@ function updateCopies(camZ) {
 world.waterfalls.forEach((wf) => staticPois.push({ x: wf.x, y: wf.isSkyFall ? wf.y * 0.6 : wf.y * 0.5, z: wf.z, w: wf.isSkyFall ? 0.9 : 0.8 }));
 world.floatingPeaks.forEach((pk) => { if (pk.fall) staticPois.push({ x: pk.x, y: pk.y, z: pk.z, w: 0.7 }); });
 
+// Puffer für die Staubwolken (wird jedes Bild neu befüllt)
+const dustVao = gl.createVertexArray();
+const dustBuf = gl.createBuffer();
+gl.bindVertexArray(dustVao);
+gl.bindBuffer(gl.ARRAY_BUFFER, dustBuf);
+gl.bufferData(gl.ARRAY_BUFFER, dustData.byteLength, gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 20, 0);
+gl.enableVertexAttribArray(1);
+gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 16);
+gl.bindVertexArray(null);
+let viewH = 1.0;
+
 function drawScene(pass) {
   // pass.reflect: Spiegelbild für den Fluss (gespiegelte Kamera, alles unter Wasser verworfen)
   const vp = pass.reflect ? reflViewProj : viewProjMat;
@@ -275,6 +288,21 @@ function drawScene(pass) {
   gl.bindVertexArray(world.particleVao);
   gl.drawArrays(gl.POINTS, 0, world.particleCount);
 
+  // Staubwolken mit normaler Mischung (verdecken, statt aufzuhellen)
+  if (!pass.reflect && dustCount > 0) {
+    const su = progDust.u;
+    gl.useProgram(progDust.prog);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniformMatrix4fv(su.uViewProj, false, vp);
+    gl.uniform3fv(su.uCamPos, cam);
+    gl.uniform1f(su.uViewH, viewH);
+    gl.uniform3f(su.uColor, 0.62, 0.55, 0.42);
+    gl.bindVertexArray(dustVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, dustBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, dustData.subarray(0, dustCount * 5));
+    gl.drawArrays(gl.POINTS, 0, dustCount);
+  }
+
   gl.depthMask(true);
   gl.disable(gl.BLEND);
 }
@@ -329,6 +357,7 @@ function render(now) {
   const heading = Math.atan2(riverSlopeX(zCur - 3.0) + Math.cos(t * 0.21) * 0.04, 1.0);
   placeBoat(bx, zCur, heading, t, camEye);
   boatHeading = heading;
+  // kurzes Ducken der Kamera (Fledermausschwarm), wirkt nach dem Aufruf der Tiere im nächsten Bild
   ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
   updateCreatures(zCur, t, scene.idx, scene.t, camEye);
 
@@ -372,7 +401,8 @@ function render(now) {
     look.pitch -= look.pitch * k;
   }
   const yaw = heading + gaze.yaw + look.yaw;
-  const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch));
+  camEye[1] -= sceneDuck * 0.5;
+  const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12));
   camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
   camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;
   camTarget[2] = camEye[2] - Math.cos(yaw) * Math.cos(pitch) * 10.0;
@@ -381,7 +411,9 @@ function render(now) {
   camMirror[2] = camEye[2];
 
   const aspect = canvas.width / Math.max(canvas.height, 1);
-  Mat4.perspective(projMat, (((aspect < 1 ? 74 : 62) - 26 * scene.zoom) * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
+  const fovDeg = ((aspect < 1 ? 74 : 62) - 26 * scene.zoom);
+  viewH = canvas.height / (2.0 * Math.tan((fovDeg * Math.PI) / 360));
+  Mat4.perspective(projMat, (fovDeg * Math.PI) / 180, aspect, 0.1, FAR + 40.0);
   Mat4.lookAt(viewMat, camEye, camTarget, [0, 1, 0]);
   Mat4.multiply(viewProjMat, projMat, viewMat);
   Mat4.multiply(reflViewProj, viewProjMat, mirrorMat);

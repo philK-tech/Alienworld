@@ -195,8 +195,10 @@ function buildFloatingMountainMesh() {
       const ang = u * Math.PI * 2.0;
       const ca = Math.cos(ang), sa = Math.sin(ang);
       const n = fbm2(ca * 2.2 + v * 3.0, sa * 2.2 + 8.2, 5);
-      const strata = 1.0 + 0.015 * Math.sin(v * 23.0 + n * 6.0);
-      const jag = (0.62 + 0.58 * n) * strata;
+      // Unterseite: senkrechte Felsrippen und Zacken, oben ein leicht überhängender Rand
+      const ribs = v < 0.72 ? (fbm2(ang * 4.0, v * 1.2 + 3.0, 3) - 0.5) * 0.35 * (1.0 - v) : 0.0;
+      const lip = smoothstep(0.66, 0.74, v) * (1.0 - smoothstep(0.74, 0.86, v)) * 0.08;
+      const jag = (0.62 + 0.58 * n) * (1.0 + ribs + lip);
       const rx = ca * radius * jag;
       const rz = sa * radius * jag * 0.86;
       const glow = smoothstep(0.55, 0.85, n) * 0.6;
@@ -960,18 +962,21 @@ function buildDeadTreeMesh() {
 // Strebepfeiler, wenige kalt leuchtende Fenster. Grundfläche ~1 x 0.7, Höhe ~1.
 function buildGothicCastleMesh() {
   const b = createGeometryBuilder();
+  // Fundament, das in den Felsen reicht (damit auf unebenem Grund nichts schwebt)
+  addBox(b, [-0.05, -0.2, 0.0], [1.05, 0.42, 0.72], 0, 0, 36);
   addBox(b, [0, 0.17, 0], [0.46, 0.34, 0.26], 0, 0, 36);
   addPrismRoof(b, [0, 0.34, 0], 0.48, 0.22, 0.28, Math.PI / 2, 37);
   addBox(b, [-0.3, 0.12, 0.08], [0.22, 0.24, 0.2], 0.3, 0, 36);
   addPrismRoof(b, [-0.3, 0.24, 0.08], 0.22, 0.15, 0.22, 0.3, 37);
   const towers = [[0.27, -0.14, 0.62, 0.07], [-0.24, -0.15, 0.78, 0.075], [0.3, 0.17, 0.5, 0.06], [0.0, -0.2, 1.0, 0.085], [-0.45, 0.2, 0.55, 0.06]];
   towers.forEach(([x, z, h, r], k) => {
-    addLathe(b, 6, 8, (t) => [x, t * h * 0.72, z], (t) => { const rr = r * (1.0 - t * 0.12); return [rr, rr]; }, 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
+    addLathe(b, 6, 8, (t) => [x, -0.3 + t * (h * 0.72 + 0.3), z], (t) => { const rr = r * (1.08 - t * 0.2); return [rr, rr]; }, 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
     addLathe(b, 2, 8, (t) => [x, h * 0.72 + t * 0.03, z], () => [r * 1.25, r * 1.25], 36, () => [0.9, 0.0, 0.0]);
     addLathe(b, 6, 8, (t) => [x, h * 0.75 + t * h * 0.42, z], (t) => { const rr = r * 1.3 * Math.pow(1.0 - t, 1.5) + 0.002; return [rr, rr]; }, 37, (t) => [0.8, 0.0, 0.0]);
     if (k % 2 === 0) addBox(b, [x + r * 0.97, h * 0.55, z], [0.006, 0.05, 0.02], 0, 0, 38, 2.0);
+    if (k === 3) addBox(b, [x - r * 0.97, h * 0.4, z], [0.006, 0.05, 0.02], 0, 0, 38, 2.0);
   });
-  for (let k = 0; k < 5; k++) addBox(b, [-0.18 + k * 0.09, 0.12, -0.14], [0.03, 0.24, 0.05], 0, 0.12, 36);
+  for (let k = 0; k < 5; k++) addBox(b, [-0.18 + k * 0.09, 0.12, -0.145], [0.03, 0.26, 0.05], 0, 0, 36);
   addBox(b, [0.08, 0.22, -0.131], [0.03, 0.09, 0.005], 0, 0, 38, 2.0);
   addBox(b, [-0.12, 0.2, -0.131], [0.03, 0.08, 0.005], 0, 0, 36);
   return b;
@@ -980,6 +985,7 @@ function buildGothicCastleMesh() {
 // Festung auf dem zweiten Schwebefelsen: Bergfried mit Dach, runder Mauerring mit Zinnen, vier Rundtürme mit Kegeldächern. Höhe ~1.
 function buildFortressMesh() {
   const b = createGeometryBuilder();
+  addLathe(b, 2, 16, (t) => [0, -0.35 + t * 0.37, 0], () => [0.56, 0.56], 36, () => [0.9, 0.0, 0.0]);
   addBox(b, [0, 0.25, 0], [0.3, 0.5, 0.3], 0.3, 0, 36);
   addPrismRoof(b, [0, 0.5, 0], 0.32, 0.2, 0.32, 0.3, 37);
   const R = 0.48;
@@ -1002,6 +1008,7 @@ function buildFortressMesh() {
 // eine Mauer mit Bogenfenster, umgestürzte Säulentrommeln. Grundfläche ~1 x 0.7.
 function buildRuinSiteMesh() {
   const b = createGeometryBuilder();
+  addBox(b, [0, -0.15, 0], [1.08, 0.42, 0.78], 0, 0, 36);
   addBox(b, [0, 0.03, 0], [1.0, 0.06, 0.7], 0, 0, 36);
   addBox(b, [0, 0.08, 0], [0.9, 0.05, 0.6], 0, 0, 36);
   addBox(b, [0, 0.12, 0], [0.8, 0.04, 0.5], 0, 0, 36);

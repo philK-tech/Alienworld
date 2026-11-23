@@ -83,7 +83,7 @@ const vec3 GIANT_DIR = vec3(-0.337, 0.379, -0.862);
 const vec3 MOON_DIR = vec3(-0.43, 0.55, -0.72);
 ` + GLSL_ZONE + `
 // Sonnenrichtungen und Lichtfarben der Tagzonen
-const vec3 SUN_A = vec3(-0.30, 0.55, -0.78);   // Mond hinter Wolken (Nebelwald)
+const vec3 SUN_A = vec3(` + MOON_A.map((v) => v.toFixed(4)).join(', ') + `);   // gelber Mond hinter dem Schloss (Nebelwald)
 const vec3 SUN_C = vec3(0.45, 0.72, -0.53);
 
 // Bergkämme für die gemalten Hintergründe: Höhe über dem Horizont je Blickwinkel
@@ -107,14 +107,17 @@ vec3 skyA(vec3 dir, float t) {
   vec3 sky = mix(hor, zen, pow(clamp(el, 0.0, 1.0), 0.5));
   // Mond mit Hof
   float md = max(dot(dir, SUN_A), 0.0);
-  float moon = smoothstep(0.9993, 0.9996, md);
-  sky += vec3(0.85, 0.9, 1.0) * moon * 3.0 + vec3(0.25, 0.28, 0.35) * pow(md, 60.0) + vec3(0.06, 0.07, 0.09) * pow(md, 6.0);
+  float ma = acos(clamp(md, -1.0, 1.0));
+  float moon = smoothstep(0.052, 0.048, ma);
+  float crater = fbm(dir.xy * 160.0 + dir.z * 90.0);
+  sky += vec3(1.0, 0.82, 0.45) * moon * (2.2 + 0.8 * crater) + vec3(0.55, 0.42, 0.2) * pow(md, 300.0) + vec3(0.12, 0.1, 0.07) * pow(md, 12.0);
   // schwere Wolken, am Rand vom Mond angeleuchtet
   vec2 cp = dir.xz / (el + 0.15) * 1.3 + vec2(t * 0.006, t * 0.002);
   float c1 = fbm(cp * 1.2), c2 = fbm(cp * 2.7 + 5.0);
   float cl = smoothstep(0.35, 0.7, c1 * 0.7 + c2 * 0.3);
-  vec3 cloudCol = mix(vec3(0.03, 0.035, 0.045), vec3(0.16, 0.18, 0.22), pow(md, 4.0) * (1.0 - cl * 0.5) + c2 * 0.15);
-  sky = mix(sky, cloudCol, cl * smoothstep(-0.02, 0.12, el));
+  vec3 cloudCol = mix(vec3(0.03, 0.035, 0.045), vec3(0.22, 0.2, 0.17), pow(md, 6.0) * (1.0 - cl * 0.5) + c2 * 0.12);
+  // vor dem Mond nur dünne Wolkenschleier
+  sky = mix(sky, cloudCol, cl * smoothstep(-0.02, 0.12, el) * (1.0 - 0.75 * smoothstep(0.985, 0.999, md)));
   // Bergkämme in zwei Schichten
   float hFar = 0.04 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.18;
   if (el < hFar) sky = mix(vec3(0.05, 0.055, 0.07), hor, 0.4 + 0.4 * smoothstep(hFar, 0.0, el));
@@ -257,9 +260,12 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
   float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
   // Dichte nach der Zone der Kamera; der Nebelwald ist auch von außen gesehen eine dichte Nebelwand
-  float zoneDens = uZoneW.x * 2.2 + uZoneW.y + uZoneW.z * 0.4;
+  float zoneDens = uZoneW.x * 2.4 + uZoneW.y + uZoneW.z * 0.12;
   vec3 fw = zoneWeights(wp.z);
   zoneDens = max(zoneDens, fw.x * 6.0 * (1.0 - uZoneW.x));
+  // bodennahe Nebelschwaden im Nebelwald
+  float ground = exp(-max(wp.y, 0.0) * 0.35) * (0.6 + 0.8 * vnoise(wp.xz * 0.08 + vec2(t * 0.05, 0.0)));
+  zoneDens += fw.x * uZoneW.x * ground * 2.5;
   float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
   vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
@@ -344,18 +350,32 @@ void main() {
     p.z += cos(uTime * 0.45 + ph * 1.3) * 0.18 * w;
     p.y -= (1.0 - cos(uTime * 0.5 + ph)) * 0.04 * w;
   } else if (matId == 23 || matId == 24) {
-    // Wolf: Laufzyklus der Beine (uAnim.y = wie stark er läuft), leichtes Atmen im Stehen
-    float swing = sin(uTime * 7.0 + uAnim.x) * 0.5 * uAnim.y;
+    // Vierbeiner: diagonaler Trab (uAnim.y = Tempo 0..1), Schulter und Hüfte wippen versetzt,
+    // im Stehen leichtes Atmen. Beim Wolf dreht sich der Kopf (uAnim.w heben/senken, uAnim.z zur Seite).
+    float ph = uTime * 5.2 + uAnim.x;
+    float run = uAnim.y;
+    float swing = sin(ph) * 0.32 * run;
+    // Fuß hebt sich im Vorschwung, statt nur zu pendeln
+    float lift = max(0.0, cos(ph) * sign(aExtra.z)) * abs(aExtra.z) * 0.12 * run;
     p.z += swing * aExtra.z;
+    p.y += lift;
+    float front = smoothstep(0.1, -0.3, p.z);
+    p.y += (sin(ph * 2.0) * 0.018 * front + sin(ph * 2.0 + 1.6) * 0.018 * (1.0 - front)) * run;
+    p.x += sin(ph) * 0.01 * run;
+    p.y += sin(uTime * 1.4 + uAnim.x) * 0.006 * smoothstep(0.3, 0.6, p.y);
     if (matId == 24) {
-      // Kopf um das Nackengelenk heben oder senken (uAnim.w)
-      vec3 pivot = vec3(0.0, 0.74, -0.42);
-      float c = cos(uAnim.w), s = sin(uAnim.w);
+      vec3 pivot = vec3(0.0, 0.72, -0.4);
       vec3 r = p - pivot;
-      p = pivot + vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
-      nrm = vec3(nrm.x, nrm.y * c - nrm.z * s, nrm.y * s + nrm.z * c);
+      vec3 rn = nrm;
+      float c = cos(uAnim.w), s = sin(uAnim.w);
+      r = vec3(r.x, r.y * c - r.z * s, r.y * s + r.z * c);
+      rn = vec3(rn.x, rn.y * c - rn.z * s, rn.y * s + rn.z * c);
+      float cy = cos(uAnim.z), sy = sin(uAnim.z);
+      r = vec3(r.x * cy + r.z * sy, r.y, -r.x * sy + r.z * cy);
+      rn = vec3(rn.x * cy + rn.z * sy, rn.y, -rn.x * sy + rn.z * cy);
+      p = pivot + r;
+      nrm = rn;
     }
-    p.y += abs(sin(uTime * 7.0 + uAnim.x)) * 0.03 * uAnim.y + sin(uTime * 1.6 + uAnim.x) * 0.006;
   }
 
   vec4 wp = modelMat * vec4(p, 1.0);
@@ -756,7 +776,7 @@ void main() {
     float ndl = max((dot(N, SUN_A) + wrap) / (1.0 + wrap), 0.0);
     vec3 amb = mix(vec3(0.018, 0.02, 0.025), vec3(0.05, 0.06, 0.08), hemi) * ao;
     float spec = pow(max(dot(N, normalize(SUN_A + V)), 0.0), specPow) * (0.02 + wet * 0.35);
-    vec3 c = albA * (amb + vec3(0.32, 0.38, 0.5) * ndl * mix(1.0, ao, 0.5)) + vec3(0.5, 0.6, 0.75) * spec * ao * 0.6;
+    vec3 c = albA * (amb + vec3(0.38, 0.38, 0.42) * ndl * mix(1.0, ao, 0.5)) + vec3(0.6, 0.6, 0.6) * spec * ao * 0.6;
     c += vec3(0.12, 0.14, 0.18) * rim * 0.08 * ao;
     col += c * zw.x;
   }
@@ -968,6 +988,36 @@ void main() {
   fragColor = vec4(vColor * exp(-r2 * 4.0) * 0.35, 0.0);
 }`;
 
+// weiche Staubwolken (normale Alpha-Mischung, nicht additiv): Position, Größe, Deckkraft je Punkt
+const VS_DUST = `#version 300 es
+precision highp float;
+layout(location = 0) in vec4 aPosSize;
+layout(location = 1) in float aAlpha;
+uniform mat4 uViewProj;
+uniform vec3 uCamPos;
+uniform float uPixelRatio;
+uniform float uViewH;
+out float vAlpha;
+void main() {
+  float dist = length(aPosSize.xyz - uCamPos);
+  vAlpha = aAlpha;
+  gl_Position = uViewProj * vec4(aPosSize.xyz, 1.0);
+  gl_PointSize = clamp(aPosSize.w * uViewH / max(dist, 1.0), 1.0, 256.0);
+}`;
+
+const FS_DUST = `#version 300 es
+precision highp float;
+in float vAlpha;
+uniform vec3 uColor;
+out vec4 fragColor;
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float r2 = dot(p, p);
+  if (r2 > 1.0) discard;
+  float a = (1.0 - r2) * (1.0 - r2) * vAlpha;
+  fragColor = vec4(uColor * a, a);
+}`;
+
 const VS_QUAD = `#version 300 es
 precision highp float;
 layout(location = 0) in vec2 aPos;
@@ -1093,12 +1143,13 @@ function createProgram(glCtx, vsSrc, fsSrc) {
   return { prog, u };
 }
 
-let progOpaque, progFx, progParticles, progGlowDots, progBloomDown, progBloomUp, progComposite;
+let progOpaque, progFx, progParticles, progGlowDots, progDust, progBloomDown, progBloomUp, progComposite;
 try {
   progOpaque = createProgram(gl, VS_WORLD, FS_OPAQUE);
   progFx = createProgram(gl, VS_FX, FS_FX);
   progParticles = createProgram(gl, VS_PARTICLES, FS_PARTICLES);
   progGlowDots = createProgram(gl, VS_GLOWDOTS, FS_GLOWDOTS);
+  progDust = createProgram(gl, VS_DUST, FS_DUST);
   progBloomDown = createProgram(gl, VS_QUAD, FS_BLOOM_DOWN);
   progBloomUp = createProgram(gl, VS_QUAD, FS_BLOOM_UP);
   progComposite = createProgram(gl, VS_QUAD, FS_COMPOSITE);
