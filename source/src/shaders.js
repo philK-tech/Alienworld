@@ -263,6 +263,8 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float zoneDens = uZoneW.x * 1.3 + uZoneW.y + uZoneW.z * 0.12;
   vec3 fw = zoneWeights(wp.z);
   zoneDens = max(zoneDens, fw.x * 6.0 * (1.0 - uZoneW.x));
+  // die offene Ebene verschwindet vom Pilzwald aus im Nachtdunst (die Schwebefelsen tauchen erst später auf)
+  zoneDens = max(zoneDens, fw.z * 5.0 * uZoneW.y);
   // Nebelschwaden im Nebelwald: in Bänden am Boden, mit deutlichen Lücken dazwischen
   float wisp = smoothstep(0.42, 0.75, fbm(wp.xz * 0.035 + vec2(t * 0.025, t * 0.01)));
   float ground = exp(-max(wp.y, 0.0) * 0.45) * wisp;

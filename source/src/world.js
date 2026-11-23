@@ -187,7 +187,6 @@ function buildWorld() {
   // schwache Lichtstrahlen durch den Nebel, ein kräftigerer hinter der Lichtung des Wolfs
   // sparsam: ein schwacher Lichtkegel am Anfang, ein etwas deutlicherer hinter der Lichtung des Wolfs
   addShaft(riverCenterX(-20) + 8.0, -20, 1.0, 0.6);
-  addShaft(wolfSpot(SCENES[0]).x + SCENES[0].side * 4.5, SCENES[0].z - 1.0, 2.2, 1.8);
 
   // ---------------- Zone 2: Pilzwald ----------------
   // dichte Riesenpilze direkt am Ufer; manche neigen sich als Baldachin über den Fluss
@@ -238,6 +237,16 @@ function buildWorld() {
     const sc = 0.8 + hash2(i, 21.3) * 1.0;
     pushInst("broadleaves", [p.x, p.y - 0.05, p.z], rot(i, 22.4), 0, 0, [sc, sc, sc], hash2(i, 23.0) < 0.6 ? CYAN : VIOLET);
   }
+  // farbiger Nebel knapp über den Pilzhüten: weiche Nebelballen in Violett und Türkis (erst alle violetten, dann alle türkisen)
+  const mistV = [], mistT = [];
+  for (let i = 0; i < 240; i++) {
+    const z = -168.0 - hash2(i, 500.0) * 146.0;
+    const side = hash2(i, 501.0) < 0.5 ? -1 : 1;
+    const x = riverCenterX(z) + side * (riverHalfWidth(z) * 0.3 + hash2(i, 502.0) * 40.0);
+    const p = [x, 9.0 + hash2(i, 503.0) * 7.0, z, 14.0 + hash2(i, 504.0) * 18.0, 0.07 + hash2(i, 505.0) * 0.07];
+    (pnoise(x, z, 0.03, 2) > 0.5 ? mistV : mistT).push(p);
+  }
+
   // einige Quallen hoch über dem Pilzwald
   for (let i = 0; i < 9; i++) {
     const z = -175 - i * 16 - hash2(i, 45.0) * 6;
@@ -248,49 +257,72 @@ function buildWorld() {
 
   // ---------------- Zone 3: offene Ebene mit drei Schwebefelsen ----------------
   // Felsen 1 links mit Wasserfall, Felsen 2 rechts mit Schloss, Felsen 3 rechts mit Ruine; alle eher entfernt
-  // jeder Felsen mit eigener Form: schlanke Säule mit Wasserbecken, breiter Tafelberg mit Stufen, gespaltener Fels
+  // jeder Felsen mit eigener Form: Insel mit flachem Becken und Wasserfall, breiter Tafelberg mit Stufen, gespaltener Fels.
+  // Sie hängen nicht zu hoch, damit man von unten auf die gekippte Oberseite sieht.
   const floatingPeaks = [
-    { z: -360, offsetX: -78, y: 38, sx: 15, sy: 30, sz: 14, fall: true, build: null, variant: 0 },
-    { z: -404, offsetX: 88, y: 46, sx: 24, sy: 22, sz: 20, fall: false, build: "fortress", variant: 1 },
-    { z: -452, offsetX: 70, y: 32, sx: 17, sy: 20, sz: 15, fall: false, build: "ruins", variant: 2 }
+    { z: -360, offsetX: -86, y: 26, sx: 18, sy: 22, sz: 16, fall: true, build: null, variant: 0 },
+    { z: -404, offsetX: 96, y: 31, sx: 24, sy: 22, sz: 20, fall: false, build: "fortress", variant: 1 },
+    { z: -452, offsetX: 80, y: 23, sx: 17, sy: 20, sz: 15, fall: false, build: "ruins", variant: 2 }
   ];
+  // Drehung, die die y-Achse auf u legt (Rodrigues), als Mat4 ohne Verschiebung
+  const alignY = (u) => {
+    const kx = u[2], kz = -u[0], kl = Math.hypot(kx, kz);
+    const m = Mat4.create();
+    if (kl < 1e-6) return m;
+    const ax = kx / kl, az = kz / kl, c = u[1], sn = kl, t1 = 1 - c;
+    m[0] = c + ax * ax * t1; m[1] = az * sn; m[2] = ax * az * t1;
+    m[4] = -az * sn; m[5] = c; m[6] = ax * sn;
+    m[8] = ax * az * t1; m[9] = -ax * sn; m[10] = c + az * az * t1;
+    return m;
+  };
+  const matTRS = (pos, R, spin, scale) => {
+    const S = Mat4.compose(Mat4.create(), [0, 0, 0], spin, 0, 0, scale);
+    const M = Mat4.multiply(Mat4.create(), R, S);
+    M[12] = pos[0]; M[13] = pos[1]; M[14] = pos[2];
+    return M;
+  };
+  const pushInstM = (name, M, tint) => {
+    const g = group(name);
+    for (let k = 0; k < 16; k++) g.mats.push(M[k]);
+    g.tints.push(tint[0], tint[1], tint[2], tint[3]);
+  };
   floatingPeaks.forEach((pk, idx) => {
     pk.x = riverCenterX(pk.z) + pk.offsetX;
-    pk.rot = idx * 1.4;
-    // zum Fluss und zur Kamera gekippt, damit man sieht, was oben steht
-    pk.tiltX = 0.22;
-    pk.tiltZ = pk.offsetX < 0 ? -0.46 : 0.46;
-    const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
-    const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
+    // Oberseite zeigt zum Fluss und zur Anfahrt (Punkt auf dem Fluss 70 Einheiten vor dem Felsen)
+    const ax = riverCenterX(pk.z + 70) - pk.x, az = 70.0, al = Math.hypot(ax, az);
+    const u = [ax / al * 0.62, 1.0, az / al * 0.62], ul = Math.hypot(...u);
+    const R = Mat4.multiply(Mat4.create(), alignY(u.map((c) => c / ul)), Mat4.compose(Mat4.create(), [0, 0, 0], idx * 1.4, 0, 0, [1, 1, 1]));
+    pk.model = matTRS([pk.x, pk.y, pk.z], R, 0, [pk.sx, pk.sy, pk.sz]);
     const topH = pk.sy * 0.33;
-    // kleine, feine Bauwerke, etwas aus der Mitte gerückt
     const at = (h, ox, oz) => [pk.x + R[0] * ox + R[4] * h + R[8] * oz, pk.y + R[1] * ox + R[5] * h + R[9] * oz, pk.z + R[2] * ox + R[6] * h + R[10] * oz];
-    if (pk.build === "fortress") pushInst("citadel", at(topH - 0.6, pk.sx * 0.12, 0), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.6, pk.sx * 0.75, pk.sx * 0.6], STONE_C);
-    if (pk.build === "ruins") pushInst("monoliths", at(topH - 0.4, -pk.sx * 0.1, 0), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 0.6, pk.sx * 0.62, pk.sx * 0.6], STONE_C);
-    // kleine Bäume und Felsbrocken auf dem Rand der Oberseite
-    for (let k = 0; k < 6; k++) {
+    // Richtung zum Fluss im eigenen Koordinatensystem des Felsens
+    const wx = pk.offsetX < 0 ? 1 : -1;
+    const ldx = R[0] * wx, ldz = R[8] * wx, ldl = Math.hypot(ldx, ldz) || 1;
+    if (pk.build === "fortress") pushInstM("citadel", matTRS(at(topH - 0.6, pk.sx * 0.12, 0), R, 0.6, [pk.sx * 0.6, pk.sx * 0.75, pk.sx * 0.6]), STONE_C);
+    if (pk.build === "ruins") pushInstM("monoliths", matTRS(at(topH - 0.4, -pk.sx * 0.1, 0), R, 1.1, [pk.sx * 0.6, pk.sx * 0.62, pk.sx * 0.6]), STONE_C);
+    // kleine Bäume und Felsbrocken auf dem Rand der Oberseite; wo der Wasserfall stürzt, bleibt der Rand frei
+    const fallAng = Math.atan2(ldz, ldx);
+    for (let k = 0; k < 7; k++) {
       let a = hash2(idx * 13 + k, 400.0) * Math.PI * 2;
+      if (pk.fall && Math.abs(Math.atan2(Math.sin(a - fallAng), Math.cos(a - fallAng))) < 1.0) a += Math.PI * 0.7;
       const r = 0.45 + hash2(idx * 13 + k, 401.0) * 0.3;
-      // dort, wo der Wasserfall über die Kante stürzt, bleibt der Rand frei
-      if (pk.fall && Math.abs(Math.atan2(Math.sin(a), Math.cos(a)) - (pk.offsetX < 0 ? 0 : Math.PI)) < 1.0) a += Math.PI * 0.6;
       const ox = Math.cos(a) * r * pk.sx * 0.7, oz = Math.sin(a) * r * pk.sz * 0.7;
       const h = topH * (1.0 - r * r * 0.6) - 0.5;
-      if (k < 4) { const th = 2.5 + hash2(idx * 13 + k, 402.0) * 3.0; pushInst("islandTrees", at(h, ox, oz), a, pk.tiltX, pk.tiltZ, [th, th, th], CYAN); }
-      else { const s = 0.8 + hash2(idx * 13 + k, 403.0) * 1.2; pushInst("rocks", at(h, ox, oz), a, pk.tiltX, pk.tiltZ, [s, s * 0.7, s], [1.05, 0.95, 0.85, 1]); }
+      if (k < 5) { const th = 2.5 + hash2(idx * 13 + k, 402.0) * 3.0; pushInstM("islandTrees", matTRS(at(h, ox, oz), R, a, [th, th, th]), CYAN); }
+      else { const sc = 0.8 + hash2(idx * 13 + k, 403.0) * 1.2; pushInstM("rocks", matTRS(at(h, ox, oz), R, a, [sc, sc * 0.7, sc]), [1.05, 0.95, 0.85, 1]); }
     }
     // Wolkenschleier unter dem Felsen (weiche Wolkenpunkte)
     for (let k = 0; k < 26; k++) {
       const a = (k / 26) * Math.PI * 2 + hash2(idx, k) * 0.4, r = pk.sx * (0.5 + hash2(idx * 31 + k, 410.0) * 0.8);
       clouds.push([pk.x + Math.cos(a) * r, pk.y - pk.sy * (0.25 + hash2(idx * 31 + k, 411.0) * 0.45), pk.z + Math.sin(a) * r * 0.8, 10.0 + hash2(idx * 31 + k, 412.0) * 14.0, 0.18 + hash2(idx * 31 + k, 413.0) * 0.16]);
     }
-    const topY = pk.y + topH;
     if (pk.fall) {
-      // Austritt am gekippten Rand zum Fluss hin, knapp unter der Kante des Beckens; das Band zeigt zum Fluss
-      const toRiver = pk.offsetX < 0 ? 1 : -1;
-      const start = at(pk.sy * 0.03, toRiver * pk.sx * 0.72, 0);
-      waterfalls.push({ x: start[0], y: start[1], z: start[2], rotY: toRiver * Math.PI * 0.5, sx: 3.0, sy: start[1] - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
+      // Austritt am Beckenrand zum Fluss hin; das Band zeigt zum Fluss
+      const start = at(pk.sy * 0.04, ldx / ldl * pk.sx * 0.8, ldz / ldl * pk.sz * 0.8);
+      waterfalls.push({ x: start[0], y: start[1], z: start[2], rotY: wx * Math.PI * 0.5, sx: 3.0, sy: start[1] - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
     }
   });
+;
   // Grasbüschel und wenige Wiesenblumen, sonst leer
   for (let i = 0; i < 700; i++) {
     const p = bankSpot(i, 35.0, 0.0, 30.0, 1.3, -318.0, -482.0);
@@ -361,8 +393,20 @@ function buildWorld() {
   gl.enableVertexAttribArray(1);
   gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 16);
   gl.bindVertexArray(null);
+  const mistAll = mistV.concat(mistT);
+  const mistData = new Float32Array(mistAll.length * 5);
+  mistAll.forEach((c, i) => mistData.set(c, i * 5));
+  const mistVao = gl.createVertexArray();
+  gl.bindVertexArray(mistVao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, mistData, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 20, 0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 16);
+  gl.bindVertexArray(null);
   const mountainMeshes = [
-    uploadStaticMesh(gl, buildFloatingMountainMesh({ wide: 0.75, pool: 1.0, seed: 3.0 })),
+    uploadStaticMesh(gl, buildFloatingMountainMesh({ wide: 0.95, pool: 0.5, seed: 3.0 })),
     uploadStaticMesh(gl, buildFloatingMountainMesh({ wide: 1.1, terrace: 1.0, seed: 7.0 })),
     uploadStaticMesh(gl, buildFloatingMountainMesh({ wide: 1.0, split: 0.45, seed: 11.0 }))
   ];
@@ -373,6 +417,7 @@ function buildWorld() {
   };
   return {
     valleyMesh, waterMesh, skyDomeMesh, mountainMesh, mountainMeshes, floatingPeaks, cloudVao, cloudCount: clouds.length,
+    mistVao, mistViolet: mistV.length, mistTeal: mistT.length,
     cliffHousingMesh, bankCliffHousings, plungeRippleMesh, plungeRipples, waterfallMesh, waterfalls,
     shaftMesh, lightShafts,
     instGroups: [

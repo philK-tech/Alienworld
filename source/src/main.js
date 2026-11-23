@@ -174,7 +174,8 @@ function drawScene(pass) {
       const mm = world.mountainMeshes[pk.variant || 0];
       gl.bindVertexArray(mm.vao);
       if (!near(pk.z, pk.sx + 20)) return;
-      Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot, pk.tiltX || 0, pk.tiltZ || 0, [pk.sx, pk.sy, pk.sz]);
+      if (pk.model) tempModelMat.set(pk.model);
+      else Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot || 0, 0, 0, [pk.sx, pk.sy, pk.sz]);
       setModel(tempModelMat, [0.92, 1.0, 1.15, 1], 0.0);
       gl.drawElements(gl.TRIANGLES, mm.indexCount, gl.UNSIGNED_INT, 0);
     });
@@ -290,6 +291,21 @@ function drawScene(pass) {
   gl.drawArrays(gl.POINTS, 0, world.particleCount);
 
   // Wolkenschleier unter den Schwebefelsen
+  // farbiger Nebel über den Pilzhüten, nur im Pilzwald
+  if (!pass.reflect && camZone[1] > 0.02) {
+    const su = progDust.u;
+    gl.useProgram(progDust.prog);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniformMatrix4fv(su.uViewProj, false, vp);
+    gl.uniform3fv(su.uCamPos, cam);
+    gl.uniform1f(su.uViewH, viewH);
+    gl.uniform1f(su.uFade, camZone[1]);
+    gl.bindVertexArray(world.mistVao);
+    gl.uniform3f(su.uColor, 0.55, 0.18, 0.85);
+    gl.drawArrays(gl.POINTS, 0, world.mistViolet);
+    gl.uniform3f(su.uColor, 0.08, 0.55, 0.7);
+    gl.drawArrays(gl.POINTS, world.mistViolet, world.mistTeal);
+  }
   // nur in der offenen Ebene, beim Übergang ausgeblendet (sonst leuchten sie weiß in die Nacht des Pilzwalds)
   if (!pass.reflect && world.cloudCount > 0 && camZone[2] > 0.02) {
     const su = progDust.u;

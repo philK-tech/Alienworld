@@ -292,7 +292,8 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
     } else if (sc.type === "castle") {
       // das Schloss tritt aus dem Nebel; ein Fledermausschwarm steigt von den Zinnen vor den Mond (als Silhouette),
       // dann stürzt er auf Augenhöhe direkt auf das Boot zu und rauscht knapp über den Kopf hinweg
-      const top = [CASTLE.x, CASTLE.top + 2.0, CASTLE.z + zOff];
+      // Start oberhalb der Turmspitzen, damit der Schwarm nicht durch die Türme fliegt
+      const top = [CASTLE.x, CASTLE.top + 12.0, CASTLE.z + zOff];
       const moonPt = [cam[0] + MOON_A[0] * 70, cam[1] + MOON_A[1] * 70, cam[2] + MOON_A[2] * 70];
       const N = 90;
       for (let i = 0; i < N; i++) {
@@ -305,7 +306,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         const P = (u) => {
           if (u < 0.55) {
             const v = u / 0.55;
-            return [bez3(top[0] + sx * 5, top[0], moonPt[0] + sx * 8, moonPt[0] + sx * 6, v), bez3(top[1] + h3 * 4, top[1] + 10, moonPt[1] + sy * 8, moonPt[1] + sy * 6, v),
+            return [bez3(top[0] + sx * 5, top[0] + sx * 3, moonPt[0] + sx * 8, moonPt[0] + sx * 6, v), bez3(top[1] + h3 * 4, top[1] + 12, moonPt[1] + sy * 8, moonPt[1] + sy * 6, v),
               bez3(top[2] + (h1 - 0.5) * 6, top[2] + 6, moonPt[2] + 4, moonPt[2], v)];
           }
           const v = (u - 0.55) / 0.45;
