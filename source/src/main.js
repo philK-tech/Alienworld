@@ -54,7 +54,7 @@ const endDrag = () => { look.dragging = false; };
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
 
-const ZONE_NAMES = ["Tal der Nebelfälle", "Pilzwald im Sternenlicht", "Die Himmelsinseln"];
+const ZONE_NAMES = ["Finsterer Nebelwald", "Wald der Riesenpilze", "Ebene der Schwebefelsen"];
 function updateChapterLabel(w) {
   const k = w[0] >= w[1] && w[0] >= w[2] ? 0 : w[1] >= w[2] ? 1 : 2;
   if (chapterEl.textContent !== ZONE_NAMES[k]) chapterEl.textContent = ZONE_NAMES[k];
