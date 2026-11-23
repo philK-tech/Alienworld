@@ -195,7 +195,7 @@ function buildFloatingMountainMesh() {
       const ang = u * Math.PI * 2.0;
       const ca = Math.cos(ang), sa = Math.sin(ang);
       const n = fbm2(ca * 2.2 + v * 3.0, sa * 2.2 + 8.2, 5);
-      const strata = 1.0 + 0.06 * Math.sin(v * 70.0 + n * 6.0);
+      const strata = 1.0 + 0.015 * Math.sin(v * 23.0 + n * 6.0);
       const jag = (0.62 + 0.58 * n) * strata;
       const rx = ca * radius * jag;
       const rz = sa * radius * jag * 0.86;

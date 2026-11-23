@@ -143,7 +143,7 @@ function buildWorld() {
 
   // dichter Wald: Nadelbäume (leicht schief, unterschiedlich hoch) und dazwischen Totholz
   for (let i = 0; i < 1500; i++) {
-    const p = bankSpot(i, 5.0, 3.5, 70.0, 1.6, 6.0, -172.0);
+    const p = bankSpot(i, 5.0, 3.5, 70.0, 1.6, -4.0, -172.0);
     if (inClearing(p.x, p.z) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7))) continue;
     const h = Math.min(10.0 + hash2(i, 6.4) * 14.0, (p.reach - 2.5) / 0.38);
     if (h < 6.0) continue;

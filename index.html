@@ -728,7 +728,7 @@
           const ang = u * Math.PI * 2.0;
           const ca = Math.cos(ang), sa = Math.sin(ang);
           const n = fbm2(ca * 2.2 + v * 3.0, sa * 2.2 + 8.2, 5);
-          const strata = 1.0 + 0.06 * Math.sin(v * 70.0 + n * 6.0);
+          const strata = 1.0 + 0.015 * Math.sin(v * 23.0 + n * 6.0);
           const jag = (0.62 + 0.58 * n) * strata;
           const rx = ca * radius * jag;
           const rz = sa * radius * jag * 0.86;
@@ -1990,7 +1990,10 @@
       float dy = d.y;
       float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
       float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
+      // Dichte nach der Zone der Kamera; der Nebelwald ist auch von außen gesehen eine dichte Nebelwand
       float zoneDens = uZoneW.x * 2.2 + uZoneW.y + uZoneW.z * 0.4;
+      vec3 fw = zoneWeights(wp.z);
+      zoneDens = max(zoneDens, fw.x * 6.0 * (1.0 - uZoneW.x));
       float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
       float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
       vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
@@ -2982,7 +2985,7 @@
 
       // dichter Wald: Nadelbäume (leicht schief, unterschiedlich hoch) und dazwischen Totholz
       for (let i = 0; i < 1500; i++) {
-        const p = bankSpot(i, 5.0, 3.5, 70.0, 1.6, 6.0, -172.0);
+        const p = bankSpot(i, 5.0, 3.5, 70.0, 1.6, -4.0, -172.0);
         if (inClearing(p.x, p.z) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7))) continue;
         const h = Math.min(10.0 + hash2(i, 6.4) * 14.0, (p.reach - 2.5) / 0.38);
         if (h < 6.0) continue;
