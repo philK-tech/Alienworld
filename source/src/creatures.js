@@ -302,13 +302,13 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       const p = clamp01(st / sc.dur);
       for (let i = 0; i < 14; i++) {
         const ox = (hash2(i, 320.0) - 0.5) * 16, oz = (hash2(i, 321.0) - 0.5) * 12;
-        const x0 = riverCenterX(sc.z) + sc.side * 130, x1 = riverCenterX(sc.z) + sc.side * 55;
-        const z0 = sc.z - 70, z1 = sc.z + 10;
+        const x0 = riverCenterX(sc.z) + sc.side * 80, x1 = riverCenterX(sc.z) + sc.side * 28;
+        const z0 = sc.z - 55, z1 = sc.z + 5;
         const x = lerp(x0, x1, p) + ox, z = lerp(z0, z1, p) + oz + zOff;
         const y = terrainHeight(x, z) - 0.05;
         const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
         if (!g) break;
-        const s = 2.0 + hash2(i, 322.0) * 0.5;
+        const s = 3.2 + hash2(i, 322.0) * 0.8;
         Mat4.compose(g.model, [x, y + Math.abs(Math.sin(t * 6 + i)) * 0.2, z], Math.atan2(-(x1 - x0), -(z1 - z0)), 0, 0, [s, s, s]);
         g.anim[0] = i * 1.3;
         g.anim[1] = 1.0;

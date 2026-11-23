@@ -256,7 +256,7 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float dy = d.y;
   float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
   float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
-  float zoneDens = uZoneW.x * 3.2 + uZoneW.y + uZoneW.z * 0.4;
+  float zoneDens = uZoneW.x * 2.2 + uZoneW.y + uZoneW.z * 0.4;
   float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
   vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;

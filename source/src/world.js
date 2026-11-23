@@ -27,17 +27,26 @@ function wolfDen(sc) {
 // Das Schloss auf seinem Felsen am Ende des Nebelwalds
 const CASTLE = (() => {
   const z = -150, side = 1;
-  const x = riverCenterX(z) + side * (riverHalfWidth(z) + 26.0);
+  const x = riverCenterX(z) + side * (riverHalfWidth(z) + 19.0);
   const gy = terrainHeight(x, z);
-  return { x, z, side, gy, rockH: 16.0, top: gy - 2.0 + 16.0 * 0.93 + 22.0 };
+  return { x, z, side, gy, rockH: 16.0, top: gy - 2.0 + 16.0 * 0.93 + 28.0 };
 })();
 
 // freie Stellen: Lichtung des Wolfs, Weg ins Versteck, Fuß des Schlossfelsens
 const CLEARINGS = [
   { ...wolfSpot(SCENES[0]), r: 7.0 },
   { x: (wolfSpot(SCENES[0]).x + wolfDen(SCENES[0]).x) / 2, z: SCENES[0].z - 2.5, r: 4.0 },
-  { x: CASTLE.x, z: CASTLE.z, r: 18.0 }
+  { x: CASTLE.x, z: CASTLE.z, r: 14.0 }
 ];
+// Sichtachsen vom Fluss zum Schloss und zur Lichtung des Wolfs freihalten (aus Richtung des herankommenden Boots)
+function clearSightline(x, z, from, r0, r1) {
+  for (let k = 1; k <= 6; k++) {
+    const f = k / 7;
+    CLEARINGS.push({ x: lerp(riverCenterX(z + from), x, f), z: lerp(z + from, z, f), r: lerp(r0, r1, f) });
+  }
+}
+clearSightline(CASTLE.x, CASTLE.z, 45.0, 4.0, 11.0);
+clearSightline(wolfSpot(SCENES[0]).x, SCENES[0].z, 16.0, 3.0, 6.0);
 function inClearing(x, z, extra = 0) {
   for (const c of CLEARINGS) {
     const dz = Math.abs(z - c.z);
@@ -106,10 +115,10 @@ function buildWorld() {
   // ---------------- Zone 1: finsterer Nebelwald ----------------
   // genau ein Wasserfall, an einer Felskante am rechten Ufer
   {
-    const fz = -100, side = 1;
+    const fz = -34, side = -1;
     const cx = riverCenterX(fz), hw = riverHalfWidth(fz);
     const cliffX = cx + side * (hw + 1.8);
-    const yaw = -Math.PI * 0.42;
+    const yaw = side < 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
     const h = 8.0;
     const dirX = Math.sin(yaw), dirZ = Math.cos(yaw);
     const crestX = cliffX + dirX * 0.25, crestZ = fz + dirZ * 0.25;
@@ -124,13 +133,13 @@ function buildWorld() {
   }
   // das Schloss auf einem schroffen Felsen
   pushInst("rocks", [CASTLE.x, CASTLE.gy - 2.0, CASTLE.z], 0.8, 0, 0, [14.0, CASTLE.rockH, 12.0], [0.7, 0.72, 0.8, 1]);
-  pushInst("castleGothic", [CASTLE.x, CASTLE.gy - 2.0 + CASTLE.rockH * 0.93 - 0.8, CASTLE.z], -1.2, 0, 0, [22, 24, 22], STONE_A);
+  pushInst("castleGothic", [CASTLE.x, CASTLE.gy - 2.0 + CASTLE.rockH * 0.93 - 0.8, CASTLE.z], -1.2, 0, 0, [26, 30, 26], STONE_A);
 
   // dichter Wald: Nadelbäume (leicht schief, unterschiedlich hoch) und dazwischen Totholz
   for (let i = 0; i < 1500; i++) {
-    const p = bankSpot(i, 5.0, 2.0, 70.0, 1.6, 6.0, -172.0);
+    const p = bankSpot(i, 5.0, 3.5, 70.0, 1.6, 6.0, -172.0);
     if (inClearing(p.x, p.z) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7))) continue;
-    const h = Math.min(10.0 + hash2(i, 6.4) * 14.0, p.reach / 0.3);
+    const h = Math.min(10.0 + hash2(i, 6.4) * 14.0, (p.reach - 2.5) / 0.38);
     if (h < 6.0) continue;
     const dead = hash2(i, 7.1) < 0.18;
     pushInst(dead ? "deadTrees" : "pines", [p.x, p.y - 0.3, p.z], rot(i, 8.1), (hash2(i, 9.1) - 0.5) * 0.14, (hash2(i, 9.7) - 0.5) * 0.14,
@@ -152,13 +161,14 @@ function buildWorld() {
     pushInst("rocks", [p.x, p.y - 0.3, p.z], rot(i, 3.1), 0, 0, [s, s * 0.7, s * 0.9], [0.8, 0.85, 0.95, 1]);
   }
   // zwei Laternen
-  [[-30, -1], [-128, 1]].forEach(([z, side]) => {
+  [[-18, 1], [-128, -1]].forEach(([z, side]) => {
     const x = riverCenterX(z) + side * (riverHalfWidth(z) + 1.3);
     pushInst("lanterns", [x, terrainHeight(x, z) - 0.05, z], side > 0 ? Math.PI : 0, 0, 0, [2.3, 2.3, 2.3], [1, 1, 1, 1]);
   });
   // schwache Lichtstrahlen durch den Nebel, ein kräftigerer hinter der Lichtung des Wolfs
   [[-20, 1], [-48, -1], [-84, 1], [-118, -1]].forEach(([z, s]) => addShaft(riverCenterX(z) + s * 8.0, z, 1.0, 0.8));
-  addShaft(wolfSpot(SCENES[0]).x + SCENES[0].side * 5.0, SCENES[0].z - 2.0, 2.2, 2.5);
+  addShaft(wolfSpot(SCENES[0]).x + SCENES[0].side * 4.5, SCENES[0].z - 1.0, 2.6, 6.0);
+  addShaft(CASTLE.x - 6.0, CASTLE.z + 6.0, 3.5, 3.0);
 
   // ---------------- Zone 2: Pilzwald ----------------
   // dichte Riesenpilze direkt am Ufer; manche neigen sich als Baldachin über den Fluss
