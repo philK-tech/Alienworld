@@ -296,7 +296,7 @@ function drawScene(pass) {
     gl.uniformMatrix4fv(su.uViewProj, false, vp);
     gl.uniform3fv(su.uCamPos, cam);
     gl.uniform1f(su.uViewH, viewH);
-    gl.uniform3f(su.uColor, 0.62, 0.55, 0.42);
+    gl.uniform3f(su.uColor, 0.42, 0.33, 0.21);
     gl.bindVertexArray(dustVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, dustBuf);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, dustData.subarray(0, dustCount * 5));

@@ -368,7 +368,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
           const age = (t * 0.55 + k / 6 + i * 0.137) % 1.0;
           const back = age * 7.0;
           const dx = (x1 - x0), dz = (z1 - z0), dl = Math.hypot(dx, dz);
-          dust(x - dx / dl * back + Math.sin(k * 3.1 + i) * 1.2, y + 0.4 + age * 2.2, z - dz / dl * back, 3.0 + age * 9.0, (1.0 - age) * (1.0 - age) * 0.22);
+          dust(x - dx / dl * back + Math.sin(k * 3.1 + i) * 1.2, y + 0.4 + age * 2.6, z - dz / dl * back, 4.0 + age * 12.0, (1.0 - age) * (1.0 - age) * 0.75);
         }
         cxs += x; cys += y; czs += z; n++;
       }
@@ -378,11 +378,13 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       // und ziehen schräg rechts hinter das Boot, wo sie aus dem Bild verschwinden
       let lead = null;
       for (let i = 0; i < 4; i++) {
-        const q = clamp01((st - 0.3 - i * 0.6) / 10.0);
+        const q = clamp01((st - 0.3 - i * 1.1) / 10.0);
         if (q <= 0 || q >= 1) continue;
         const bz = cam[2], bx = cam[0];
-        const P0 = [bx - 110 - i * 8, 48 + i * 4, bz - 150 + i * 6], P1 = [bx - 40, 30 + i * 2, bz - 70];
-        const P2 = [bx + 12, 16 + i * 1.5, bz - 18 + i * 3], P3 = [bx + 60 + i * 6, 20 + i * 2, bz + 60];
+        // jeder Manta auf eigener, seitlich und in der Höhe versetzter Bahn
+        const ox = [0, 14, -12, 26][i], oy = [0, 7, -3, 12][i], oz = [0, -10, 12, -22][i];
+        const P0 = [bx - 110 + ox, 48 + oy, bz - 150 + oz], P1 = [bx - 40 + ox, 30 + oy, bz - 70 + oz];
+        const P2 = [bx + 12 + ox * 0.6, 16 + oy * 0.7, bz - 18 + oz * 0.5], P3 = [bx + 60 + ox, 20 + oy, bz + 60 + oz];
         const pos = (u) => [bez3(P0[0], P1[0], P2[0], P3[0], u), bez3(P0[1], P1[1], P2[1], P3[1], u), bez3(P0[2], P1[2], P2[2], P3[2], u)];
         const [x, y, z] = pos(q), p2 = pos(Math.min(q + 0.01, 1));
         const g = take(creatureMeshes.manta, [0.015, 0.015, 0.02, 0]);
