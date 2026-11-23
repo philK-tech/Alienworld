@@ -273,7 +273,7 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
   vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
   // der Nebelwald ist von der Ebene aus eine graue, nicht leuchtende Wand
-  fc = mix(fc, vec3(0.2, 0.22, 0.26), fw.x * (1.0 - uZoneW.x));
+  fc = mix(fc, vec3(0.2, 0.22, 0.26), fw.x * (1.0 - uZoneW.x) * (1.0 - uZoneW.y));
   return mix(col, fc, clamp(f, 0.0, 0.97));
 }
 `;
