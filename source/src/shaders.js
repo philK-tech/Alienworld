@@ -266,7 +266,7 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   // Nebelschwaden im Nebelwald: in Bänden am Boden, mit deutlichen Lücken dazwischen
   float wisp = smoothstep(0.42, 0.75, fbm(wp.xz * 0.035 + vec2(t * 0.025, t * 0.01)));
   float ground = exp(-max(wp.y, 0.0) * 0.45) * wisp;
-  zoneDens += fw.x * uZoneW.x * ground * 5.0;
+  zoneDens += fw.x * uZoneW.x * ground * 9.0;
   float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
   vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;

@@ -269,7 +269,10 @@ function buildWorld() {
     if (pk.build === "ruins") pushInst("monoliths", at(topH - 0.4, -pk.sx * 0.1, 0), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 0.6, pk.sx * 0.62, pk.sx * 0.6], STONE_C);
     // kleine Bäume und Felsbrocken auf dem Rand der Oberseite
     for (let k = 0; k < 6; k++) {
-      const a = hash2(idx * 13 + k, 400.0) * Math.PI * 2, r = 0.45 + hash2(idx * 13 + k, 401.0) * 0.3;
+      let a = hash2(idx * 13 + k, 400.0) * Math.PI * 2;
+      const r = 0.45 + hash2(idx * 13 + k, 401.0) * 0.3;
+      // dort, wo der Wasserfall über die Kante stürzt, bleibt der Rand frei
+      if (pk.fall && Math.abs(Math.atan2(Math.sin(a), Math.cos(a)) - (pk.offsetX < 0 ? 0 : Math.PI)) < 1.0) a += Math.PI * 0.6;
       const ox = Math.cos(a) * r * pk.sx * 0.7, oz = Math.sin(a) * r * pk.sz * 0.7;
       const h = topH * (1.0 - r * r * 0.6) - 0.5;
       if (k < 4) { const th = 2.5 + hash2(idx * 13 + k, 402.0) * 3.0; pushInst("islandTrees", at(h, ox, oz), a, pk.tiltX, pk.tiltZ, [th, th, th], CYAN); }
@@ -282,8 +285,10 @@ function buildWorld() {
     }
     const topY = pk.y + topH;
     if (pk.fall) {
-      const fx = pk.x + pk.sx * 0.62; // an der Kante zum Fluss
-      waterfalls.push({ x: fx, y: topY - 0.5, z: pk.z + 2.0, rotY: 0.0, sx: 3.2, sy: topY - 0.5 - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
+      // Austritt am gekippten Rand zum Fluss hin, knapp unter der Kante des Beckens; das Band zeigt zum Fluss
+      const toRiver = pk.offsetX < 0 ? 1 : -1;
+      const start = at(pk.sy * 0.03, toRiver * pk.sx * 0.72, 0);
+      waterfalls.push({ x: start[0], y: start[1], z: start[2], rotY: toRiver * Math.PI * 0.5, sx: 3.0, sy: start[1] - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
     }
   });
   // Grasbüschel und wenige Wiesenblumen, sonst leer
