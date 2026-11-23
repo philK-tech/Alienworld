@@ -148,11 +148,6 @@ function drawScene(pass) {
       gl.drawElements(gl.TRIANGLES, world.waterMesh.indexCount, gl.UNSIGNED_INT, 0);
     }
 
-    if (near(world.archZ, 15)) {
-      setModel(world.archModel, [0.92, 1.0, 1.12, 1], 0.0);
-      gl.bindVertexArray(world.archMesh.vao);
-      gl.drawElements(gl.TRIANGLES, world.archMesh.indexCount, gl.UNSIGNED_INT, 0);
-    }
 
     gl.bindVertexArray(world.cliffHousingMesh.vao);
     for (const ch of world.bankCliffHousings) {
@@ -308,7 +303,7 @@ function updateScene(dt) {
     if (scene.t > SCENES[scene.idx].dur) scene.idx = -1;
   }
   const slow = scene.idx >= 0 && scene.t < SCENES[scene.idx].dur - 1.5;
-  scene.speed += ((slow ? 0.08 : 1.0) - scene.speed) * (1.0 - Math.exp(-dt * 1.2));
+  scene.speed += ((slow ? SCENES[scene.idx].slow : 1.0) - scene.speed) * (1.0 - Math.exp(-dt * 1.2));
   // langsames Heranzoomen während der Szene
   const zoomTarget = slow && scene.t > 1.0 ? SCENES[scene.idx].zoom : 0.0;
   scene.zoom += (zoomTarget - scene.zoom) * (1.0 - Math.exp(-dt * (snapFrames > 0 ? 50.0 : 0.7)));
@@ -335,7 +330,7 @@ function render(now) {
   placeBoat(bx, zCur, heading, t, camEye);
   boatHeading = heading;
   ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
-  updateCreatures(zCur, t, scene.idx, scene.t);
+  updateCreatures(zCur, t, scene.idx, scene.t, camEye);
 
   // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten
   let tYaw = Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12;
@@ -394,7 +389,7 @@ function render(now) {
 
   gl.enable(gl.DEPTH_TEST);
   gl.disable(gl.BLEND);
-  gl.clearColor(zoneMix(0.45, 0.010, 0.58), zoneMix(0.32, 0.026, 0.66), zoneMix(0.48, 0.055, 0.9), 1.0);
+  gl.clearColor(zoneMix(0.07, 0.010, 0.58), zoneMix(0.08, 0.026, 0.66), zoneMix(0.10, 0.055, 0.9), 1.0);
 
   // 1. Spiegelbild für den Fluss
   gl.bindFramebuffer(gl.FRAMEBUFFER, rt.reflFbo);
@@ -425,7 +420,7 @@ function render(now) {
     gl.bindTexture(gl.TEXTURE_2D, srcTex);
     gl.uniform2f(progBloomDown.u.uTexel, 1.0 / srcW, 1.0 / srcH);
     gl.uniform1f(progBloomDown.u.uPrefilter, i === 0 ? 1.0 : 0.0);
-    gl.uniform1f(progBloomDown.u.uThreshold, zoneMix(0.9, 0.35, 1.6));
+    gl.uniform1f(progBloomDown.u.uThreshold, zoneMix(0.3, 0.35, 1.6));
     fullscreenPass(lv.fbo, lv.w, lv.h);
     srcTex = lv.tex; srcW = lv.w; srcH = lv.h;
   });
@@ -453,7 +448,7 @@ function render(now) {
   gl.uniform1i(progComposite.u.uBloomTex, 1);
   gl.uniform1f(progComposite.u.uTime, state.time);
   gl.uniform2f(progComposite.u.uScreen, canvas.width, canvas.height);
-  gl.uniform1f(progComposite.u.uExposure, zoneMix(0.95, 1.6, 0.85));
+  gl.uniform1f(progComposite.u.uExposure, zoneMix(2.4, 1.6, 0.85));
   fullscreenPass(null, canvas.width, canvas.height);
   gl.activeTexture(gl.TEXTURE0);
 

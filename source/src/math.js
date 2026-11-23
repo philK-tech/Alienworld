@@ -84,7 +84,7 @@ function terrainHeight(x, z) {
   zoneWeights(z, _tw);
   const riverDip = -1.35 * (1.0 - smoothstep(0.0, hw * 1.12, ax));
   const lip = 0.7 * smoothstep(0.0, 3.0, d);
-  const amp = _tw[0] * 3.0 + _tw[1] * 1.4 + _tw[2] * 6.0;
+  const amp = _tw[0] * 3.0 + _tw[1] * 1.4 + _tw[2] * 4.0;
   let roll = (pnoise(x, z, 0.022, 3) - 0.42) * amp * smoothstep(3.0, 22.0, d);
   // Nebeltal: weiche Geländestufen
   const step = Math.floor(roll / 1.6) * 1.6;

@@ -1,28 +1,47 @@
-// world.js: Welt: Platzierung aller Objekte entlang der Strecke
+// world.js: Welt: Platzierung aller Objekte entlang der Strecke (nach dem Fahrtskript)
 // --- World Population ---
-// Inszenierte Szenen, je Zone genau eine. Kommt das Boot auf `trigger` Einheiten heran, wird es langsamer,
-// die Kamera richtet sich fest auf das Geschehen und die Szene läuft `dur` Sekunden (siehe creatures.js, main.js).
+// Zone 1 (z 0 bis -160): finsterer Nebelwald mit Schloss.  Zone 2 (bis -320): Pilzwald.  Zone 3 (bis -480): offene Ebene.
+
+// Szenen in Reihenfolge der Fahrt. Kommt das Boot auf `trigger` Einheiten heran, fährt es mit `slow` (Anteil des
+// normalen Tempos) weiter, die Kamera richtet sich auf das Geschehen und zoomt um `zoom` heran (siehe creatures.js).
 const SCENES = [
-  { type: "wolf", z: -100, side: 1, dur: 14, trigger: 15, zoom: 1.0 },    // Nebeltal: ein Wolf tritt aus dem Wald und heult
-  { type: "fish", z: -236, side: 1, dur: 10, trigger: 22, zoom: 0.55 },    // Pilzwald: ein großer Leuchtfisch springt über den Fluss
-  { type: "flock", z: -396, side: 1, dur: 13, trigger: 30, zoom: 0.3 }    // Himmelsinseln: Gleiterschwarm stürzt herab und steigt wieder auf
+  { type: "wolf", z: -62, side: -1, dur: 10.5, trigger: 15, slow: 0.25, zoom: 0.55 },
+  { type: "castle", z: -150, side: 1, dur: 12.5, trigger: 54, slow: 0.35, zoom: 0.3 },
+  { type: "fish", z: -214, side: 1, dur: 6.5, trigger: 14, slow: 0.4, zoom: 0.25 },
+  { type: "tentacles", z: -266, side: 1, dur: 10.5, trigger: 15, slow: 0.12, zoom: 0.0 },
+  { type: "herd", z: -362, side: -1, dur: 12.0, trigger: 30, slow: 0.45, zoom: 0.45 },
+  { type: "mantas", z: -422, side: 1, dur: 12.0, trigger: 36, slow: 0.45, zoom: 0.15 }
 ];
-// Felsen am Ufer, auf dem der Wolf stehen bleibt, und sein Ausgangspunkt zwischen den Bäumen
-function wolfRock(sc) {
-  const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 1.4);
-  return { x, z: sc.z, y: terrainHeight(x, sc.z) + 1.0 };
+
+// Lichtung des Wolfs (halblinks) und sein Versteck im Wald dahinter
+function wolfSpot(sc) {
+  const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 4.0);
+  return { x, z: sc.z };
 }
-function wolfDen(sc, k) {
-  const z = sc.z - 3.0 + k * 4.0;
-  const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 13.0 + (k % 2) * 2.5);
-  return { x, z, y: terrainHeight(x, z) };
+function wolfDen(sc) {
+  const z = sc.z - 5.0;
+  const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 15.0);
+  return { x, z };
 }
-// freie Stellen: dort wachsen keine großen Pflanzen (Felsen des Wolfs, Weg aus dem Wald)
-const CLEARINGS = [wolfRock(SCENES[0]), { x: (wolfRock(SCENES[0]).x + wolfDen(SCENES[0], 0).x) / 2, z: SCENES[0].z - 1.5 }];
-function inClearing(x, z, r) {
+
+// Das Schloss auf seinem Felsen am Ende des Nebelwalds
+const CASTLE = (() => {
+  const z = -150, side = 1;
+  const x = riverCenterX(z) + side * (riverHalfWidth(z) + 26.0);
+  const gy = terrainHeight(x, z);
+  return { x, z, side, gy, rockH: 16.0, top: gy - 2.0 + 16.0 * 0.93 + 22.0 };
+})();
+
+// freie Stellen: Lichtung des Wolfs, Weg ins Versteck, Fuß des Schlossfelsens
+const CLEARINGS = [
+  { ...wolfSpot(SCENES[0]), r: 7.0 },
+  { x: (wolfSpot(SCENES[0]).x + wolfDen(SCENES[0]).x) / 2, z: SCENES[0].z - 2.5, r: 4.0 },
+  { x: CASTLE.x, z: CASTLE.z, r: 18.0 }
+];
+function inClearing(x, z, extra = 0) {
   for (const c of CLEARINGS) {
     const dz = Math.abs(z - c.z);
-    if (Math.hypot(x - c.x, Math.min(dz, LOOP_LENGTH - dz)) < r) return true;
+    if (Math.hypot(x - c.x, Math.min(dz, LOOP_LENGTH - dz)) < c.r + extra) return true;
   }
   return false;
 }
@@ -36,67 +55,16 @@ function buildWorld() {
   const skyDomeMesh = uploadStaticMesh(gl, buildSkyDomeMesh());
   const cliffHousingMesh = uploadStaticMesh(gl, buildWaterfallCliffHousingMesh());
   const mountainMesh = uploadStaticMesh(gl, buildFloatingMountainMesh());
-  const archMesh = uploadStaticMesh(gl, buildStoneArchMesh());
   const waterfallMesh = uploadStaticMesh(gl, buildWaterfallRibbonMesh());
   const plungeRippleMesh = uploadStaticMesh(gl, buildPlungeRippleMesh());
   const shaftMesh = uploadStaticMesh(gl, buildLightShaftMesh());
 
-  const archZ = -L * 0.46;
-  const archModel = Mat4.create();
-  Mat4.compose(archModel, [riverCenterX(archZ), 0.0, archZ], -riverSlopeX(archZ) * 0.65, 0, 0, [1.15, 1.1, 1.2]);
   const zw = [0, 0, 0];
-  // true mit der Wahrscheinlichkeit, mit der Zonengewichte wA/wB/wC an der Stelle z gelten
+  // true mit der Wahrscheinlichkeit, mit der die Zonengewichte wA/wB/wC an der Stelle z gelten
   const zoneChance = (z, wA, wB, wC, h) => {
     zoneWeights(z, zw);
     return h < zw[0] * wA + zw[1] * wB + zw[2] * wC;
   };
-
-  // Schwebende Inseln: nur in Zone 3. Nahe Inseln mit Wasserfällen, ferne als Kulisse
-  const floatingPeaks = [];
-  const nearIslands = [-336, -354, -373, -394, -416, -437, -458];
-  nearIslands.forEach((z, i) => {
-    const side = i % 2 === 0 ? -1 : 1;
-    const s = 6.0 + hash2(i, 70.0) * 5.0;
-    floatingPeaks.push({ z, offsetX: side * (17.0 + hash2(i, 71.0) * 14.0), y: 15.0 + hash2(i, 72.0) * 12.0,
-      sx: s, sy: s * 1.35, sz: s * 0.9, fall: i % 2 === 0 });
-  });
-  for (let i = 0; i < 12; i++) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const s = 12.0 + hash2(i, 73.0) * 18.0;
-    floatingPeaks.push({ z: -338.0 - i * 11.0 - hash2(i, 74.0) * 6.0, offsetX: side * (45.0 + hash2(i, 75.0) * 75.0),
-      y: 30.0 + hash2(i, 76.0) * 40.0, sx: s, sy: s * (1.2 + hash2(i, 77.0) * 0.4), sz: s * 0.9, fall: false });
-  }
-  floatingPeaks.forEach((pk, idx) => { pk.x = riverCenterX(pk.z) + pk.offsetX; pk.rot = idx * 1.4; });
-
-  // Uferklippen mit Wasserfällen im Nebeltal: das Wasser tritt in der Nische aus und fällt bis y=0
-  const waterfalls = [];
-  const lightShaftsExtra = [];
-  const bankCliffHousings = [];
-  const plungeRipples = [];
-  const bankFalls = [{ z: -22, side: -1 }, { z: -60, side: 1 }, { z: -73, side: -1 }, { z: -118, side: -1 }];
-  bankFalls.forEach(({ z: fz, side }) => {
-    const cx = riverCenterX(fz);
-    const hw = riverHalfWidth(fz);
-    const cliffX = cx + side * (hw + 1.8);
-    const yaw = side < 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
-    const cliffHeight = 7.5;
-    const dirX = Math.sin(yaw);
-    const dirZ = Math.cos(yaw);
-    const crestX = cliffX + dirX * 0.25;
-    const crestZ = fz + dirZ * 0.25;
-    bankCliffHousings.push({ x: cliffX, y: -0.6, z: fz, rotY: yaw, sx: 5.2, sy: cliffHeight + 1.2, sz: 3.6 });
-    waterfalls.push({ x: crestX, y: cliffHeight - 0.55, z: crestZ, rotY: yaw, sx: 2.9, sy: cliffHeight - 0.55, sz: 1.8, isSkyFall: false });
-    plungeRipples.push({ x: crestX + dirX * 0.85, y: 0.02, z: crestZ + dirZ * 0.85, sx: 3.4, sz: 3.0 });
-  });
-
-  // Wasserfälle, die aus den nahen schwebenden Inseln stürzen
-  floatingPeaks.forEach((pk, idx) => {
-    if (!pk.fall) return;
-    const startY = pk.y - pk.sy * 0.12;
-    const fx = pk.x + (pk.offsetX < 0 ? 1.5 : -1.5);
-    const groundY = terrainHeight(fx, pk.z + 1.6);
-    waterfalls.push({ x: fx, y: startY, z: pk.z + 1.6, rotY: 0.0, sx: 1.4, sy: startY - groundY, sz: 1.2, isSkyFall: true, peakIdx: idx, groundY });
-  });
 
   // Instanzen
   const groups = {};
@@ -111,272 +79,178 @@ function buildWorld() {
     for (let i = 0; i < 16; i++) g.mats.push(m[i]);
     g.tints.push(tint[0], tint[1], tint[2], tint[3]);
   }
-  // Zufallsposition neben dem Fluss: Abstand vom Ufer zwischen dMin und dMax
-  function bankSpot(i, salt, dMin, dMax, bias = 1.0) {
-    const z = -hash2(i, salt) * L;
+  // Zufallsposition neben dem Fluss: Abstand vom Ufer zwischen dMin und dMax, in z zwischen z0 und z1
+  function bankSpot(i, salt, dMin, dMax, bias = 1.0, z0 = 0, z1 = -L) {
+    const z = wrapZ(lerp(z0, z1, hash2(i, salt)));
     const side = hash2(i, salt + 0.5) < 0.5 ? -1 : 1;
     const hw = riverHalfWidth(z);
     const bank = dMin + Math.pow(hash2(i, salt + 1.1), bias) * (dMax - dMin);
     const x = riverCenterX(z) + side * (hw + bank);
-    // reach: waagrechter Abstand zur Fahrrinne des Boots (Bootsmitte pendelt um bis zu 1 Einheit)
+    // reach: waagrechter Abstand zur Fahrrinne des Boots
     return { x, z, y: terrainHeight(x, z), side, bank, reach: hw + bank - 2.2 };
   }
-  const CYAN = [0.10, 0.85, 1.0, 1], BLUE = [0.15, 0.45, 1.0, 1], VIOLET = [0.75, 0.28, 1.0, 1];
-  const pickTint = (h) => (h < 0.55 ? CYAN : h < 0.85 ? BLUE : VIOLET);
+  const CYAN = [0.10, 0.85, 1.0, 1], BLUE = [0.15, 0.45, 1.0, 1], VIOLET = [0.75, 0.28, 1.0, 1], MAGENTA = [1.0, 0.3, 0.8, 1];
   const rot = (i, salt) => hash2(i, salt) * Math.PI * 2;
-  // Haine: Bäume wachsen in Gruppen, dazwischen bleiben offene Wiesen
-  const grove = (p, thr) => pnoise(p.x + 517.0, p.z, 0.028, 2) > thr;
+  const STONE_A = [0.22, 0.22, 0.26, 1], STONE_C = [0.80, 0.78, 0.72, 1];
 
-  // Felsen: viele im Nebeltal, einige auf den Himmelsinseln, wenige im Pilzwald
-  for (let i = 0; i < 110; i++) {
-    const p = bankSpot(i, 1.0, -0.8, 30.0, 1.1);
-    if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 0.8, 0.3, 0.15, hash2(i, 1.9))) continue;
-    // Felsen dürfen nicht in die Fahrrinne ragen
-    const free = Math.abs(p.x - riverCenterX(p.z)) - 5.0;
-    const s = Math.min(1.2 + hash2(i, 2.7) * 4.0, free / 1.25);
-    if (s < 0.6) continue;
-    pushInst("cliffs", [p.x, p.y - 0.4, p.z], rot(i, 3.1), 0, 0, [s, s * (0.6 + hash2(i, 4.9) * 0.8), s * 0.9], [0.9, 1.0, 1.15, 1]);
-  }
-  // Steinsäulen im Nebeltal
-  for (let i = 0; i < 60; i++) {
-    const p = bankSpot(i, 80.0, 1.5, 16.0, 1.2);
-    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 80.7))) continue;
-    const w = 0.9 + hash2(i, 81.0) * 0.6;
-    pushInst("cliffs", [p.x, p.y - 0.3, p.z], rot(i, 82.0), (hash2(i, 83.0) - 0.5) * 0.15, (hash2(i, 84.0) - 0.5) * 0.15,
-      [w, 3.5 + hash2(i, 85.0) * 3.0, w * 0.8], [0.95, 0.95, 1.05, 1]);
-  }
+  const waterfalls = [];
+  const bankCliffHousings = [];
+  const plungeRipples = [];
+  const lightShafts = [];
+  const addShaft = (x, z, sx, intensity) => {
+    const model = Mat4.create();
+    Mat4.compose(model, [x, terrainHeight(x, z), z], 0, 0.1, 0.15, [sx, 1.0 + sx * 0.25, sx]);
+    lightShafts.push({ model, z, color: [0.55, 0.65, 0.85, intensity] });
+  };
 
-  // große, abgerundete Felsberge im Mittelgrund (Himmelsinseln) und Felskuppen (Nebeltal)
-  for (let i = 0; i < 60; i++) {
-    const p = bankSpot(i, 110.0, 45.0, 120.0, 1.0);
-    if (!zoneChance(p.z, 0.35, 0.0, 1.0, hash2(i, 110.7))) continue;
-    const s = 12.0 + hash2(i, 111.0) * 16.0;
-    pushInst("cliffs", [p.x, p.y - 2.0, p.z], rot(i, 112.0), 0, 0, [s, s * (1.1 + hash2(i, 113.0) * 0.9), s * 0.9], [1.05, 0.95, 0.85, 1]);
-  }
-  // Felsen links und rechts der Wasserfälle, damit sie wie eine Felskante wirken
-  bankCliffHousings.forEach((ch, k) => {
+  // ---------------- Zone 1: finsterer Nebelwald ----------------
+  // genau ein Wasserfall, an einer Felskante am rechten Ufer
+  {
+    const fz = -100, side = 1;
+    const cx = riverCenterX(fz), hw = riverHalfWidth(fz);
+    const cliffX = cx + side * (hw + 1.8);
+    const yaw = -Math.PI * 0.42;
+    const h = 8.0;
+    const dirX = Math.sin(yaw), dirZ = Math.cos(yaw);
+    const crestX = cliffX + dirX * 0.25, crestZ = fz + dirZ * 0.25;
+    bankCliffHousings.push({ x: cliffX, y: -0.6, z: fz, rotY: yaw, sx: 5.2, sy: h + 1.2, sz: 3.6 });
+    waterfalls.push({ x: crestX, y: h - 0.55, z: crestZ, rotY: yaw, sx: 2.9, sy: h - 0.55, sz: 1.8, isSkyFall: false });
+    plungeRipples.push({ x: crestX + dirX * 0.85, y: 0.02, z: crestZ + dirZ * 0.85, sx: 3.4, sz: 3.0 });
     for (const off of [-5.5, 5.0]) {
-      const z = ch.z + off;
-      const sideSign = Math.sign(ch.x - riverCenterX(ch.z));
-      const s = 3.0 + hash2(k, off + 1.0) * 1.5;
-      const x = riverCenterX(z) + sideSign * (riverHalfWidth(z) + 1.5 + s * 1.1 + hash2(k, off) * 1.5);
-      pushInst("cliffs", [x, terrainHeight(x, z) - 0.5, z], rot(k, off + 2.0), 0, 0, [s, s * 1.5, s], [0.9, 0.95, 1.05, 1]);
+      const z = fz + off, s = 3.2;
+      const x = riverCenterX(z) + side * (riverHalfWidth(z) + 1.5 + s * 1.1);
+      pushInst("rocks", [x, terrainHeight(x, z) - 0.5, z], off, 0, 0, [s, s * 1.5, s], [0.8, 0.85, 0.95, 1]);
     }
-  });
+  }
+  // das Schloss auf einem schroffen Felsen
+  pushInst("rocks", [CASTLE.x, CASTLE.gy - 2.0, CASTLE.z], 0.8, 0, 0, [14.0, CASTLE.rockH, 12.0], [0.7, 0.72, 0.8, 1]);
+  pushInst("castleGothic", [CASTLE.x, CASTLE.gy - 2.0 + CASTLE.rockH * 0.93 - 0.8, CASTLE.z], -1.2, 0, 0, [22, 24, 22], STONE_A);
 
-  // Zone 1: Nadelbäume, nah am Ufer kleiner (die unteren Zweige dürfen nicht in die Fahrrinne ragen)
-  for (let i = 0; i < 700; i++) {
-    const p = bankSpot(i, 5.0, 2.5, 34.0, 1.0);
-    if (inClearing(p.x, p.z, 3.5) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7)) || !grove(p, 0.4)) continue;
-    const h = Math.min(9.0 + hash2(i, 6.4) * 10.0, p.reach / 0.3);
-    if (h < 5.0) continue;
-    pushInst("pines", [p.x, p.y - 0.2, p.z], rot(i, 8.1), 0, 0, [h, h, h], CYAN);
+  // dichter Wald: Nadelbäume (leicht schief, unterschiedlich hoch) und dazwischen Totholz
+  for (let i = 0; i < 1500; i++) {
+    const p = bankSpot(i, 5.0, 2.0, 70.0, 1.6, 6.0, -172.0);
+    if (inClearing(p.x, p.z) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 5.7))) continue;
+    const h = Math.min(10.0 + hash2(i, 6.4) * 14.0, p.reach / 0.3);
+    if (h < 6.0) continue;
+    const dead = hash2(i, 7.1) < 0.18;
+    pushInst(dead ? "deadTrees" : "pines", [p.x, p.y - 0.3, p.z], rot(i, 8.1), (hash2(i, 9.1) - 0.5) * 0.14, (hash2(i, 9.7) - 0.5) * 0.14,
+      [h, h * (dead ? 0.8 : 1.0), h], CYAN);
   }
-  for (let i = 0; i < 650; i++) {
-    const p = bankSpot(i, 10.0, 30.0, 140.0, 1.0);
-    if (inClearing(p.x, p.z, 9.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 10.7)) || !grove(p, 0.36)) continue;
-    const h = 16.0 + hash2(i, 11.4) * 16.0;
-    pushInst("pines", [p.x, p.y - 0.3, p.z], rot(i, 13.1), 0, 0, [h, h, h], CYAN);
-  }
-  // Zone 2: Riesenpilze
+  // ein wenig Unterholz: Farne am Waldrand
   for (let i = 0; i < 260; i++) {
-    const p = bankSpot(i, 90.0, 1.5, 70.0, 1.3);
-    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 90.7)) || !grove(p, 0.44)) continue;
-    const far = p.bank > 14.0;
-    const h = far ? 10.0 + hash2(i, 91.0) * 12.0 : 4.5 + hash2(i, 91.0) * 7.0;
-    pushInst("giantMushrooms", [p.x, p.y - 0.2, p.z], rot(i, 92.0), (hash2(i, 93.0) - 0.5) * 0.12, (hash2(i, 94.0) - 0.5) * 0.12, [h, h, h], CYAN);
+    const p = bankSpot(i, 15.0, 0.6, 10.0, 1.4, 0.0, -165.0);
+    if (inClearing(p.x, p.z, -2.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 15.9))) continue;
+    const sc = 0.8 + hash2(i, 16.3) * 0.9;
+    pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], CYAN);
   }
-  // Zone 3: Bäume mit runden Kronen
-  for (let i = 0; i < 320; i++) {
-    const p = bankSpot(i, 95.0, 2.5, 90.0, 1.2);
-    if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 95.7)) || !grove(p, 0.47)) continue;
-    const h = Math.min(6.0 + hash2(i, 96.0) * 7.0 + (p.bank > 18 ? 4.0 : 0.0), p.reach / 0.45);
-    if (h < 3.5) continue;
-    pushInst("roundTrees", [p.x, p.y - 0.2, p.z], rot(i, 97.0), 0, 0, [h, h, h], CYAN);
+  // moosige Steine am Ufer, wenige
+  for (let i = 0; i < 18; i++) {
+    const p = bankSpot(i, 1.0, 0.5, 8.0, 1.0, 0.0, -160.0);
+    if (inClearing(p.x, p.z)) continue;
+    const s = Math.min(0.8 + hash2(i, 2.7) * 1.6, (Math.abs(p.x - riverCenterX(p.z)) - 5.0) / 1.25);
+    if (s < 0.5) continue;
+    pushInst("rocks", [p.x, p.y - 0.3, p.z], rot(i, 3.1), 0, 0, [s, s * 0.7, s * 0.9], [0.8, 0.85, 0.95, 1]);
   }
-  // Bäume auf den schwebenden Inseln
-  floatingPeaks.forEach((pk, k) => {
-    const n = 2 + Math.floor(hash2(k, 98.0) * 4);
-    for (let i = 0; i < n; i++) {
-      const a = hash2(k * 7 + i, 99.0) * Math.PI * 2, rr = Math.sqrt(hash2(k * 7 + i, 100.0)) * 0.45;
-      const y = pk.y + pk.sy * 0.34 * (1.0 - (rr / 0.85) * (rr / 0.85)) - 0.3;
-      const h = pk.sx * (0.35 + hash2(k * 7 + i, 101.0) * 0.3);
-      pushInst("roundTrees", [pk.x + Math.cos(a) * rr * pk.sx, y, pk.z + Math.sin(a) * rr * pk.sz], rot(k * 7 + i, 102.0), 0, 0, [h, h, h], CYAN);
-    }
+  // zwei Laternen
+  [[-30, -1], [-128, 1]].forEach(([z, side]) => {
+    const x = riverCenterX(z) + side * (riverHalfWidth(z) + 1.3);
+    pushInst("lanterns", [x, terrainHeight(x, z) - 0.05, z], side > 0 ? Math.PI : 0, 0, 0, [2.3, 2.3, 2.3], [1, 1, 1, 1]);
   });
+  // schwache Lichtstrahlen durch den Nebel, ein kräftigerer hinter der Lichtung des Wolfs
+  [[-20, 1], [-48, -1], [-84, 1], [-118, -1]].forEach(([z, s]) => addShaft(riverCenterX(z) + s * 8.0, z, 1.0, 0.8));
+  addShaft(wolfSpot(SCENES[0]).x + SCENES[0].side * 5.0, SCENES[0].z - 2.0, 2.2, 2.5);
 
-  // --- Bauwerke, Ruinen und Besonderheiten je Zone ---
-  const STONE_A = [0.30, 0.29, 0.33, 1], STONE_B = [0.22, 0.22, 0.28, 1], MARBLE = [0.86, 0.84, 0.79, 1];
-  // Nebeltal: eine Burgruine auf einem Felsen im Hintergrund, mit Wasserfall und Nebel
-  const crag = { z: -150, side: 1, d: 30 };
-  {
-    const x = riverCenterX(crag.z) + crag.side * (riverHalfWidth(crag.z) + crag.d);
-    const gy = terrainHeight(x, crag.z);
-    const s = 20.0, h = 30.0;
-    pushInst("cliffs", [x, gy - 3.0, crag.z], 0.8, 0, 0, [s, h, s * 0.85], [0.75, 0.75, 0.85, 1]);
-    const topY = gy - 3.0 + h * 0.93;
-    pushInst("castles", [x, topY - 1.5, crag.z], 0.4, 0, 0, [17, 19, 17], STONE_A);
-    // Wasserfall an der Flussseite des Felsens
-    const fx = x - crag.side * s * 0.55;
-    waterfalls.push({ x: fx, y: topY - 6.0, z: crag.z + 2.0, rotY: -crag.side * Math.PI * 0.5, sx: 3.0, sy: topY - 6.0 - gy, sz: 2.0, isSkyFall: false });
-    plungeRipples.push({ x: fx - crag.side * 1.5, y: gy + 0.05, z: crag.z + 2.0, sx: 4.0, sz: 3.5 });
-    lightShaftsExtra.push([fx, gy, crag.z]);
+  // ---------------- Zone 2: Pilzwald ----------------
+  // dichte Riesenpilze direkt am Ufer; manche neigen sich als Baldachin über den Fluss
+  const MUSH_TINTS = [CYAN, VIOLET, MAGENTA, BLUE];
+  for (let i = 0; i < 420; i++) {
+    const p = bankSpot(i, 90.0, 0.5, 45.0, 2.2, -158.0, -322.0);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 90.7))) continue;
+    const canopy = p.bank < 5.0 && hash2(i, 91.5) < 0.45;
+    let h = canopy ? 9.0 + hash2(i, 91.0) * 6.0 : (p.bank > 15 ? 9.0 : 4.0) + hash2(i, 91.0) * 8.0;
+    // Baldachin: zum Fluss geneigt, der Hut hängt über dem Wasser, bleibt aber hoch über dem Boot
+    const lean = canopy ? 0.28 + hash2(i, 92.5) * 0.12 : (hash2(i, 93.0) - 0.5) * 0.12;
+    if (!canopy) h = Math.min(h, p.reach / 0.62 + 3.0);
+    pushInst("giantMushrooms", [p.x, p.y - 0.2, p.z], rot(i, 92.0), 0, p.side * lean, [h, h, h], MUSH_TINTS[Math.floor(hash2(i, 94.0) * 4)]);
   }
-  // der Felsen des Wolfs und dichte Nadelbäume rund um seinen Ausgangspunkt
-  {
-    const r = wolfRock(SCENES[0]);
-    pushInst("cliffs", [r.x, r.y - 1.4, r.z], 0.3, 0, 0, [1.9, 1.4, 1.7], [0.9, 0.9, 0.95, 1]);
-    // Gegenlicht: ein heller Lichtstrahl im Nebel hinter dem Felsen, damit sich der Wolf abhebt
-    const bx = r.x + SCENES[0].side * 7.0;
-    lightShaftsExtra.push([bx, terrainHeight(bx, r.z - 2.0), r.z - 2.0]);
-    for (let k = 0; k < 26; k++) {
-      const z = SCENES[0].z - 14 + hash2(k, 200.0) * 28;
-      const bank = 6.0 + hash2(k, 201.0) * 18.0;
-      const x = riverCenterX(z) + SCENES[0].side * (riverHalfWidth(z) + bank);
-      if (Math.hypot(x - wolfDen(SCENES[0], 0).x, z - wolfDen(SCENES[0], 0).z) < 3.0) continue;
-      if (Math.abs(z - (SCENES[0].z - 1.0)) < 4.0 && bank < 14.0) continue; // Sichtachse zum Gegenlicht freihalten
-      const h = 11.0 + hash2(k, 202.0) * 9.0;
-      pushInst("pines", [x, terrainHeight(x, z) - 0.2, z], rot(k, 203.0), 0, 0, [h, h, h], CYAN);
-    }
+  // Torbögen aus Pilzstämmen, unter denen die Fahrt hindurchführt
+  [-196, -244, -292].forEach((z, i) => {
+    const hw = riverHalfWidth(z) + 2.5;
+    pushInst("mushroomArches", [riverCenterX(z), terrainHeight(riverCenterX(z) + hw, z) - 0.3, z], -Math.atan(riverSlopeX(z)), 0, 0,
+      [hw, 11.0 + i, hw * 0.9], i === 1 ? VIOLET : CYAN);
+  });
+  // leuchtendes Schilf und Blütenkelche am Wasser, kleine Pilze
+  for (let i = 0; i < 380; i++) {
+    const p = bankSpot(i, 25.0, -0.7, 2.0, 1.5, -150.0, -330.0);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 25.9))) continue;
+    const sc = 0.8 + hash2(i, 26.6) * 0.8;
+    pushInst("reeds", [p.x, Math.max(p.y, -0.3) - 0.05, p.z], rot(i, 27.7), 0, 0, [sc, sc, sc], hash2(i, 28.0) < 0.6 ? CYAN : VIOLET);
   }
-  for (let i = 0; i < 12; i++) {
-    const p = bankSpot(i, 125.0, 3.0, 25.0, 1.2);
-    if (!zoneChance(p.z, 0.0, 0.6, 0.0, hash2(i, 125.7))) continue;
-    zoneWeights(p.z, zw);
-    const s = 5.0 + hash2(i, 126.0) * 6.0;
-    pushInst("ruinArches", [p.x, p.y - 0.15, p.z], rot(i, 127.0), 0, (hash2(i, 128.0) - 0.5) * 0.06, [s, s, s], zw[0] > zw[1] ? STONE_A : STONE_B);
+  for (let i = 0; i < 160; i++) {
+    const p = bankSpot(i, 30.0, 0.2, 5.0, 1.4, -158.0, -322.0);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 30.9))) continue;
+    const sc = 0.7 + hash2(i, 31.5) * 0.7;
+    pushInst("buds", [p.x, p.y - 0.05, p.z], rot(i, 32.2), 0, 0, [sc, sc, sc], hash2(i, 33.0) < 0.6 ? CYAN : MAGENTA);
   }
-  for (let i = 0; i < 36; i++) {
-    const p = bankSpot(i, 130.0, 0.8, 2.2, 1.0);
-    if (inClearing(p.x, p.z, 5.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 130.7))) continue;
-    const h = 2.1 + hash2(i, 131.0) * 0.5;
-    // die Laterne zeigt zum Fluss
-    pushInst("lanterns", [p.x, p.y - 0.05, p.z], p.side > 0 ? Math.PI : 0, 0, 0, [h, h, h], [1, 1, 1, 1]);
-  }
-  // Pilzwald: Tentakel in Gruppen, leuchtende Glaskugeln
-  // Tentakel: gleichmäßig entlang des Flusses, dicht am Wasser, zum Fluss hin geneigt
-  for (let g = 0; g < 24; g++) {
-    const z0 = -170.0 - g * 6.0 - hash2(g, 135.0) * 3.0;
-    const side = (g % 2 === 0 ? 1 : -1) * (hash2(g, 136.0) < 0.25 ? -1 : 1);
-    const n = 1 + Math.floor(hash2(g, 137.0) * 3);
-    for (let k = 0; k < n; k++) {
-      const z = z0 + (k - 1) * 1.8;
-      const hw = riverHalfWidth(z);
-      const bank = 0.4 + hash2(g * 9 + k, 138.0) * 3.5;
-      const x = riverCenterX(z) + side * (hw + bank);
-      // die eingerollte Spitze darf nicht in die Fahrrinne ragen
-      const h = Math.min(3.5 + hash2(g * 9 + k, 139.0) * 6.0, (hw + bank - 2.6) / 0.55);
-      const yaw = (side > 0 ? Math.PI : 0.0) + (hash2(g * 9 + k, 140.0) - 0.5) * 1.0;
-      pushInst("tentacles", [x, terrainHeight(x, z) - 0.3, z], yaw, (hash2(g * 9 + k, 141.0) - 0.5) * 0.2, -0.22,
-        [h, h, h], hash2(g * 9 + k, 143.0) < 0.6 ? VIOLET : CYAN);
-    }
+  for (let i = 0; i < 110; i++) {
+    const p = bankSpot(i, 40.0, 0.4, 8.0, 1.3, -158.0, -322.0);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 40.9))) continue;
+    const sc = 0.6 + hash2(i, 42.9) * 1.0;
+    pushInst("mushrooms", [p.x, p.y - 0.1, p.z], rot(i, 43.5), 0, 0, [sc, sc, sc], hash2(i, 44.0) < 0.5 ? VIOLET : CYAN);
   }
   for (let i = 0; i < 120; i++) {
-    const p = bankSpot(i, 145.0, 0.3, 14.0, 1.5);
-    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 145.7))) continue;
-    const r = 0.25 + Math.pow(hash2(i, 146.0), 2.0) * 0.9;
-    pushInst("orbs", [p.x, p.y + r * 0.8, p.z], 0, 0, 0, [r, r, r], hash2(i, 147.0) < 0.5 ? CYAN : hash2(i, 147.0) < 0.8 ? VIOLET : [1.0, 0.55, 0.2, 1]);
+    const p = bankSpot(i, 20.0, 0.6, 9.0, 1.5, -158.0, -322.0);
+    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 20.9))) continue;
+    const sc = 0.8 + hash2(i, 21.3) * 1.0;
+    pushInst("broadleaves", [p.x, p.y - 0.05, p.z], rot(i, 22.4), 0, 0, [sc, sc, sc], hash2(i, 23.0) < 0.6 ? CYAN : VIOLET);
   }
-  // Himmelsinseln: weiße Türme auf den Inseln und am Ufer, schwebende Felsbrocken, Felsen im Fluss
-  // Himmelsinseln: drei verschiedene Bauwerke statt vieler gleicher Türme
-  {
-    // Kuppeltempel am Ufer
-    const z = -352, x = riverCenterX(z) - (riverHalfWidth(z) + 12.0);
-    pushInst("temple", [x, terrainHeight(x, z) - 0.3, z], 1.2, 0, 0, [11, 11, 11], MARBLE);
-    // Kathedrale auf der größten nahen Insel, schlanker Turm auf einer anderen
-    const big = floatingPeaks.slice(0, 7).reduce((a, b) => (b.sx > a.sx ? b : a));
-    pushInst("cathedral", [big.x, big.y + big.sy * 0.3 - 0.6, big.z], 0.5, 0, 0, [big.sx * 1.3, big.sx * 1.3, big.sx * 1.3], MARBLE);
-    const other = floatingPeaks.slice(0, 7).find((pk) => pk !== big && pk.z < -420) || floatingPeaks[5];
-    pushInst("spires", [other.x, other.y + other.sy * 0.32 - 0.5, other.z], 0.3, 0, 0, [other.sx * 1.4, other.sx * 1.4, other.sx * 1.4], MARBLE);
-  }
-  for (let i = 0; i < 55; i++) {
-    const z = -330.0 - hash2(i, 160.0) * 140.0;
-    const side = hash2(i, 161.0) < 0.5 ? -1 : 1;
-    const x = riverCenterX(z) + side * (18.0 + hash2(i, 162.0) * 70.0);
-    const y = 14.0 + hash2(i, 163.0) * 40.0;
-    const s = 0.6 + Math.pow(hash2(i, 164.0), 2.0) * 3.5;
-    pushInst("cliffs", [x, y, z], rot(i, 165.0), Math.PI, 0, [s, s * 1.4, s], [1.05, 0.95, 0.85, 1]);
-  }
-  for (let i = 0; i < 90; i++) {
-    const p = bankSpot(i, 170.0, -2.0, -0.4, 1.0);
-    if (!zoneChance(p.z, 0.6, 0.2, 1.0, hash2(i, 170.7))) continue;
-    const s = 0.4 + hash2(i, 171.0) * 0.5;
-    pushInst("cliffs", [p.x, -0.35, p.z], rot(i, 172.0), 0, 0, [s, s * 0.6, s], [0.95, 0.95, 1.0, 1]);
+  // einige Quallen hoch über dem Pilzwald
+  for (let i = 0; i < 9; i++) {
+    const z = -175 - i * 16 - hash2(i, 45.0) * 6;
+    const x = riverCenterX(z) + (hash2(i, 46.1) - 0.5) * 16.0;
+    const sc = 1.6 + hash2(i, 48.7) * 1.4;
+    pushInst("jellyfish", [x, 16.0 + hash2(i, 47.4) * 9.0, z], rot(i, 49.2), 0, 0, [sc, sc, sc], hash2(i, 50.0) < 0.5 ? CYAN : VIOLET);
   }
 
-  for (let i = 0; i < 1100; i++) {
-    const p = bankSpot(i, 15.0, 0.3, 16.0, 1.6);
-    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 0.8, 1.0, 0.15, hash2(i, 15.9))) continue;
-    const sc = 0.7 + hash2(i, 16.3) * 0.9;
-    pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], hash2(i, 18.0) < 0.8 ? CYAN : BLUE);
-  }
-  for (let i = 0; i < 800; i++) {
-    const p = bankSpot(i, 20.0, 0.6, 18.0, 1.5);
-    if (inClearing(p.x, p.z, 8.0) || !zoneChance(p.z, 0.15, 1.0, 0.5, hash2(i, 20.9))) continue;
-    const sc = 0.8 + hash2(i, 21.3) * 1.2;
-    pushInst("broadleaves", [p.x, p.y - 0.05, p.z], rot(i, 22.4), 0, 0, [sc, sc, sc], pickTint(hash2(i, 23.0)));
-  }
-  for (let i = 0; i < 900; i++) {
-    const p = bankSpot(i, 25.0, -0.7, 3.0, 1.6);
-    const sc = 0.75 + hash2(i, 26.6) * 0.8;
-    pushInst("reeds", [p.x, Math.max(p.y, -0.3) - 0.05, p.z], rot(i, 27.7), 0, 0, [sc, sc, sc], hash2(i, 28.0) < 0.85 ? CYAN : VIOLET);
-  }
-  for (let i = 0; i < 450; i++) {
-    const p = bankSpot(i, 30.0, 0.4, 8.0, 1.4);
-    if (!zoneChance(p.z, 0.0, 1.0, 0.0, hash2(i, 30.9))) continue;
-    const sc = 0.6 + hash2(i, 31.5) * 0.7;
-    pushInst("buds", [p.x, p.y - 0.05, p.z], rot(i, 32.2), 0, 0, [sc, sc, sc], hash2(i, 33.0) < 0.7 ? BLUE : VIOLET);
-  }
-  for (let i = 0; i < 700; i++) {
-    const p = bankSpot(i, 35.0, 0.8, 20.0, 1.3);
-    if (!zoneChance(p.z, 0.1, 0.15, 1.0, hash2(i, 35.9))) continue;
-    const sc = 0.6 + hash2(i, 36.4) * 0.6;
-    pushInst("blossoms", [p.x, p.y - 0.05, p.z], rot(i, 37.8), 0, 0, [sc, sc, sc], hash2(i, 38.0) < 0.6 ? [1.0, 0.45, 0.12, 1] : [1.0, 0.8, 0.2, 1]);
-  }
-  for (let i = 0; i < 260; i++) {
-    const p = bankSpot(i, 40.0, 0.6, 12.0, 1.3);
-    if (inClearing(p.x, p.z, 6.0) || !zoneChance(p.z, 0.25, 1.0, 0.0, hash2(i, 40.9))) continue;
-    const sc = 0.5 + hash2(i, 42.9) * 1.1;
-    pushInst("mushrooms", [p.x, p.y - 0.1, p.z], rot(i, 43.5), 0, 0, [sc, sc, sc], hash2(i, 44.0) < 0.6 ? [1.0, 0.45, 0.12, 1] : BLUE);
-  }
-  // schwebende Quallen über dem Fluss, nur im Pilzwald
-  for (let i = 0; i < 40; i++) {
-    const z = -(i / 40) * L - hash2(i, 45.0) * 8.0;
-    if (!zoneChance(z, 0.0, 1.0, 0.0, hash2(i, 45.5))) continue;
-    const x = riverCenterX(z) + (hash2(i, 46.1) - 0.5) * 12.0;
-    const y = 15.0 + hash2(i, 47.4) * 10.0;
-    const sc = 1.6 + hash2(i, 48.7) * 1.5;
-    pushInst("jellyfish", [x, y, z], rot(i, 49.2), 0, 0, [sc, sc, sc], hash2(i, 50.0) < 0.6 ? [0.2, 0.75, 1.0, 1] : [0.7, 0.3, 1.0, 1]);
-  }
-
-  // Lichtstrahlen: warm durch den Nebel im Tal, schwach im Pilzwald
-  const lightShafts = [];
-  for (let i = 0; i < 22; i++) {
-    const z = -(i / 22) * L * 0.68 - 6.0;
-    const x = riverCenterX(z) + (hash2(i, 51.2) - 0.5) * 12.0;
-    const model = Mat4.create();
-    Mat4.compose(model, [x, terrainHeight(x, z), z], 0, 0.12, 0.2, [1.0, 1.0, 1.0]);
-    lightShafts.push({ model, z, color: [0.35, 0.6, 1.0, 1] });
-  }
-  lightShaftsExtra.forEach(([x, y, z]) => {
-    const model = Mat4.create();
-    Mat4.compose(model, [x, y, z], 0, 0.1, 0.15, [2.5, 1.6, 2.5]);
-    lightShafts.push({ model, z, color: [0.35, 0.6, 1.0, 3.0] });
+  // ---------------- Zone 3: offene Ebene mit drei Schwebefelsen ----------------
+  // Felsen 1 links mit Wasserfall, Felsen 2 rechts mit Schloss, Felsen 3 rechts mit Ruine; alle eher entfernt
+  const floatingPeaks = [
+    { z: -352, offsetX: -52, y: 30, sx: 15, sy: 20, sz: 13, fall: true, build: null },
+    { z: -398, offsetX: 62, y: 40, sx: 17, sy: 22, sz: 15, fall: false, build: "fortress" },
+    { z: -446, offsetX: 44, y: 26, sx: 12, sy: 16, sz: 11, fall: false, build: "ruins" }
+  ];
+  floatingPeaks.forEach((pk, idx) => {
+    pk.x = riverCenterX(pk.z) + pk.offsetX;
+    pk.rot = idx * 1.4;
+    const topY = pk.y + pk.sy * 0.33;
+    if (pk.build === "fortress") pushInst("fortress", [pk.x, topY - 0.8, pk.z], 0.6, 0, 0, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
+    if (pk.build === "ruins") pushInst("ruins", [pk.x, topY - 0.6, pk.z], 1.1, 0, 0, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
+    if (pk.fall) {
+      const fx = pk.x + 4.0;
+      waterfalls.push({ x: fx, y: topY - 0.5, z: pk.z + 2.0, rotY: 0.0, sx: 3.2, sy: topY - 0.5 - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
+    }
   });
+  // Grasbüschel und wenige Wiesenblumen, sonst leer
+  for (let i = 0; i < 700; i++) {
+    const p = bankSpot(i, 35.0, 0.0, 30.0, 1.3, -318.0, -482.0);
+    if (!zoneChance(p.z, 0.0, 0.0, 1.0, hash2(i, 35.9))) continue;
+    const sc = 0.8 + hash2(i, 36.4) * 0.9;
+    if (hash2(i, 36.9) < 0.85) pushInst("reeds", [p.x, p.y - 0.05, p.z], rot(i, 37.8), 0, 0, [sc, sc * 1.3, sc], [0.6, 0.7, 0.3, 1]);
+    else pushInst("blossoms", [p.x, p.y - 0.05, p.z], rot(i, 37.8), 0, 0, [sc * 0.7, sc * 0.7, sc * 0.7], [1.0, 0.8, 0.2, 1]);
+  }
 
-  // Leuchtpunkte am Waldboden, in Flecken gehäuft, nach z sortiert
+  // Leuchtpunkte am Boden, nur im Pilzwald, in Flecken gehäuft, nach z sortiert
   const dots = [];
   let tries = 0;
-  while (dots.length < 30000 && tries < 400000) {
+  while (dots.length < 22000 && tries < 300000) {
     const i = tries++;
-    const p = bankSpot(i, 60.0, -0.3, 22.0, 1.8);
-    if (p.y < 0.02 || zoneWeights(p.z, zw)[2] > 0.5) continue;
+    const p = bankSpot(i, 60.0, -0.3, 22.0, 1.8, -150.0, -330.0);
+    if (p.y < 0.02 || zoneWeights(p.z, zw)[1] < 0.3) continue;
     const patch = pnoise(p.x, p.z, 0.2, 2);
-    if (patch < 0.48 + hash2(i, 61.0) * 0.12) continue;
+    if (patch < 0.46 + hash2(i, 61.0) * 0.12) continue;
     const h = hash2(i, 62.0);
-    const c = h < 0.6 ? [0.05, 0.7, 1.0] : h < 0.9 ? [0.1, 0.35, 1.0] : [0.7, 0.25, 1.0];
-    const size = 0.5 + hash2(i, 63.0) * 1.2;
-    dots.push([p.x, p.y + 0.04, p.z, c[0], c[1], c[2], size]);
+    const c = h < 0.5 ? [0.05, 0.8, 1.0] : h < 0.8 ? [0.6, 0.25, 1.0] : [1.0, 0.3, 0.8];
+    dots.push([p.x, p.y + 0.04, p.z, c[0], c[1], c[2], 0.5 + hash2(i, 63.0) * 1.2]);
   }
   dots.sort((a, b) => b[2] - a[2]);
   const dotData = new Float32Array(dots.length * 7);
@@ -395,11 +269,11 @@ function buildWorld() {
   gl.bindVertexArray(null);
 
   // Glühwürmchen und schwebende Samen
-  const pCount = 1400;
+  const pCount = 1200;
   const pData = new Float32Array(pCount * 7);
   for (let i = 0; i < pCount; i++) {
     const s2 = hash2(i, 52.7);
-    const violet = s2 > 0.8;
+    const violet = s2 > 0.7;
     pData.set([hash2(i, 51.3), s2, hash2(i, 53.9), violet ? 0.8 : 0.35, violet ? 0.35 : 0.9, 1.0, 0.6 + hash2(i, 54.1) * 1.2], i * 7);
   }
   const pVao = gl.createVertexArray();
@@ -419,29 +293,26 @@ function buildWorld() {
     return uploadInstancedMesh(gl, builder, new Float32Array(g.mats), new Float32Array(g.tints), margin);
   };
   return {
-    valleyMesh, waterMesh, skyDomeMesh, archMesh, archZ, archModel, mountainMesh, floatingPeaks,
+    valleyMesh, waterMesh, skyDomeMesh, mountainMesh, floatingPeaks,
     cliffHousingMesh, bankCliffHousings, plungeRippleMesh, plungeRipples, waterfallMesh, waterfalls,
     shaftMesh, lightShafts,
     instGroups: [
-      inst("cliffs", buildRockCliffMesh(), 10.0),
+      inst("rocks", buildRockCliffMesh(), 16.0),
       inst("pines", buildPineMesh(), 12.0),
-      inst("giantMushrooms", buildGiantMushroomMeshV2(), 16.0),
-      inst("roundTrees", buildRoundTreeMesh(), 14.0),
+      inst("deadTrees", buildDeadTreeMesh(), 8.0),
+      inst("castleGothic", buildGothicCastleMesh(), 30.0),
       inst("ferns", buildFernRosetteMesh(), 2.0),
-      inst("broadleaves", buildBroadLeafPlantMesh(), 3.0),
+      inst("lanterns", buildLanternPostMesh(), 2.0),
+      inst("giantMushrooms", buildGiantMushroomMeshV2(), 14.0),
+      inst("mushroomArches", buildMushroomArchMesh(), 14.0),
       inst("reeds", buildReedClusterMesh(), 2.0),
       inst("buds", buildGlowBudClusterMesh(), 2.0),
-      inst("blossoms", buildGoldenBlossomMesh(), 2.0),
       inst("mushrooms", buildGiantMushroomMesh(), 4.0),
-      inst("jellyfish", buildCanopyJellyfishMesh(), 3.0),
-      inst("castles", buildCastleRuinMesh(), 40.0),
-      inst("ruinArches", buildRuinArchMesh(), 12.0),
-      inst("lanterns", buildLanternPostMesh(), 2.0),
-      inst("tentacles", buildTentacleMesh(), 4.0),
-      inst("orbs", buildOrbMesh(), 2.0),
-      inst("spires", buildSpireTowerMesh(), 12.0),
-      inst("temple", buildTempleMesh(), 10.0),
-      inst("cathedral", buildCathedralMesh(), 16.0)
+      inst("broadleaves", buildBroadLeafPlantMesh(), 3.0),
+      inst("jellyfish", buildCanopyJellyfishMesh(), 4.0),
+      inst("blossoms", buildGoldenBlossomMesh(), 2.0),
+      inst("fortress", buildFortressMesh(), 20.0),
+      inst("ruins", buildRuinSiteMesh(), 16.0)
     ],
     dotVao, dotZ, dotCount: dots.length,
     particleVao: pVao,

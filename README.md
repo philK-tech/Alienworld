@@ -8,21 +8,18 @@ Eine nächtliche Fahrt durch eine leuchtende Schlucht mit Wasserfällen, Riesenp
 Mit gedrückter Maus oder dem Finger kann man selbst schauen, nach kurzer Zeit übernimmt wieder der automatische Blick.
 Leertaste hält die Fahrt an, `M` schaltet den Ton ein oder aus.
 
-## Drei Zonen
+## Ablauf der Fahrt
 
-Die Fahrt führt durch drei Zonen mit eigenem Licht, eigenem gemaltem Himmel und eigener Tierart. Zwischen ihnen gibt es kurze Übergänge.
+Rund zwei Minuten, drei Zonen mit kurzen Übergängen, danach beginnt die Runde von vorn. Bei jedem Ereignis wird das Boot langsamer, die Kamera richtet sich auf das Geschehen und zoomt leicht heran.
 
-| Zone | Stimmung | Landschaft | Szene |
+| Zone | Stimmung und Landschaft | Ereignis 1 | Ereignis 2 |
 |---|---|---|---|
-| Tal der Nebelfälle | Dämmerung in Lila und Rosa, Dunst | dichter Nadelwald, Steinsäulen, Wasserfälle, eine Burgruine auf einem Felsen mit Wasserfall, Laternen, Raben | Ein Wolf tritt aus dem Wald, steigt auf einen Felsen am Ufer und heult |
-| Pilzwald im Sternenlicht | Nacht mit Gasriese und Sternen, starke Biolumineszenz | Riesenpilze, Tentakel am Ufer, Glaskugeln, Ruinenbögen, hoch schwebende Quallen | Ein großer Leuchtfisch springt zweimal über den Fluss |
-| Die Himmelsinseln | heller Tag mit Wolken und Schlieren | schwebende Inseln mit Bäumen und Wasserfällen, ein Kuppeltempel, eine Kathedrale, ein schlanker Turm, weiße Vögel | Ein Gleiterschwarm stürzt herab, segelt über den Fluss und steigt wieder auf |
+| Finsterer Nebelwald | kaltes Mondlicht, dichter Nebel, dichter Wald aus Nadelbäumen und Totholz, etwas Farn, zwei Laternen, ein Wasserfall | Ein Wolf tritt auf eine Lichtung, fixiert das Boot, heult und verschwindet wieder | Ein gotisches Schloss taucht aus dem Nebel auf, ein Fledermausschwarm stürzt von den Zinnen auf das Boot zu |
+| Pilzwald | Nacht mit Gasriese, dichte Riesenpilze am Ufer, manche als Baldachin über dem Fluss, Torbögen aus Pilzstämmen mit Leuchtranken, Türkis und Violett | Ein Leuchtfisch springt vor dem Bug über die Fahrspur | Tentakel schießen links und rechts aus dem Wasser, peitschen und tauchen ab |
+| Offene Ebene | heller Tag, wogendes Grasland, sonst leer bis auf drei Schwebefelsen: links einer mit Wasserfall, rechts einer mit Schloss und einer mit Ruine | Eine Herde zieht in der Ferne über die Ebene | Schwarze, mantaartige Wesen gleiten mit Wellenschlägen an den Felsen vorbei |
 
-Bei jeder Szene wird das Boot langsamer, die Kamera richtet sich fest auf das Geschehen und zoomt heran. Danach geht die Fahrt weiter.
-Die Szenen stehen in `SCENES` (`source/src/world.js`), ihr Ablauf in `source/src/creatures.js`.
-Zum Testen: `index.html#t=18.5&s=10` springt 18,5 Sekunden in die Fahrt und 10 Sekunden in die dort beginnende Szene.
-
-Welche Zone wo liegt, steht in `zoneWeights` (`source/src/math.js`). Was in welcher Zone wächst, steht in `source/src/world.js`.
+Zonen und Übergänge stehen in `zoneWeights` (`source/src/math.js`), die Belegung jeder Zone und die Szenen (`SCENES`) in `source/src/world.js`, der Ablauf jeder Szene in `source/src/creatures.js`.
+Zum Testen: `index.html#t=10.3&s=5` springt 10,3 Sekunden in die Fahrt und 5 Sekunden in die dort beginnende Szene.
 
 ## Grafik
 
@@ -32,7 +29,6 @@ Die Kamera fährt fest auf einer Strecke. Statt einer frei begehbaren Welt steck
 - der Fluss spiegelt die Szene in einem eigenen Renderdurchgang
 - Biolumineszenz als Punktmuster auf Moos, Rinde und Blättern, die aufleuchtet, wenn das Boot vorbeifährt
 - Höhennebel mit treibenden Schwaden, Sternenhimmel mit Gasriese und zwei Monden
-- Tiere tauchen an festen Stellen der Strecke auf: Gleiterschwärme, Springfische und Langhälse am Ufer
 - die Strecke ist eine nahtlose Schleife von gut 100 Sekunden; gezeichnet wird nur der Abschnitt in Sichtweite
 
 ## Quellcode

@@ -943,3 +943,149 @@ function buildCathedralMesh() {
   spire(0.13, 0.36, 0.55, 0.05);
   return b;
 }
+
+// Satteldach als Prisma (First entlang z), Fußpunkt-Mitte c
+function addPrismRoof(b, c, w, h, d, rotY, matId) {
+  const cy = Math.cos(rotY), sy = Math.sin(rotY);
+  const tr = (x, y, z) => [c[0] + x * cy + z * sy, c[1] + y, c[2] - x * sy + z * cy];
+  const hw = w / 2, hd = d / 2;
+  const quad = (a, b2, c2, d2, n) => {
+    const base = b.positions.length / 3;
+    const nn = [n[0] * cy + n[2] * sy, n[1], -n[0] * sy + n[2] * cy];
+    [a, b2, c2, d2].forEach((p, k) => { const q = tr(...p); b.pushVertex(q[0], q[1], q[2], nn[0], nn[1], nn[2], k & 1, k >> 1, 0.9, 0.0, 0.0, matId); });
+    b.pushQuad(base, base + 1, base + 3, base + 2);
+  };
+  const sl = Math.hypot(hw, h);
+  quad([-hw, 0, -hd], [-hw, 0, hd], [0, h, -hd], [0, h, hd], [-h / sl, hw / sl, 0]);
+  quad([hw, 0, hd], [hw, 0, -hd], [0, h, hd], [0, h, -hd], [h / sl, hw / sl, 0]);
+  for (const z of [-hd, hd]) {
+    const base = b.positions.length / 3;
+    const n = tr(0, 0, Math.sign(z)); const nn = [n[0] - c[0], 0, n[2] - c[2]];
+    [[-hw, 0, z], [hw, 0, z], [0, h, z]].forEach((p) => { const q = tr(...p); b.pushVertex(q[0], q[1], q[2], nn[0], nn[1], nn[2], 0.5, 0.5, 0.9, 0.0, 0.0, 36); });
+    b.pushTri(base, base + 1, base + 2);
+  }
+}
+
+// Totholzbaum (Nebelwald): krummer, kahler Stamm mit wenigen knorrigen Ästen. Höhe 1.
+function buildDeadTreeMesh() {
+  const b = createGeometryBuilder();
+  const trunk = (t) => [Math.sin(t * 3.1) * 0.06 + t * t * 0.08, t, Math.cos(t * 2.3) * 0.04];
+  addLathe(b, 14, 8, trunk, (t) => { const r = lerp(0.045, 0.01, t) * (1.0 + 1.5 * Math.pow(1.0 - t, 6.0)); return [r, r * 0.9]; }, 31, (t) => [0.35 + 0.6 * t, 0.0, t * 0.15]);
+  for (let k = 0; k < 6; k++) {
+    const t0 = 0.4 + k * 0.09;
+    const o = trunk(t0);
+    const a = k * 2.4 + 0.5, len = 0.32 - k * 0.03;
+    addLathe(b, 6, 5, (t) => [o[0] + Math.cos(a) * t * len + Math.sin(t * 6.0 + k) * 0.02, o[1] + t * len * (0.25 + 0.15 * Math.sin(k)) - t * t * 0.05, o[2] + Math.sin(a) * t * len],
+      (t) => { const r = lerp(0.014, 0.003, t); return [r, r]; }, 31, (t) => [0.6, 0.0, 0.1 + t * 0.3]);
+  }
+  return b;
+}
+
+// Gotisches Schloss (Nebelwald): Hauptbau mit steilem Dach, Wehrtürme mit hohen Spitzhelmen,
+// Strebepfeiler, wenige kalt leuchtende Fenster. Grundfläche ~1 x 0.7, Höhe ~1.
+function buildGothicCastleMesh() {
+  const b = createGeometryBuilder();
+  addBox(b, [0, 0.17, 0], [0.46, 0.34, 0.26], 0, 0, 36);
+  addPrismRoof(b, [0, 0.34, 0], 0.48, 0.22, 0.28, Math.PI / 2, 37);
+  addBox(b, [-0.3, 0.12, 0.08], [0.22, 0.24, 0.2], 0.3, 0, 36);
+  addPrismRoof(b, [-0.3, 0.24, 0.08], 0.22, 0.15, 0.22, 0.3, 37);
+  const towers = [[0.27, -0.14, 0.62, 0.07], [-0.24, -0.15, 0.78, 0.075], [0.3, 0.17, 0.5, 0.06], [0.0, -0.2, 1.0, 0.085], [-0.45, 0.2, 0.55, 0.06]];
+  towers.forEach(([x, z, h, r], k) => {
+    addLathe(b, 6, 8, (t) => [x, t * h * 0.72, z], (t) => { const rr = r * (1.0 - t * 0.12); return [rr, rr]; }, 36, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
+    addLathe(b, 2, 8, (t) => [x, h * 0.72 + t * 0.03, z], () => [r * 1.25, r * 1.25], 36, () => [0.9, 0.0, 0.0]);
+    addLathe(b, 6, 8, (t) => [x, h * 0.75 + t * h * 0.42, z], (t) => { const rr = r * 1.3 * Math.pow(1.0 - t, 1.5) + 0.002; return [rr, rr]; }, 37, (t) => [0.8, 0.0, 0.0]);
+    if (k % 2 === 0) addBox(b, [x + r * 0.97, h * 0.55, z], [0.006, 0.05, 0.02], 0, 0, 38, 2.0);
+  });
+  for (let k = 0; k < 5; k++) addBox(b, [-0.18 + k * 0.09, 0.12, -0.14], [0.03, 0.24, 0.05], 0, 0.12, 36);
+  addBox(b, [0.08, 0.22, -0.131], [0.03, 0.09, 0.005], 0, 0, 38, 2.0);
+  addBox(b, [-0.12, 0.2, -0.131], [0.03, 0.08, 0.005], 0, 0, 36);
+  return b;
+}
+
+// Festung auf dem zweiten Schwebefelsen: Bergfried mit Dach, runder Mauerring mit Zinnen, vier Rundtürme mit Kegeldächern. Höhe ~1.
+function buildFortressMesh() {
+  const b = createGeometryBuilder();
+  addBox(b, [0, 0.25, 0], [0.3, 0.5, 0.3], 0.3, 0, 36);
+  addPrismRoof(b, [0, 0.5, 0], 0.32, 0.2, 0.32, 0.3, 37);
+  const R = 0.48;
+  for (let k = 0; k < 16; k++) {
+    const a0 = (k / 16) * Math.PI * 2, a1 = ((k + 1) / 16) * Math.PI * 2, am = (a0 + a1) / 2;
+    addBox(b, [Math.cos(am) * R, 0.1, Math.sin(am) * R], [0.2, 0.2, 0.05], -am + Math.PI / 2, 0, 36);
+    addBox(b, [Math.cos(am) * R, 0.225, Math.sin(am) * R], [0.06, 0.05, 0.05], -am + Math.PI / 2, 0, 36);
+  }
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + 0.4;
+    const x = Math.cos(a) * R, z = Math.sin(a) * R;
+    addLathe(b, 4, 10, (t) => [x, t * 0.42, z], () => [0.08, 0.08], 36, () => [0.8, 0.0, 0.0]);
+    addLathe(b, 5, 10, (t) => [x, 0.42 + t * 0.25, z], (t) => { const r = 0.1 * (1 - t) + 0.002; return [r, r]; }, 37, (t) => [0.9, t, 0.0]);
+    addBox(b, [x * 1.17, 0.3, z * 1.17], [0.02, 0.05, 0.02], -a, 0, 38);
+  }
+  return b;
+}
+
+// Ruinenfeld auf dem dritten Schwebefelsen: gebrochene Säulen, halbe Bögen, umgestürzte Quader. Breite ~1.
+function buildRuinSiteMesh() {
+  const b = createGeometryBuilder();
+  for (let k = 0; k < 9; k++) {
+    const a = (k / 9) * Math.PI * 2, r = 0.38;
+    const h = 0.12 + 0.5 * Math.abs(Math.sin(k * 2.7 + 1.0));
+    addLathe(b, 5, 10, (t) => [Math.cos(a) * r, t * h, Math.sin(a) * r], (t) => [0.045, 0.045], 36, () => [0.8, 0.0, 0.0]);
+    addBox(b, [Math.cos(a) * r, 0.015, Math.sin(a) * r], [0.12, 0.03, 0.12], a, 0, 36);
+  }
+  for (const [x, z, ry, brk] of [[0.0, -0.1, 0.2, 0.62], [0.18, 0.22, 1.4, 0.4]]) {
+    addLathe(b, 12, 6, (t) => { const ang = Math.PI * t * brk; return [x + Math.cos(Math.PI - ang) * 0.22 * Math.cos(ry), 0.3 + Math.sin(Math.PI - ang) * 0.22, z + Math.cos(Math.PI - ang) * 0.22 * Math.sin(ry)]; },
+      () => [0.035, 0.035], 36, () => [0.8, 0.0, 0.0]);
+    addBox(b, [x - 0.22 * Math.cos(ry), 0.15, z - 0.22 * Math.sin(ry)], [0.07, 0.3, 0.07], -ry, 0, 36);
+  }
+  [[0.25, -0.3, 0.4], [-0.3, 0.12, 1.1], [0.05, 0.3, 2.0], [-0.12, -0.32, 0.8]].forEach(([x, z, r], k) => addBox(b, [x, 0.04, z], [0.14, 0.08, 0.1], r, 0.3 * (k - 1.5), 36));
+  return b;
+}
+
+// Pilz-Torbogen (Pilzwald): zwei geschwungene Stiele von beiden Ufern treffen sich über dem Fluss unter einem großen Hut,
+// vom Hutrand hängen Leuchtranken. x von -1 bis 1, Höhe ~1.2.
+function buildMushroomArchMesh() {
+  const b = createGeometryBuilder();
+  for (const s of [-1, 1]) {
+    addLathe(b, 18, 12, (t) => [s * Math.cos(t * Math.PI * 0.5) * 0.95, Math.sin(t * Math.PI * 0.5) * 1.0, Math.sin(t * 3.0) * 0.05],
+      (t) => { const r = 0.07 + 0.06 * Math.pow(1.0 - t, 2.0); return [r, r]; }, 32, (t) => [0.5 + 0.5 * t, 0.0, 0.0]);
+  }
+  const capR = 0.75, secs = 32;
+  let base = b.positions.length / 3;
+  for (let i = 0; i <= 10; i++) {
+    const f = i / 10, r = f * capR;
+    for (let j = 0; j <= secs; j++) {
+      const a = (j / secs) * Math.PI * 2;
+      b.pushVertex(Math.cos(a) * r, 1.0 + 0.2 * (1.0 - f * f) - (f > 0.85 ? (f - 0.85) * 0.5 : 0), Math.sin(a) * r * 0.8, 0, 1, 0, j / secs, f, 0.95, 1.0, 0.0, 32);
+    }
+  }
+  for (let i = 0; i < 10; i++) for (let j = 0; j < secs; j++) { const a = base + i * (secs + 1) + j; b.pushQuad(a, a + 1, a + secs + 2, a + secs + 1); }
+  base = b.positions.length / 3;
+  for (let i = 0; i <= 4; i++) {
+    const f = 1.0 - i / 4, r = 0.08 + f * (capR - 0.08);
+    for (let j = 0; j <= secs; j++) {
+      const a = (j / secs) * Math.PI * 2;
+      b.pushVertex(Math.cos(a) * r, 0.97 + 0.08 * (1.0 - f) - (f > 0.85 ? (f - 0.85) * 0.5 : 0), Math.sin(a) * r * 0.8, 0, -1, 0, j / secs, f, 0.7, 2.0, 0.0, 32);
+    }
+  }
+  for (let i = 0; i < 4; i++) for (let j = 0; j < secs; j++) { const a = base + i * (secs + 1) + j; b.pushQuad(a, a + 1, a + secs + 2, a + secs + 1); }
+  for (let v = 0; v < 22; v++) {
+    const a = (v / 22) * Math.PI * 2 + hash2(v, 1.0) * 0.2, r = capR * (0.6 + hash2(v, 2.0) * 0.35);
+    const x0 = Math.cos(a) * r, z0 = Math.sin(a) * r * 0.8, y0 = 0.96 - (r > capR * 0.85 ? 0.06 : 0);
+    const len = 0.15 + hash2(v, 3.0) * 0.35, w = 0.006;
+    const start = b.positions.length / 3;
+    for (let s2 = 0; s2 <= 8; s2++) {
+      const t = s2 / 8;
+      b.pushVertex(x0 - w, y0 - t * len, z0, 0, 0, 1, 0, t * len * 30.0, 0.9, t, 1.0 + t * 0.6, 14);
+      b.pushVertex(x0 + w, y0 - t * len, z0, 0, 0, 1, 1, t * len * 30.0, 0.9, t, 1.0 + t * 0.6, 14);
+    }
+    for (let s2 = 0; s2 < 8; s2++) { const q = start + s2 * 2; b.pushQuad(q, q + 1, q + 3, q + 2); }
+  }
+  return b;
+}
+
+// gerader Tentakel für die Peitschen-Szene: verjüngt sich zur Spitze, Saugnäpfe auf einer Seite. Höhe 1.
+function buildWhipTentacleMesh() {
+  const b = createGeometryBuilder();
+  addLathe(b, 30, 12, (t) => [0, t, 0], (t) => { const r = 0.07 * Math.pow(1.0 - t, 0.9) + 0.004; return [r, r]; }, 34, (t) => [0.5 + 0.5 * t, 1.0, t]);
+  return b;
+}

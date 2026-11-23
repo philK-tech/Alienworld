@@ -83,7 +83,7 @@ const vec3 GIANT_DIR = vec3(-0.337, 0.379, -0.862);
 const vec3 MOON_DIR = vec3(-0.43, 0.55, -0.72);
 ` + GLSL_ZONE + `
 // Sonnenrichtungen und Lichtfarben der Tagzonen
-const vec3 SUN_A = vec3(0.258, 0.209, -0.943);
+const vec3 SUN_A = vec3(-0.30, 0.55, -0.78);   // Mond hinter Wolken (Nebelwald)
 const vec3 SUN_C = vec3(0.45, 0.72, -0.53);
 
 // Bergkämme für die gemalten Hintergründe: Höhe über dem Horizont je Blickwinkel
@@ -99,30 +99,27 @@ float ridge(float az, float freq, float seed, float sharp) {
   return h;
 }
 
-// Zone 1, Nebeltal: Dämmerung in Lila und Rosa, Schneegipfel, Hügel mit Nadelbäumen, Wolkenbänder
+// Zone 1, Nebelwald: Nacht, schwere Wolkendecke, fahler Mond, dunkle Bergkämme
 vec3 skyA(vec3 dir, float t) {
   float el = dir.y;
   float az = atan(dir.x, -dir.z);
-  vec3 zen = vec3(0.07, 0.06, 0.17), hor = vec3(0.62, 0.42, 0.58);
-  vec3 sky = mix(hor, zen, pow(clamp(el, 0.0, 1.0), 0.45));
-  float sd = max(dot(dir, SUN_A), 0.0);
-  sky += vec3(1.0, 0.62, 0.45) * (pow(sd, 8.0) * 0.6 + pow(sd, 300.0) * 3.0);
-  // Wolkenbänder, von unten rosa angestrahlt
-  vec2 cp = dir.xz / (el + 0.12) * 1.4 + vec2(t * 0.004, 0.0);
-  float cl = smoothstep(0.45, 0.8, fbm(cp * vec2(0.6, 2.2)));
-  sky = mix(sky, mix(vec3(0.85, 0.55, 0.65), vec3(0.35, 0.28, 0.48), smoothstep(0.0, 0.5, el)), cl * 0.7 * smoothstep(0.0, 0.08, el));
-  // ferne Schneegipfel
-  float hFar = 0.06 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.30;
-  if (el < hFar) {
-    float snow = smoothstep(hFar - 0.06, hFar - 0.015, el + vnoise(vec2(az * 40.0, el * 60.0)) * 0.02);
-    vec3 rock = mix(vec3(0.30, 0.24, 0.38), vec3(0.42, 0.33, 0.48), vnoise(vec2(az * 30.0, el * 20.0)));
-    vec3 c = mix(rock, vec3(0.95, 0.85, 0.95), snow);
-    c = mix(c, hor, 0.35 + 0.4 * smoothstep(hFar, 0.0, el));
-    sky = c;
-  }
-  // nähere Hügel mit Nadelbaumspitzen
-  float hNear = 0.02 + ridge(az * 1.3, 1.1, 9.0, 1.2) * 0.07 + pow(vnoise(vec2(az * 160.0, 3.0)), 3.0) * 0.025;
-  if (el < hNear) sky = mix(vec3(0.10, 0.08, 0.16), hor, 0.35);
+  vec3 zen = vec3(0.012, 0.014, 0.022), hor = vec3(0.07, 0.08, 0.10);
+  vec3 sky = mix(hor, zen, pow(clamp(el, 0.0, 1.0), 0.5));
+  // Mond mit Hof
+  float md = max(dot(dir, SUN_A), 0.0);
+  float moon = smoothstep(0.9993, 0.9996, md);
+  sky += vec3(0.85, 0.9, 1.0) * moon * 3.0 + vec3(0.25, 0.28, 0.35) * pow(md, 60.0) + vec3(0.06, 0.07, 0.09) * pow(md, 6.0);
+  // schwere Wolken, am Rand vom Mond angeleuchtet
+  vec2 cp = dir.xz / (el + 0.15) * 1.3 + vec2(t * 0.006, t * 0.002);
+  float c1 = fbm(cp * 1.2), c2 = fbm(cp * 2.7 + 5.0);
+  float cl = smoothstep(0.35, 0.7, c1 * 0.7 + c2 * 0.3);
+  vec3 cloudCol = mix(vec3(0.03, 0.035, 0.045), vec3(0.16, 0.18, 0.22), pow(md, 4.0) * (1.0 - cl * 0.5) + c2 * 0.15);
+  sky = mix(sky, cloudCol, cl * smoothstep(-0.02, 0.12, el));
+  // Bergkämme in zwei Schichten
+  float hFar = 0.04 + ridge(az * 0.9, 1.6, 3.0, 3.0) * 0.18;
+  if (el < hFar) sky = mix(vec3(0.05, 0.055, 0.07), hor, 0.4 + 0.4 * smoothstep(hFar, 0.0, el));
+  float hNear = 0.02 + ridge(az * 1.3, 1.1, 9.0, 1.2) * 0.06 + pow(vnoise(vec2(az * 160.0, 3.0)), 3.0) * 0.03;
+  if (el < hNear) sky = mix(vec3(0.015, 0.018, 0.024), hor, 0.25);
   return sky;
 }
 
@@ -243,7 +240,7 @@ vec3 skyColor(vec3 dir, float t) {
 vec3 skyHaze(vec3 dir) {
   float g = max(dot(dir, GIANT_DIR), 0.0);
   vec3 hb = vec3(0.010, 0.026, 0.055) + vec3(0.020, 0.055, 0.10) * pow(g, 6.0);
-  vec3 ha = vec3(0.48, 0.34, 0.50) + vec3(0.4, 0.22, 0.15) * pow(max(dot(dir, SUN_A), 0.0), 6.0);
+  vec3 ha = vec3(0.075, 0.085, 0.105) + vec3(0.05, 0.06, 0.08) * pow(max(dot(dir, SUN_A), 0.0), 4.0);
   vec3 hc = vec3(0.58, 0.66, 0.90);
   return ha * uZoneW.x + hb * uZoneW.y + hc * uZoneW.z;
 }
@@ -259,7 +256,7 @@ vec3 applyFog(vec3 col, vec3 wp, vec3 camPos, float t) {
   float dy = d.y;
   float k = abs(dy) > 0.01 ? (1.0 - exp(-fall * dy)) / (fall * dy) : 1.0;
   float swirl = 0.55 + 0.9 * vnoise(wp.xz * 0.045 + vec2(t * 0.03, -t * 0.02));
-  float zoneDens = uZoneW.x * 0.65 + uZoneW.y + uZoneW.z * 0.45;
+  float zoneDens = uZoneW.x * 3.2 + uZoneW.y + uZoneW.z * 0.4;
   float dens = 0.0105 * zoneDens * exp(-fall * (h0 - 0.5)) * swirl;
   float f = 1.0 - exp(-dens * max(dist - 4.0, 0.0) * k);
   vec3 fc = skyHaze(dir) + vec3(0.0, 0.020, 0.028) * exp(-max(wp.y, 0.0) * 0.25) * uZoneW.y;
@@ -324,11 +321,18 @@ void main() {
   vec3 nrm = aNormal;
   if (matId == 21) {
     // Gleiter: Flügelschlag, außen stärker
-    float flap = sin(uTime * 3.4 * (1.0 + uAnim.z) + uAnim.x) * 0.6 + sin(uTime * 1.1 + uAnim.x) * 0.15;
+    // Flügelschlag als Welle von innen nach außen (uAnim.z: schneller > 0, langsamer < 0)
+    float ph = uTime * 3.4 * (1.0 + uAnim.z) + uAnim.x - aExtra.z * 1.3;
+    float flap = sin(ph) * 0.6 + sin(uTime * 1.1 + uAnim.x) * 0.15;
     p.y += flap * pow(aExtra.z, 1.3) * 0.75;
   } else if (matId == 22) {
     // Springfisch: Schwanzschlag
     p.x += sin(uTime * 16.0 + uAnim.x - aExtra.z * 5.0) * 0.09 * aExtra.z;
+  } else if (matId == 34 && uAnim.y > 0.0) {
+    // Tentakel in der Szene: Peitschenwelle läuft vom Ansatz zur Spitze (uAnim.y = Stärke)
+    float hgt = aExtra.z, w = hgt * hgt;
+    p.x += uAnim.y * w * sin(uTime * 5.5 + uAnim.x - hgt * 5.0) * 0.32;
+    p.z += uAnim.y * w * cos(uTime * 4.2 + uAnim.x - hgt * 4.0) * 0.18;
   } else if (matId == 34) {
     // Tentakel: schwingt langsam, die Spitze stärker als der Ansatz
     float ph = origin.x * 0.31 + origin.z * 0.17;
@@ -431,7 +435,7 @@ void main() {
     float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
     vec2 suv = gl_FragCoord.xy / uScreen + N.xz * vec2(0.035, 0.05);
     vec3 refl = texture(uReflTex, clamp(suv, vec2(0.001), vec2(0.999))).rgb;
-    vec3 deep = zw.x * vec3(0.03, 0.03, 0.05) + zw.y * vec3(0.002, 0.010, 0.016) + zw.z * vec3(0.02, 0.07, 0.09);
+    vec3 deep = zw.x * vec3(0.004, 0.006, 0.009) + zw.y * vec3(0.002, 0.010, 0.016) + zw.z * vec3(0.02, 0.07, 0.09);
     vec3 col = mix(deep, refl, 0.35 + 0.6 * fres);
 
     // Plankton, das mit der Strömung treibt
@@ -444,7 +448,7 @@ void main() {
     col += vec3(0.6, 0.65, 0.7) * foam * 0.08 * (zw.x + zw.z);
     // Glanz von Mond bzw. Sonne
     col += vec3(0.4, 0.6, 0.9) * pow(max(dot(N, normalize(MOON_DIR + V)), 0.0), 220.0) * 1.5 * zw.y;
-    col += vec3(1.0, 0.7, 0.55) * pow(max(dot(N, normalize(SUN_A + V)), 0.0), 220.0) * 4.0 * zw.x;
+    col += vec3(0.6, 0.7, 0.85) * pow(max(dot(N, normalize(SUN_A + V)), 0.0), 220.0) * 2.0 * zw.x;
     col += vec3(1.0, 0.95, 0.85) * pow(max(dot(N, normalize(SUN_C + V)), 0.0), 300.0) * 8.0 * zw.z;
     col = applyFog(col, vWorldPos, uCamPos, t);
     fragColor = vec4(clamp(col, vec3(0.0), vec3(30.0)), 1.0);
@@ -487,8 +491,10 @@ void main() {
     // flächiges Moosleuchten unter dichten Stellen
     emissive += vec3(0.0, 0.05, 0.06) * patchM * moss * glowMask * 0.6;
     float tufts = fbm(lp.xz * 0.9 + 4.0);
-    albA = mix(vec3(0.20, 0.17, 0.22) * (0.7 + 0.6 * fine), mix(vec3(0.34, 0.29, 0.09), vec3(0.16, 0.20, 0.08), tufts) * (0.7 + 0.6 * tex), moss);
-    albC = mix(vec3(0.32, 0.26, 0.18) * (0.7 + 0.6 * fine), mix(vec3(0.12, 0.30, 0.05), vec3(0.30, 0.36, 0.08), smoothstep(0.55, 0.8, tufts)) * (0.75 + 0.5 * tex), moss);
+    albA = mix(vec3(0.12, 0.12, 0.13) * (0.7 + 0.6 * fine), mix(vec3(0.07, 0.09, 0.05), vec3(0.11, 0.10, 0.07), tufts) * (0.7 + 0.6 * tex), moss);
+    // Gras mit Wellen, die der Wind über die Ebene treibt
+    float windWave = 0.82 + 0.18 * sin(dot(lp.xz, vec2(0.12, 0.07)) - t * 1.4 + fbm(lp.xz * 0.05) * 4.0);
+    albC = mix(vec3(0.32, 0.26, 0.18) * (0.7 + 0.6 * fine), mix(vec3(0.12, 0.30, 0.05), vec3(0.30, 0.36, 0.08), smoothstep(0.55, 0.8, tufts)) * (0.75 + 0.5 * tex) * windWave, moss);
     albA *= 1.0 - wet * 0.5;
     albC *= 1.0 - wet * 0.5;
   } else if (matId == 2) {
@@ -523,7 +529,7 @@ void main() {
     float tips = smoothstep(0.6, 1.0, vUv.y);
     float n = fbm(vec2(vUv.x * 30.0, vUv.y * 6.0) + vSeed * 9.0);
     base = vec3(0.006, 0.020, 0.018) * (0.6 + n);
-    albA = mix(vec3(0.035, 0.085, 0.060), vec3(0.08, 0.15, 0.10), tips) * (0.6 + 0.8 * n);
+    albA = mix(vec3(0.03, 0.05, 0.045), vec3(0.06, 0.09, 0.08), tips) * (0.6 + 0.8 * n);
     albC = mix(vec3(0.05, 0.14, 0.05), vec3(0.14, 0.24, 0.08), tips) * (0.6 + 0.8 * n);
     emissive += vec3(0.1, 0.6, 0.8) * tips * smoothstep(0.75, 0.9, n) * 0.3;
     foliage = true;
@@ -542,7 +548,7 @@ void main() {
     vec2 d2 = dotField(sp * 1.3 + 3.0, 0.3, 0.22);
     float glowSpots = part < 0.5 ? d1.x : part > 1.5 ? d2.x : 0.0;
     float rimGlow = part > 1.5 ? smoothstep(0.7, 1.0, vUv.y) * 0.12 : 0.0;
-    emissive += vec3(1.0, 0.42, 0.08) * glowSpots * 2.4 + vec3(1.0, 0.45, 0.12) * rimGlow;
+    emissive += vTint.rgb * glowSpots * 2.4 + vTint.rgb * rimGlow * 1.5;
     emissive *= 1.0 / max(emScale, 0.3);
   } else if (matId == 33) {
     // Rundkronen-Baum: weiche, gebauschte Krone in Grün mit gelben Lichtern
@@ -652,7 +658,7 @@ void main() {
     emissive += bioColor(d1.y) * d1.x * moss * 1.2;
   } else if (matId == 37) {
     // Turmdach: Kupfergrün, zur Spitze golden
-    vec3 roof = mix(vec3(0.10, 0.32, 0.34), vec3(0.75, 0.55, 0.18), smoothstep(0.8, 0.98, glowMask));
+    vec3 roof = vTint.r < 0.5 ? vec3(0.05, 0.05, 0.065) : mix(vec3(0.16, 0.24, 0.42), vec3(0.75, 0.55, 0.18), smoothstep(0.8, 0.98, glowMask));
     albA = albC = roof;
     base = roof * 0.14;
     wet = 0.7;
@@ -661,7 +667,8 @@ void main() {
     base = vec3(0.2, 0.12, 0.05);
     albA = albC = vec3(0.6, 0.45, 0.25);
     float flick = 0.85 + 0.15 * sin(t * 9.0 + vSeed * 40.0) * sin(t * 5.3 + vSeed * 11.0);
-    emissive += vec3(1.0, 0.55, 0.18) * 3.0 * flick / max(emScale, 0.3);
+    vec3 lightCol = glowMask > 1.5 ? vec3(0.45, 0.65, 1.0) * 0.8 : vec3(1.0, 0.55, 0.18) * 3.0;
+    emissive += lightCol * flick / max(emScale, 0.3);
   } else if (matId == 20) {
     // Boot: Holz aus der Textur, die türkisen Einlagen leuchten
     vec3 tc = texture(uBoatTex, vUv).rgb;
@@ -696,8 +703,14 @@ void main() {
     float rimW = pow(1.0 - abs(dot(N, V)), 3.0);
     base = vec3(0.008, 0.008, 0.012);
     albA = albC = vec3(0.012, 0.011, 0.015) * (0.8 + 0.4 * fine);
-    emissive += (skyHaze(-V) * 0.6 + vec3(0.25, 0.2, 0.3)) * rimW * 0.35;
-    emissive += vTint.rgb * step(2.0, glowMask) * 12.0;
+    if (vTint.a < 0.5) {
+      // Herdentier: Fellfarbe aus der Instanz
+      albA = albC = vTint.rgb * (0.8 + 0.4 * fine);
+      base = vTint.rgb * 0.1;
+    } else {
+      emissive += (skyHaze(-V) * 0.6 + vec3(0.12, 0.14, 0.18)) * rimW * 0.5;
+      emissive += vTint.rgb * step(2.0, glowMask) * 12.0;
+    }
     emissive /= max(emScale, 0.3);
   }
 
@@ -728,12 +741,12 @@ void main() {
   }
   float wrap = foliage ? 0.45 : 0.0;
   if (zw.x > 0.001) {
-    // Dämmerung: tief stehende, warme Sonne, violettes Himmelslicht
+    // Nebelwald: fahles, kaltes Mondlicht, sehr wenig Himmelslicht
     float ndl = max((dot(N, SUN_A) + wrap) / (1.0 + wrap), 0.0);
-    vec3 amb = mix(vec3(0.09, 0.07, 0.08), vec3(0.22, 0.18, 0.34), hemi) * ao;
+    vec3 amb = mix(vec3(0.018, 0.02, 0.025), vec3(0.05, 0.06, 0.08), hemi) * ao;
     float spec = pow(max(dot(N, normalize(SUN_A + V)), 0.0), specPow) * (0.02 + wet * 0.35);
-    vec3 c = albA * (amb + vec3(1.05, 0.62, 0.48) * 1.5 * ndl * mix(1.0, ao, 0.5)) + vec3(1.0, 0.7, 0.6) * spec * ao;
-    c += vec3(0.5, 0.35, 0.6) * rim * 0.06 * ao;
+    vec3 c = albA * (amb + vec3(0.32, 0.38, 0.5) * ndl * mix(1.0, ao, 0.5)) + vec3(0.5, 0.6, 0.75) * spec * ao * 0.6;
+    c += vec3(0.12, 0.14, 0.18) * rim * 0.08 * ao;
     col += c * zw.x;
   }
   if (zw.z > 0.001) {
