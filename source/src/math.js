@@ -76,6 +76,7 @@ function zoneWeights(z, out = [0, 0, 0]) {
 // Offene Landschaft: flaches Ufer, sanft gewellte Wiesen, Höhenzüge erst weit hinten.
 // Je Zone unterschiedlich: Nebeltal mit flachen Stufen, Pilzwald fast eben, Himmelsinseln hügelig.
 const _tw = [0, 0, 0];
+const HERD_RIDGE = 95.0; // Abstand des Hügelkamms (Zone 3) von der Flussmitte
 function terrainHeight(x, z) {
   const cx = riverCenterX(z);
   const hw = riverHalfWidth(z);
@@ -91,7 +92,9 @@ function terrainHeight(x, z) {
   roll = lerp(roll, step + smoothstep(0.0, 1.6, roll - step) * 1.6, _tw[0] * 0.8);
   const far = smoothstep(80.0, 170.0, d) * (6.0 + 16.0 * pnoise(x, z, 0.012, 2));
   const fine = (pnoise(x, z, 0.16, 2) - 0.5) * 0.35 * smoothstep(0.5, 4.0, d);
-  return riverDip + lip + Math.max(roll, -0.3) + far + fine;
+  // Hügelkamm links in der offenen Ebene, auf dem die Herde zieht
+  const ridgeC = x < cx ? _tw[2] * 10.0 * Math.exp(-Math.pow((ax - HERD_RIDGE) / 16.0, 2.0)) : 0.0;
+  return riverDip + lip + Math.max(roll, -0.3) + far + fine + ridgeC;
 }
 
 // Mat4 helpers (column-major)

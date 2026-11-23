@@ -160,7 +160,7 @@ function drawScene(pass) {
     gl.bindVertexArray(world.mountainMesh.vao);
     world.floatingPeaks.forEach((pk, idx) => {
       if (!near(pk.z, pk.sx + 20)) return;
-      Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot, 0, 0, [pk.sx, pk.sy, pk.sz]);
+      Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot, pk.tiltX || 0, pk.tiltZ || 0, [pk.sx, pk.sy, pk.sz]);
       setModel(tempModelMat, [0.92, 1.0, 1.15, 1], 0.0);
       gl.drawElements(gl.TRIANGLES, world.mountainMesh.indexCount, gl.UNSIGNED_INT, 0);
     });

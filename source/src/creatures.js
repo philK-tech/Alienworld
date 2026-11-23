@@ -38,55 +38,7 @@ function buildGliderMesh() {
   return b;
 }
 
-function buildFishMesh() {
-  const b = createGeometryBuilder();
-  addLathe(b, 16, 10, (t) => [0, 0, -0.5 + t * 1.0], (t) => {
-    const r = 0.16 * Math.pow(Math.sin(Math.min(t * 1.08, 1.0) * Math.PI), 0.65) + 0.012;
-    return [r * 0.7, r];
-  }, 22, (t) => [0.9, 0.0, t]);
-  // Schwanzflosse und Rückenflosse
-  const fin = (pts) => {
-    const base = b.positions.length / 3;
-    for (const p of pts) b.pushVertex(p[0], p[1], p[2], 1, 0, 0, p[3], p[4], 0.9, 1.0, p[5], 22);
-    b.pushTri(base, base + 1, base + 2);
-    if (pts.length === 4) b.pushTri(base, base + 2, base + 3);
-  };
-  fin([[0, 0, 0.45, 0.5, 0.0, 0.95], [0, 0.26, 0.78, 0.0, 1.0, 1.3], [0, 0.0, 0.66, 0.5, 0.8, 1.2], [0, -0.26, 0.78, 1.0, 1.0, 1.3]]);
-  fin([[0, 0.14, -0.15, 0.5, 0.0, 0.4], [0, 0.32, 0.12, 0.5, 1.0, 0.6], [0, 0.13, 0.2, 0.5, 0.5, 0.7]]);
-  b.computeSmoothNormals();
-  return b;
-}
 
-// Wolf (Nebeltal): dunkler Schemen mit zottigem Fell und leuchtenden Augen. Schaut nach -z, Schulterhöhe ~0.8.
-// Beine: extra.z = Seite der Schrittphase (+1/-1) mal Abstand von der Hüfte, für den Laufzyklus im Shader.
-function buildWolfMesh() {
-  const b = createGeometryBuilder();
-  const shag = (t, a, base) => base * (1.0 + 0.16 * Math.abs(Math.sin(a * 7.0 + t * 23.0)) * Math.sin(a * 3.0 + t * 11.0));
-  // Rumpf: vorne hoch und kräftig, hinten schmal
-  addLathe(b, 16, 14, (t) => [0, 0.56 + 0.06 * Math.sin(t * Math.PI) + 0.08 * t, 0.55 - t * 1.05], (t, a) => {
-    const r = 0.14 + 0.11 * Math.sin(Math.min(t * 1.2, 1.0) * Math.PI) + 0.07 * t;
-    return [shag(t, a, r * 0.8), shag(t, a, r * 1.15)];
-  }, 23, (t) => [0.6, 0.0, 0.0]);
-  // Hals, Kopf und Schnauze
-  // Hals, Kopf, Ohren und Augen haben Material 24: sie drehen sich im Shader um das Nackengelenk (Heulen)
-  addLathe(b, 8, 10, (t) => [0, 0.72 + t * 0.12, -0.46 - t * 0.28], (t, a) => [shag(t, a, 0.13 - t * 0.03), shag(t, a, 0.15 - t * 0.04)], 24, () => [0.7, 0.0, 0.0]);
-  addLathe(b, 8, 10, (t) => [0, 0.83 - t * 0.07, -0.72 - t * 0.3], (t) => { const r = 0.09 * (1.0 - t * 0.6) + 0.01; return [r, r * 0.9]; }, 24, () => [0.8, 0.0, 0.0]);
-  // Ohren
-  for (const sx of [-1, 1]) {
-    addLathe(b, 3, 4, (t) => [sx * (0.05 + t * 0.015), 0.91 + t * 0.1, -0.68 + t * 0.02], (t) => { const r = 0.035 * (1 - t) + 0.003; return [r, r * 0.5]; }, 24, () => [0.8, 0.0, 0.0]);
-    // Augen
-    addBox(b, [sx * 0.05, 0.86, -0.84], [0.04, 0.024, 0.02], 0, 0, 24, 3.0);
-  }
-  // Beine mit Phase für den Laufzyklus (diagonal gleich)
-  [[-0.09, -0.38, 1], [0.09, -0.38, -1], [-0.09, 0.42, -1], [0.09, 0.42, 1]].forEach(([x, z, ph]) => {
-    const back = z > 0;
-    addLathe(b, 6, 7, (t) => [x * 1.3, 0.5 * (1.0 - t), z + (back ? Math.sin(t * Math.PI) * 0.08 : 0.0)],
-      (t, a) => { const r = (back ? 0.085 : 0.07) * (1.0 - t * 0.5); return [shag(t, a, r), shag(t, a, r)]; }, 23, (t) => [0.5, 0.0, ph * (0.05 + t)]);
-  });
-  // buschiger Schwanz
-  addLathe(b, 8, 8, (t) => [0, 0.68 - t * 0.3, 0.55 + t * 0.4], (t, a) => { const r = 0.06 + 0.04 * Math.sin(t * Math.PI); return [shag(t, a, r), shag(t, a, r)]; }, 23, () => [0.6, 0.0, 0.0]);
-  return b;
-}
 
 // Fledermaus: kleiner Körper, zwei gezackte Hautflügel (Material 21, extra.z = Spannweite für den Flügelschlag)
 function buildBatMesh() {
@@ -102,46 +54,131 @@ function buildBatMesh() {
   return b;
 }
 
-// Manta: flacher, rautenförmiger Körper mit verdickter Mitte und langem Peitschenschwanz. Spannweite 2.
+// Manta: flacher Körper mit weit geschwungenen, nach hinten gezogenen Schwingen, Kopflappen und Peitschenschwanz.
+// Spannweite ~2, schaut nach -z. extra.z = Abstand von der Körpermitte (für den wellenförmigen Flügelschlag).
 function buildMantaMesh() {
-  const b = createGeometryBuilder();
-  const nI = 14, nJ = 6;
-  for (const s of [-1, 1]) {
-    const base = b.positions.length / 3;
-    for (let i = 0; i <= nI; i++) {
-      const u = i / nI;
-      const lead = -0.65 + u * 0.62, trail = 0.38 - u * 0.36;
-      for (let j = 0; j <= nJ; j++) {
-        const v = j / nJ;
-        const z = lerp(lead, trail, v);
-        const thick = 0.09 * (1.0 - u) * Math.sin(v * Math.PI);
-        b.pushVertex(s * u, thick - u * u * 0.05, z, 0, 1, 0, u, v, 0.9, 0.0, u, 21);
-      }
+  const f = (p) => {
+    let d = sdEllipsoid(p, [0, 0, 0], [0.22, 0.07, 0.42]);
+    for (const s of [-1, 1]) {
+      // Schwinge: Vorderkante leicht gebogen, Spitze nach hinten gezogen, nach außen dünner
+      d = smin(d, sdFlat(p, [s * 0.1, 0.0, -0.18], [s * 0.62, 0.02, 0.0], 0.13, 1, 3.5), 0.12);
+      d = smin(d, sdFlat(p, [s * 0.55, 0.02, 0.0], [s * 1.0, -0.03, 0.22], 0.05, 1, 3.5), 0.12);
+      d = smin(d, sdFlat(p, [s * 0.1, 0.0, 0.15], [s * 0.5, 0.0, 0.12], 0.1, 1, 3.5), 0.1);
+      d = smin(d, sdFlat(p, [s * 0.1, -0.01, -0.38], [s * 0.13, -0.03, -0.55], 0.03, 0, 2.0), 0.03);
     }
-    for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) {
-      const a = base + i * (nJ + 1) + j;
-      if (s > 0) b.pushQuad(a, a + 1, a + nJ + 2, a + nJ + 1); else b.pushQuad(a, a + nJ + 1, a + nJ + 2, a + 1);
-    }
-  }
-  // Kopflappen und Schwanz
-  for (const s of [-1, 1]) addLathe(b, 3, 5, (t) => [s * 0.1, 0.0, -0.62 - t * 0.12], (t) => { const r = 0.03 * (1 - t) + 0.005; return [r, r]; }, 21, () => [0.8, 0.0, 0.0]);
-  addLathe(b, 12, 5, (t) => [0, -0.02 * t, 0.35 + t * 1.6], (t) => { const r = 0.035 * (1.0 - t) + 0.003; return [r, r]; }, 21, () => [0.8, 0.0, 0.0]);
-  b.computeSmoothNormals();
+    d = smin(d, sdTaper(p, [0, 0, 0.35], [0, -0.03, 1.9], 0.035, 0.006), 0.05);
+    return d;
+  };
+  return sdfMesh(f, [-1.08, -0.15, -0.65], [1.08, 0.15, 1.95], 0.02, (b, p, n) => {
+    b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.abs(p[0]), p[2] + 0.6, 0.9, 0.0, Math.abs(p[0]), 21);
+  });
+}
+
+
+// --- Tiere aus verschmolzenen Grundkörpern (siehe sdfmesh.js) ---
+// abgeflachte Kapsel: Abstand mit gestauchter Achse (für Flossen und Hörner)
+function sdFlat(p, a, b, r, ax, squash) {
+  const q = [p[0], p[1], p[2]], aa = [a[0], a[1], a[2]], bb = [b[0], b[1], b[2]];
+  q[ax] *= squash; aa[ax] *= squash; bb[ax] *= squash;
+  return sdCapsule(q, aa, bb, r) / squash;
+}
+// Fellrauheit: kleine Störung der Oberfläche
+const furNoise = (p, s) => (fbm2(p[0] * 31.0 + p[1] * 17.0, p[2] * 29.0 + p[1] * 7.0, 2) - 0.5) * s;
+
+// Wolf: schaut nach -z, Pfoten bei y=0, Schulterhöhe ~0.8.
+// Material 23 = Rumpf und Beine, 24 = Hals und Kopf (dreht sich beim Heulen). extra.z der Beine = Schrittphase.
+function buildWolfMesh() {
+  const legs = [
+    { ph: 1, pts: [[-0.08, 0.52, -0.34], [-0.085, 0.26, -0.37], [-0.085, 0.04, -0.35]], r: [0.058, 0.038, 0.03] },
+    { ph: -1, pts: [[0.08, 0.52, -0.34], [0.085, 0.26, -0.37], [0.085, 0.04, -0.35]], r: [0.058, 0.038, 0.03] },
+    { ph: -1, pts: [[-0.09, 0.56, 0.34], [-0.095, 0.3, 0.47], [-0.09, 0.04, 0.41]], r: [0.075, 0.04, 0.03] },
+    { ph: 1, pts: [[0.09, 0.56, 0.34], [0.095, 0.3, 0.47], [0.09, 0.04, 0.41]], r: [0.075, 0.04, 0.03] }
+  ];
+  const legD = (p, L) => {
+    const [a, b2, c2] = L.pts;
+    return Math.min(sdTaper(p, a, b2, L.r[0], L.r[1]), sdTaper(p, b2, c2, L.r[1], L.r[2]), sdEllipsoid(p, [c2[0], 0.03, c2[2] - 0.03], [0.038, 0.028, 0.055]));
+  };
+  const headD = (p) => {
+    let d = sdTaper(p, [0, 0.62, -0.38], [0, 0.82, -0.6], 0.16, 0.11);
+    d = smin(d, sdEllipsoid(p, [0, 0.84, -0.66], [0.1, 0.1, 0.13]), 0.06);
+    d = smin(d, sdTaper(p, [0, 0.82, -0.74], [0, 0.77, -0.96], 0.065, 0.034), 0.04);
+    for (const s of [-1, 1]) d = smin(d, sdFlat(p, [s * 0.06, 0.9, -0.62], [s * 0.085, 1.07, -0.6], 0.042, 2, 2.2), 0.02);
+    return d;
+  };
+  const bodyD = (p) => {
+    let d = sdEllipsoid(p, [0, 0.58, -0.22], [0.17, 0.23, 0.3]);
+    d = smin(d, sdEllipsoid(p, [0, 0.6, 0.22], [0.13, 0.16, 0.32]), 0.14);
+    d = smin(d, sdTaper(p, [0, 0.64, 0.5], [0, 0.36, 0.86], 0.06, 0.04), 0.06);
+    return d;
+  };
+  const f = (p) => {
+    let d = smin(bodyD(p), headD(p), 0.08);
+    for (const L of legs) d = smin(d, legD(p, L), 0.06);
+    return d + furNoise(p, 0.016);
+  };
+  const b = sdfMesh(f, [-0.32, -0.02, -1.05], [0.32, 1.1, 0.95], 0.022, (b, p, n) => {
+    const dh = headD(p), db = bodyD(p);
+    let best = Math.min(dh, db), leg = null;
+    for (const L of legs) { const dl = legD(p, L); if (dl < best) { best = dl; leg = L; } }
+    const isHead = !leg && dh <= db;
+    const swing = leg ? leg.ph * (0.05 + clamp01((0.56 - p[1]) / 0.56)) : 0.0;
+    b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.atan2(p[0], p[1]) / 6.283 + 0.5, p[2] + 1.0, 0.45 + 0.55 * clamp01(p[1] / 0.8), 0.0, swing, isHead ? 24 : 23);
+  });
+  // glühende Augen
+  for (const s of [-1, 1]) addBox(b, [s * 0.052, 0.865, -0.765], [0.035, 0.02, 0.02], s * 0.4, 0, 24, 3.0);
   return b;
 }
 
-// Herdentier: Rumpf, langer Hals, kleiner Kopf mit Hörnern, vier dünne Beine (Laufzyklus wie beim Wolf). Schaut nach -z.
-function buildHerdAnimalMesh() {
-  const b = createGeometryBuilder();
-  addLathe(b, 10, 10, (t) => [0, 0.95 + 0.05 * Math.sin(t * Math.PI), 0.5 - t * 1.0], (t) => { const r = 0.16 + 0.1 * Math.sin(t * Math.PI); return [r * 0.85, r]; }, 23, () => [0.7, 0.0, 0.0]);
-  addLathe(b, 6, 8, (t) => [0, 1.0 + t * 0.45, -0.45 - t * 0.25], (t) => { const r = 0.1 - t * 0.04; return [r, r]; }, 23, () => [0.7, 0.0, 0.0]);
-  addLathe(b, 6, 8, (t) => [0, 1.45 - t * 0.06, -0.7 - t * 0.24], (t) => { const r = 0.07 * (1.0 - t * 0.5); return [r, r]; }, 23, () => [0.8, 0.0, 0.0]);
-  for (const s of [-1, 1]) addLathe(b, 5, 4, (t) => [s * (0.04 + t * 0.1), 1.5 + t * 0.15, -0.72 + t * 0.12], (t) => { const r = 0.02 * (1 - t) + 0.003; return [r, r]; }, 23, () => [0.8, 0.0, 0.0]);
-  [[-0.1, -0.35, 1], [0.1, -0.35, -1], [-0.1, 0.38, -1], [0.1, 0.38, 1]].forEach(([x, z, ph]) => {
-    addLathe(b, 6, 6, (t) => [x, 0.9 * (1.0 - t), z], (t) => { const r = 0.045 * (1.0 - t * 0.4); return [r, r]; }, 23, (t) => [0.5, 0.0, ph * (0.05 + t)]);
+// Leuchtfisch: schaut nach -z, Länge ~1. extra.z = Position entlang des Körpers (für den Schwanzschlag)
+function buildFishMesh() {
+  const f = (p) => {
+    let d = sdEllipsoid(p, [0, 0, -0.05], [0.085, 0.15, 0.42]);
+    d = smin(d, sdTaper(p, [0, 0, 0.25], [0, 0, 0.5], 0.06, 0.018), 0.08);
+    // gegabelte Schwanzflosse, Rücken-, Bauch- und Brustflossen als flache Kapseln
+    d = smin(d, sdFlat(p, [0, 0.0, 0.48], [0, 0.2, 0.7], 0.035, 0, 5.0), 0.03);
+    d = smin(d, sdFlat(p, [0, 0.0, 0.48], [0, -0.2, 0.7], 0.035, 0, 5.0), 0.03);
+    d = smin(d, sdFlat(p, [0, 0.12, -0.15], [0, 0.26, 0.12], 0.035, 0, 5.0), 0.04);
+    d = smin(d, sdFlat(p, [0, -0.12, 0.05], [0, -0.2, 0.2], 0.03, 0, 5.0), 0.04);
+    for (const s of [-1, 1]) d = smin(d, sdFlat(p, [s * 0.07, -0.05, -0.18], [s * 0.2, -0.12, -0.02], 0.03, 1, 4.0), 0.03);
+    return d;
+  };
+  const b = sdfMesh(f, [-0.25, -0.3, -0.55], [0.25, 0.32, 0.8], 0.014, (b, p, n) => {
+    const fin = Math.abs(p[0]) < 0.03 && (Math.abs(p[1]) > 0.14 || p[2] > 0.45) ? 1.0 : 0.0;
+    b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.atan2(p[0], p[1]) / 6.283 + 0.5, p[2] + 0.5, 0.9, fin, clamp01((p[2] + 0.45) / 1.15) * 1.2, 22);
   });
-  addLathe(b, 4, 5, (t) => [0, 1.0 - t * 0.35, 0.52 + t * 0.12], (t) => { const r = 0.03 * (1 - t) + 0.005; return [r, r]; }, 23, () => [0.6, 0.0, 0.0]);
+  for (const s of [-1, 1]) addBox(b, [s * 0.075, 0.04, -0.33], [0.012, 0.035, 0.035], 0, 0, 22, 3.0);
   return b;
+}
+
+// Herdentier (antilopenartig): schaut nach -z, Schulterhöhe ~1. Beine mit Schrittphase wie beim Wolf.
+function buildHerdAnimalMesh() {
+  const legs = [
+    { ph: 1, pts: [[-0.08, 0.88, -0.32], [-0.08, 0.46, -0.35], [-0.08, 0.0, -0.31]] },
+    { ph: -1, pts: [[0.08, 0.88, -0.32], [0.08, 0.46, -0.35], [0.08, 0.0, -0.31]] },
+    { ph: -1, pts: [[-0.09, 0.9, 0.33], [-0.09, 0.46, 0.45], [-0.09, 0.0, 0.38]] },
+    { ph: 1, pts: [[0.09, 0.9, 0.33], [0.09, 0.46, 0.45], [0.09, 0.0, 0.38]] }
+  ];
+  const legD = (p, L) => Math.min(sdTaper(p, L.pts[0], L.pts[1], 0.055, 0.03), sdTaper(p, L.pts[1], L.pts[2], 0.028, 0.02));
+  const f = (p) => {
+    let d = sdEllipsoid(p, [0, 0.96, 0.05], [0.15, 0.19, 0.46]);
+    d = smin(d, sdEllipsoid(p, [0, 0.98, -0.28], [0.16, 0.22, 0.22]), 0.1);
+    d = smin(d, sdTaper(p, [0, 1.05, -0.4], [0, 1.42, -0.6], 0.09, 0.055), 0.06);
+    d = smin(d, sdEllipsoid(p, [0, 1.46, -0.68], [0.06, 0.07, 0.1]), 0.04);
+    d = smin(d, sdTaper(p, [0, 1.44, -0.74], [0, 1.39, -0.86], 0.05, 0.03), 0.03);
+    for (const s of [-1, 1]) {
+      d = Math.min(d, sdTaper(p, [s * 0.035, 1.51, -0.67], [s * 0.075, 1.72, -0.6], 0.028, 0.02));
+      d = Math.min(d, sdTaper(p, [s * 0.075, 1.72, -0.6], [s * 0.06, 1.86, -0.42], 0.02, 0.006));
+    }
+    for (const L of legs) d = smin(d, legD(p, L), 0.05);
+    d = smin(d, sdTaper(p, [0, 1.02, 0.5], [0, 0.82, 0.6], 0.03, 0.015), 0.03);
+    return d + furNoise(p, 0.008);
+  };
+  return sdfMesh(f, [-0.3, -0.02, -0.95], [0.3, 1.9, 0.7], 0.028, (b, p, n) => {
+    let best = 1e9, leg = null;
+    for (const L of legs) { const dl = legD(p, L); if (dl < best) { best = dl; leg = L; } }
+    const onLeg = leg && best < 0.02 && p[1] < 0.9;
+    b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], 0.5, p[1], 0.5 + 0.5 * clamp01(p[1] / 1.0), 0.0, onLeg ? leg.ph * (0.05 + clamp01((0.9 - p[1]) / 0.9)) : 0.0, 23);
+  });
 }
 
 const creatureMeshes = {
@@ -205,7 +242,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
     if (d > 200 || d < -80) return;
     const zOff = (camZ - d) - sc.z; // Versatz, falls die Szene in einer anderen Runde der Schleife liegt
     const active = si === sceneIdx;
-    if (!active && sc.type !== "wolf") return; // nur der Wolf ist auch vorher (versteckt) und nachher zu sehen
+    if (!active && sc.type !== "wolf" && sc.type !== "mantas") return; // Wolf und Mantas sind auch vor und nach ihrer Szene da
     const st = active ? sceneT : d > 0 ? 0 : sc.dur;
 
     if (sc.type === "wolf") {
@@ -215,7 +252,8 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       const outT = ease(st, 0.5, 3.0), backT = ease(st, 8.0, 10.0);
       const f = outT * (1.0 - backT);
       const x = lerp(den.x, spot.x, f), z = lerp(den.z, spot.z, f) + zOff;
-      const y = terrainHeight(x, z) - 0.05;
+      // auf den letzten Schritten steigt der Wolf auf den Felsvorsprung
+      const y = lerp(terrainHeight(x, z) - 0.05, spot.y, ease(f, 0.75, 1.0));
       const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
       const yawOut = Math.atan2(-(spot.x - den.x), -(spot.z - den.z));
       const toBoat = Math.atan2(-(cam[0] - x), -(cam[2] - z));
@@ -283,7 +321,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       let fx = 0, fy = 0, fz = 0, n = 0;
       spots.forEach(([side, dz, delay], i) => {
         const z = sc.z + dz + zOff, cx = riverCenterX(z);
-        const x = cx + side * (3.8 + hash2(i, 310.0) * 1.2);
+        const x = cx + side * (2.3 + hash2(i, 310.0) * 0.8);
         const up = ease(st, 0.6 + delay, 1.6 + delay), down = ease(st, 7.0 + delay * 0.5, 8.2 + delay * 0.5);
         const h = 7.0 + hash2(i, 311.0) * 3.0;
         const lift = up * (1.0 - down);
@@ -302,8 +340,9 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       const p = clamp01(st / sc.dur);
       for (let i = 0; i < 14; i++) {
         const ox = (hash2(i, 320.0) - 0.5) * 16, oz = (hash2(i, 321.0) - 0.5) * 12;
-        const x0 = riverCenterX(sc.z) + sc.side * 80, x1 = riverCenterX(sc.z) + sc.side * 28;
-        const z0 = sc.z - 55, z1 = sc.z + 5;
+        // die Herde zieht auf dem Hügelkamm entlang, als Silhouette vor dem Himmel
+        const x0 = riverCenterX(sc.z - 80) + sc.side * HERD_RIDGE, x1 = riverCenterX(sc.z + 10) + sc.side * HERD_RIDGE;
+        const z0 = sc.z - 80, z1 = sc.z + 10;
         const x = lerp(x0, x1, p) + ox, z = lerp(z0, z1, p) + oz + zOff;
         const y = terrainHeight(x, z) - 0.05;
         const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
@@ -316,25 +355,30 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       }
       if (n) focus(cxs / n, cys / n + 2.0, czs / n);
     } else if (sc.type === "mantas") {
-      // schwarze Mantas gleiten mit langsamen Wellenschlägen in einem Bogen an den Schwebefelsen vorbei
+      // schwarze Mantas: kreisen zuerst hinter dem Schlossfelsen, gleiten dann in einem Bogen über den Fluss
+      // und verschwinden hinter dem Ruinenfelsen, wo sie weiterkreisen
+      const rockA = world.floatingPeaks[1], rockB = world.floatingPeaks[2];
       let lead = null;
-      for (let i = 0; i < 5; i++) {
-        const q = clamp01((st - 0.5 - i * 0.6) / 10.0);
-        if (q <= 0 || q >= 1) continue;
+      for (let i = 0; i < 4; i++) {
+        const q = clamp01((st - 0.8 - i * 0.7) / 9.5);
+        const orbit = (pk, a, r, h) => [pk.x + Math.cos(a) * r, pk.y + h, pk.z + zOff + Math.sin(a) * r];
+        const aOrb = t * 0.12 + i * 1.6;
+        const A = orbit(rockA, aOrb, 34 + i * 4, 6 + i * 2), B = orbit(rockB, aOrb + 2.0, 30 + i * 4, 8 + i * 2);
         const cx = riverCenterX(sc.z);
-        const P0 = [cx + sc.side * 70, 45 + i * 3, sc.z - 60 + i * 4], P1 = [cx + sc.side * 25, 26 + i, sc.z - 30];
-        const P2 = [cx - sc.side * 15, 22 + i * 2, sc.z - 25], P3 = [cx - sc.side * 70, 40 + i * 2, sc.z - 55];
-        const x = bez3(P0[0], P1[0], P2[0], P3[0], q), y = bez3(P0[1], P1[1], P2[1], P3[1], q), z = bez3(P0[2], P1[2], P2[2], P3[2], q) + zOff;
-        const q2 = Math.min(q + 0.01, 1);
-        const vx = bez3(P0[0], P1[0], P2[0], P3[0], q2) - x, vz = bez3(P0[2], P1[2], P2[2], P3[2], q2) + zOff - z;
+        const M1 = [cx + 18, 24 + i * 1.5, sc.z - 34 + zOff + i * 3], M2 = [cx - 10, 20 + i, sc.z - 40 + zOff];
+        let x, y, z, vx, vz;
+        const pos = (u) => [bez3(A[0], M1[0], M2[0], B[0], u), bez3(A[1], M1[1], M2[1], B[1], u), bez3(A[2], M1[2], M2[2], B[2], u)];
+        if (q <= 0) { [x, y, z] = A; const A2 = orbit(rockA, aOrb + 0.05, 34 + i * 4, 6 + i * 2); vx = A2[0] - x; vz = A2[2] - z; }
+        else if (q >= 1) { [x, y, z] = B; const B2 = orbit(rockB, aOrb + 2.05, 30 + i * 4, 8 + i * 2); vx = B2[0] - x; vz = B2[2] - z; }
+        else { [x, y, z] = pos(q); const p2 = pos(Math.min(q + 0.01, 1)); vx = p2[0] - x; vz = p2[2] - z; }
         const g = take(creatureMeshes.manta, [0.015, 0.015, 0.02, 0]);
-        const s = 5.0 + i * 0.6;
-        Mat4.compose(g.model, [x, y, z], Math.atan2(-vx, -vz), 0.05, -sc.side * 0.25 * Math.sin(q * Math.PI), [s, s, s]);
+        const s = 5.5 + i * 0.7;
+        Mat4.compose(g.model, [x, y + Math.sin(t * 0.6 + i) * 0.8, z], Math.atan2(-vx, -vz), 0.05, -0.2 * Math.sin(q * Math.PI), [s, s, s]);
         g.anim[0] = i * 1.1;
         g.anim[2] = -0.72;
         if (i === 1) lead = [x, y, z];
       }
-      if (lead) focus(lead[0], lead[1], lead[2]);
+      if (active && lead) focus(lead[0], lead[1], lead[2]);
     }
   });
 }

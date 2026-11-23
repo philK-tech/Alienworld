@@ -212,31 +212,6 @@ function buildFloatingMountainMesh() {
   }
   b.computeSmoothNormals();
 
-  // Lianen, die von der Unterseite herabhängen (eigene Material-ID 16)
-  for (let i = 0; i < 46; i++) {
-    const ang = hash2(i, 3.3) * Math.PI * 2.0;
-    const v = 0.35 + hash2(i, 4.4) * 0.32;
-    const t = v / 0.7;
-    const rad = Math.pow(t, 0.72) * 0.8;
-    const x0 = Math.cos(ang) * rad, z0 = Math.sin(ang) * rad * 0.86;
-    const y0 = (t - 0.7) * 0.95;
-    const len = 0.25 + hash2(i, 5.5) * 0.7;
-    const w = 0.006 + hash2(i, 6.6) * 0.006;
-    const nx = -Math.sin(ang), nz = Math.cos(ang);
-    const segs = 10;
-    const startIdx = b.positions.length / 3;
-    for (let sgi = 0; sgi <= segs; sgi++) {
-      const st = sgi / segs;
-      const y = y0 - st * len;
-      const curl = Math.sin(st * 4.0 + i) * 0.03 * st;
-      b.pushVertex(x0 - nx * w + curl, y, z0 - nz * w, nx, 0, nz, 0, st * len * 30.0, 1.0, st, 1.0 + st, 16);
-      b.pushVertex(x0 + nx * w + curl, y, z0 + nz * w, nx, 0, nz, 1, st * len * 30.0, 1.0, st, 1.0 + st, 16);
-    }
-    for (let sgi = 0; sgi < segs; sgi++) {
-      const a = startIdx + sgi * 2;
-      b.pushQuad(a, a + 1, a + 3, a + 2);
-    }
-  }
   return b;
 }
 
@@ -1023,21 +998,41 @@ function buildFortressMesh() {
   return b;
 }
 
-// Ruinenfeld auf dem dritten Schwebefelsen: gebrochene Säulen, halbe Bögen, umgestürzte Quader. Breite ~1.
+// Tempelruine auf dem dritten Schwebefelsen: Stufensockel, zwei Säulenreihen (teils gebrochen) mit Gebälkresten,
+// eine Mauer mit Bogenfenster, umgestürzte Säulentrommeln. Grundfläche ~1 x 0.7.
 function buildRuinSiteMesh() {
   const b = createGeometryBuilder();
-  for (let k = 0; k < 9; k++) {
-    const a = (k / 9) * Math.PI * 2, r = 0.38;
-    const h = 0.12 + 0.5 * Math.abs(Math.sin(k * 2.7 + 1.0));
-    addLathe(b, 5, 10, (t) => [Math.cos(a) * r, t * h, Math.sin(a) * r], (t) => [0.045, 0.045], 36, () => [0.8, 0.0, 0.0]);
-    addBox(b, [Math.cos(a) * r, 0.015, Math.sin(a) * r], [0.12, 0.03, 0.12], a, 0, 36);
+  addBox(b, [0, 0.03, 0], [1.0, 0.06, 0.7], 0, 0, 36);
+  addBox(b, [0, 0.08, 0], [0.9, 0.05, 0.6], 0, 0, 36);
+  addBox(b, [0, 0.12, 0], [0.8, 0.04, 0.5], 0, 0, 36);
+  const colH = [0.48, 0.48, 0.3, 0.48, 0.12, 0.48];
+  const colH2 = [0.48, 0.2, 0.48, 0.48, 0.48, 0.07];
+  [[-0.2, colH], [0.2, colH2]].forEach(([z, hs]) => {
+    hs.forEach((h, k) => {
+      const x = -0.35 + k * 0.14;
+      addLathe(b, 4, 10, (t) => [x, 0.14 + t * h, z], (t) => { const r = 0.035 * (1.0 - t * 0.12); return [r, r]; }, 36, () => [0.85, 0.0, 0.0]);
+      addBox(b, [x, 0.15, z], [0.08, 0.02, 0.08], 0, 0, 36);
+      if (h > 0.4) addBox(b, [x, 0.14 + h + 0.015, z], [0.085, 0.03, 0.085], 0, 0, 36);
+    });
+    // Gebälk nur über benachbarten, vollständigen Säulen
+    for (let k = 0; k < hs.length - 1; k++) {
+      if (hs[k] > 0.4 && hs[k + 1] > 0.4) addBox(b, [-0.35 + (k + 0.5) * 0.14, 0.14 + 0.48 + 0.05, z], [0.15, 0.05, 0.08], 0, 0, 36);
+    }
+  });
+  // Rückwand mit Bogenfenster, oben ausgebrochen
+  addBox(b, [0.43, 0.3, -0.13], [0.06, 0.36, 0.14], 0, 0, 36);
+  addBox(b, [0.43, 0.22, 0.13], [0.06, 0.2, 0.14], 0, 0, 36);
+  addBox(b, [0.43, 0.16, 0.0], [0.06, 0.08, 0.12], 0, 0, 36);
+  for (let k = 0; k < 5; k++) {
+    if (k === 4) continue;
+    const a = Math.PI * (k + 0.5) / 5;
+    addBox(b, [0.43, 0.36 + Math.sin(a) * 0.08, Math.cos(a) * 0.08], [0.06, 0.04, 0.05], 0, 0, 36);
   }
-  for (const [x, z, ry, brk] of [[0.0, -0.1, 0.2, 0.62], [0.18, 0.22, 1.4, 0.4]]) {
-    addLathe(b, 12, 6, (t) => { const ang = Math.PI * t * brk; return [x + Math.cos(Math.PI - ang) * 0.22 * Math.cos(ry), 0.3 + Math.sin(Math.PI - ang) * 0.22, z + Math.cos(Math.PI - ang) * 0.22 * Math.sin(ry)]; },
-      () => [0.035, 0.035], 36, () => [0.8, 0.0, 0.0]);
-    addBox(b, [x - 0.22 * Math.cos(ry), 0.15, z - 0.22 * Math.sin(ry)], [0.07, 0.3, 0.07], -ry, 0, 36);
-  }
-  [[0.25, -0.3, 0.4], [-0.3, 0.12, 1.1], [0.05, 0.3, 2.0], [-0.12, -0.32, 0.8]].forEach(([x, z, r], k) => addBox(b, [x, 0.04, z], [0.14, 0.08, 0.1], r, 0.3 * (k - 1.5), 36));
+  // umgestürzte Säulentrommeln und Quader
+  [[-0.1, 0.0, 0.9], [0.05, 0.05, 2.2], [-0.4, 0.3, 0.3]].forEach(([x, z, r]) => {
+    addLathe(b, 2, 10, (t) => [x + Math.cos(r) * (t - 0.5) * 0.12, 0.17, z + Math.sin(r) * (t - 0.5) * 0.12], () => [0.034, 0.034], 36, () => [0.8, 0.0, 0.0]);
+  });
+  addBox(b, [0.3, 0.17, 0.3], [0.1, 0.06, 0.07], 0.7, 0.2, 36);
   return b;
 }
 
@@ -1087,5 +1082,34 @@ function buildMushroomArchMesh() {
 function buildWhipTentacleMesh() {
   const b = createGeometryBuilder();
   addLathe(b, 30, 12, (t) => [0, t, 0], (t) => { const r = 0.1 * Math.pow(1.0 - t, 0.85) + 0.005; return [r, r]; }, 34, (t) => [0.5 + 0.5 * t, 1.0, t]);
+  return b;
+}
+
+// umgestürzter, bemooster Baumstamm mit abgebrochenen Aststümpfen und Wurzelteller. Länge 1 (entlang x).
+function buildFallenLogMesh() {
+  const b = createGeometryBuilder();
+  addLathe(b, 12, 10, (t) => [t - 0.5, 0.06 + Math.sin(t * 3.0) * 0.01, Math.sin(t * 2.0) * 0.02],
+    (t) => { const r = 0.07 * (1.0 - t * 0.35) * (1.0 + 0.1 * Math.sin(t * 17.0)); return [r, r]; }, 31, () => [0.7, 0.0, 0.0]);
+  for (let k = 0; k < 4; k++) {
+    const x = -0.3 + k * 0.2, a = k * 2.1;
+    addLathe(b, 3, 5, (t) => [x + t * 0.04, 0.08 + Math.cos(a) * t * 0.12, Math.sin(a) * t * 0.12], (t) => { const r = 0.016 * (1 - t * 0.5); return [r, r]; }, 31, () => [0.6, 0.0, 0.0]);
+  }
+  // Wurzelteller am dicken Ende
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2;
+    addLathe(b, 4, 5, (t) => [-0.5 - t * 0.04, 0.07 + Math.cos(a) * t * 0.14, Math.sin(a) * t * 0.14], (t) => { const r = 0.02 * (1 - t * 0.6); return [r, r]; }, 31, () => [0.5, 0.0, 0.0]);
+  }
+  return b;
+}
+
+// dunkler Busch aus mehreren Nadelballen (Unterholz im Nebelwald). Höhe ~1.
+function buildBushMesh() {
+  const b = createGeometryBuilder();
+  for (let k = 0; k < 6; k++) {
+    const a = k * 2.4, r = 0.18 + (k % 3) * 0.08;
+    const cx = Math.cos(a) * r, cz = Math.sin(a) * r, cy = 0.3 + (k % 2) * 0.2, rr = 0.25 + (k % 3) * 0.06;
+    addLathe(b, 6, 8, (t) => [cx, cy - rr * 0.8 + t * rr * 1.6, cz], (t) => { const q = Math.sin(t * Math.PI) * rr + 0.01; const j = 1.0 + 0.15 * Math.sin(t * 9.0 + k); return [q * j, q * j]; },
+      30, (t) => [0.5 + 0.5 * t, 0.0, t * 0.3]);
+  }
   return b;
 }

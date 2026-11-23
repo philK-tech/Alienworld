@@ -693,10 +693,18 @@ void main() {
       emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
     }
   } else if (matId == 22) {
-    // Springfisch: leuchtendes Seitenband
-    float side = exp(-pow((vUv.x - 0.25) * 10.0, 2.0)) + exp(-pow((vUv.x - 0.75) * 10.0, 2.0));
-    base = vec3(0.03, 0.05, 0.08);
-    emissive += vTint.rgb * (side * 1.6 + glowMask * 0.9 + 0.08);
+    // Leuchtfisch: dunkler Rücken, heller Bauch, Schuppenmuster, leuchtende Seitenlinie mit Pulsen, glühende Flossenränder
+    float up = smoothstep(-0.6, 0.8, N.y);
+    vec2 sc = vec2(vUv.x * 60.0, vUv.y * 40.0);
+    sc.x += floor(sc.y) * 0.5;
+    float scale = smoothstep(0.35, 0.5, length(fract(sc) - 0.5));
+    base = mix(vec3(0.05, 0.06, 0.09), vec3(0.01, 0.02, 0.05), up) * (0.75 + 0.35 * scale);
+    albA = albC = mix(vec3(0.45, 0.5, 0.55), vec3(0.08, 0.12, 0.2), up) * (0.75 + 0.35 * scale);
+    float side = exp(-pow((vUv.x - 0.25) * 14.0, 2.0)) + exp(-pow((vUv.x - 0.75) * 14.0, 2.0));
+    float pulse = 0.6 + 0.4 * sin(vUv.y * 30.0 - t * 8.0);
+    emissive += vTint.rgb * (side * 1.8 * pulse + scale * 0.12 + 0.05);
+    emissive += vTint.rgb * min(glowMask, 1.0) * 1.2;
+    emissive += vec3(1.0, 0.9, 0.6) * step(2.0, glowMask) * 3.0;
     wet = 1.0;
   } else if (matId == 23 || matId == 24) {
     // Wolf: fast schwarzer Schemen, nur ein feiner Saum in der Farbe des Nebels, Augen glühen
@@ -894,7 +902,7 @@ void main() {
   vec3 zw = zoneWeights(z);
   // im Nebeltal blasse Schwebeteilchen statt Glühwürmchen, auf den Himmelsinseln kaum etwas
   vColor = mix(aColor, vec3(0.9, 0.8, 0.95) * 0.4, zw.x);
-  vAlpha = fade * (0.15 + 0.85 * blink) * dot(zw, vec3(0.7, 1.0, 0.15));
+  vAlpha = fade * (0.15 + 0.85 * blink) * dot(zw, vec3(0.0, 1.0, 0.1));
   gl_Position = uViewProj * wp;
   gl_PointSize = clamp((aSize * uPixelRatio * 22.0) / max(dist, 1.5), 1.0, 10.0);
 }`;

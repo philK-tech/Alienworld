@@ -213,6 +213,7 @@
     // Offene Landschaft: flaches Ufer, sanft gewellte Wiesen, Höhenzüge erst weit hinten.
     // Je Zone unterschiedlich: Nebeltal mit flachen Stufen, Pilzwald fast eben, Himmelsinseln hügelig.
     const _tw = [0, 0, 0];
+    const HERD_RIDGE = 95.0; // Abstand des Hügelkamms (Zone 3) von der Flussmitte
     function terrainHeight(x, z) {
       const cx = riverCenterX(z);
       const hw = riverHalfWidth(z);
@@ -228,7 +229,9 @@
       roll = lerp(roll, step + smoothstep(0.0, 1.6, roll - step) * 1.6, _tw[0] * 0.8);
       const far = smoothstep(80.0, 170.0, d) * (6.0 + 16.0 * pnoise(x, z, 0.012, 2));
       const fine = (pnoise(x, z, 0.16, 2) - 0.5) * 0.35 * smoothstep(0.5, 4.0, d);
-      return riverDip + lip + Math.max(roll, -0.3) + far + fine;
+      // Hügelkamm links in der offenen Ebene, auf dem die Herde zieht
+      const ridgeC = x < cx ? _tw[2] * 10.0 * Math.exp(-Math.pow((ax - HERD_RIDGE) / 16.0, 2.0)) : 0.0;
+      return riverDip + lip + Math.max(roll, -0.3) + far + fine + ridgeC;
     }
 
     // Mat4 helpers (column-major)
@@ -742,31 +745,6 @@
       }
       b.computeSmoothNormals();
 
-      // Lianen, die von der Unterseite herabhängen (eigene Material-ID 16)
-      for (let i = 0; i < 46; i++) {
-        const ang = hash2(i, 3.3) * Math.PI * 2.0;
-        const v = 0.35 + hash2(i, 4.4) * 0.32;
-        const t = v / 0.7;
-        const rad = Math.pow(t, 0.72) * 0.8;
-        const x0 = Math.cos(ang) * rad, z0 = Math.sin(ang) * rad * 0.86;
-        const y0 = (t - 0.7) * 0.95;
-        const len = 0.25 + hash2(i, 5.5) * 0.7;
-        const w = 0.006 + hash2(i, 6.6) * 0.006;
-        const nx = -Math.sin(ang), nz = Math.cos(ang);
-        const segs = 10;
-        const startIdx = b.positions.length / 3;
-        for (let sgi = 0; sgi <= segs; sgi++) {
-          const st = sgi / segs;
-          const y = y0 - st * len;
-          const curl = Math.sin(st * 4.0 + i) * 0.03 * st;
-          b.pushVertex(x0 - nx * w + curl, y, z0 - nz * w, nx, 0, nz, 0, st * len * 30.0, 1.0, st, 1.0 + st, 16);
-          b.pushVertex(x0 + nx * w + curl, y, z0 + nz * w, nx, 0, nz, 1, st * len * 30.0, 1.0, st, 1.0 + st, 16);
-        }
-        for (let sgi = 0; sgi < segs; sgi++) {
-          const a = startIdx + sgi * 2;
-          b.pushQuad(a, a + 1, a + 3, a + 2);
-        }
-      }
       return b;
     }
 
@@ -1553,21 +1531,41 @@
       return b;
     }
 
-    // Ruinenfeld auf dem dritten Schwebefelsen: gebrochene Säulen, halbe Bögen, umgestürzte Quader. Breite ~1.
+    // Tempelruine auf dem dritten Schwebefelsen: Stufensockel, zwei Säulenreihen (teils gebrochen) mit Gebälkresten,
+    // eine Mauer mit Bogenfenster, umgestürzte Säulentrommeln. Grundfläche ~1 x 0.7.
     function buildRuinSiteMesh() {
       const b = createGeometryBuilder();
-      for (let k = 0; k < 9; k++) {
-        const a = (k / 9) * Math.PI * 2, r = 0.38;
-        const h = 0.12 + 0.5 * Math.abs(Math.sin(k * 2.7 + 1.0));
-        addLathe(b, 5, 10, (t) => [Math.cos(a) * r, t * h, Math.sin(a) * r], (t) => [0.045, 0.045], 36, () => [0.8, 0.0, 0.0]);
-        addBox(b, [Math.cos(a) * r, 0.015, Math.sin(a) * r], [0.12, 0.03, 0.12], a, 0, 36);
+      addBox(b, [0, 0.03, 0], [1.0, 0.06, 0.7], 0, 0, 36);
+      addBox(b, [0, 0.08, 0], [0.9, 0.05, 0.6], 0, 0, 36);
+      addBox(b, [0, 0.12, 0], [0.8, 0.04, 0.5], 0, 0, 36);
+      const colH = [0.48, 0.48, 0.3, 0.48, 0.12, 0.48];
+      const colH2 = [0.48, 0.2, 0.48, 0.48, 0.48, 0.07];
+      [[-0.2, colH], [0.2, colH2]].forEach(([z, hs]) => {
+        hs.forEach((h, k) => {
+          const x = -0.35 + k * 0.14;
+          addLathe(b, 4, 10, (t) => [x, 0.14 + t * h, z], (t) => { const r = 0.035 * (1.0 - t * 0.12); return [r, r]; }, 36, () => [0.85, 0.0, 0.0]);
+          addBox(b, [x, 0.15, z], [0.08, 0.02, 0.08], 0, 0, 36);
+          if (h > 0.4) addBox(b, [x, 0.14 + h + 0.015, z], [0.085, 0.03, 0.085], 0, 0, 36);
+        });
+        // Gebälk nur über benachbarten, vollständigen Säulen
+        for (let k = 0; k < hs.length - 1; k++) {
+          if (hs[k] > 0.4 && hs[k + 1] > 0.4) addBox(b, [-0.35 + (k + 0.5) * 0.14, 0.14 + 0.48 + 0.05, z], [0.15, 0.05, 0.08], 0, 0, 36);
+        }
+      });
+      // Rückwand mit Bogenfenster, oben ausgebrochen
+      addBox(b, [0.43, 0.3, -0.13], [0.06, 0.36, 0.14], 0, 0, 36);
+      addBox(b, [0.43, 0.22, 0.13], [0.06, 0.2, 0.14], 0, 0, 36);
+      addBox(b, [0.43, 0.16, 0.0], [0.06, 0.08, 0.12], 0, 0, 36);
+      for (let k = 0; k < 5; k++) {
+        if (k === 4) continue;
+        const a = Math.PI * (k + 0.5) / 5;
+        addBox(b, [0.43, 0.36 + Math.sin(a) * 0.08, Math.cos(a) * 0.08], [0.06, 0.04, 0.05], 0, 0, 36);
       }
-      for (const [x, z, ry, brk] of [[0.0, -0.1, 0.2, 0.62], [0.18, 0.22, 1.4, 0.4]]) {
-        addLathe(b, 12, 6, (t) => { const ang = Math.PI * t * brk; return [x + Math.cos(Math.PI - ang) * 0.22 * Math.cos(ry), 0.3 + Math.sin(Math.PI - ang) * 0.22, z + Math.cos(Math.PI - ang) * 0.22 * Math.sin(ry)]; },
-          () => [0.035, 0.035], 36, () => [0.8, 0.0, 0.0]);
-        addBox(b, [x - 0.22 * Math.cos(ry), 0.15, z - 0.22 * Math.sin(ry)], [0.07, 0.3, 0.07], -ry, 0, 36);
-      }
-      [[0.25, -0.3, 0.4], [-0.3, 0.12, 1.1], [0.05, 0.3, 2.0], [-0.12, -0.32, 0.8]].forEach(([x, z, r], k) => addBox(b, [x, 0.04, z], [0.14, 0.08, 0.1], r, 0.3 * (k - 1.5), 36));
+      // umgestürzte Säulentrommeln und Quader
+      [[-0.1, 0.0, 0.9], [0.05, 0.05, 2.2], [-0.4, 0.3, 0.3]].forEach(([x, z, r]) => {
+        addLathe(b, 2, 10, (t) => [x + Math.cos(r) * (t - 0.5) * 0.12, 0.17, z + Math.sin(r) * (t - 0.5) * 0.12], () => [0.034, 0.034], 36, () => [0.8, 0.0, 0.0]);
+      });
+      addBox(b, [0.3, 0.17, 0.3], [0.1, 0.06, 0.07], 0.7, 0.2, 36);
       return b;
     }
 
@@ -1617,6 +1615,121 @@
     function buildWhipTentacleMesh() {
       const b = createGeometryBuilder();
       addLathe(b, 30, 12, (t) => [0, t, 0], (t) => { const r = 0.1 * Math.pow(1.0 - t, 0.85) + 0.005; return [r, r]; }, 34, (t) => [0.5 + 0.5 * t, 1.0, t]);
+      return b;
+    }
+
+    // umgestürzter, bemooster Baumstamm mit abgebrochenen Aststümpfen und Wurzelteller. Länge 1 (entlang x).
+    function buildFallenLogMesh() {
+      const b = createGeometryBuilder();
+      addLathe(b, 12, 10, (t) => [t - 0.5, 0.06 + Math.sin(t * 3.0) * 0.01, Math.sin(t * 2.0) * 0.02],
+        (t) => { const r = 0.07 * (1.0 - t * 0.35) * (1.0 + 0.1 * Math.sin(t * 17.0)); return [r, r]; }, 31, () => [0.7, 0.0, 0.0]);
+      for (let k = 0; k < 4; k++) {
+        const x = -0.3 + k * 0.2, a = k * 2.1;
+        addLathe(b, 3, 5, (t) => [x + t * 0.04, 0.08 + Math.cos(a) * t * 0.12, Math.sin(a) * t * 0.12], (t) => { const r = 0.016 * (1 - t * 0.5); return [r, r]; }, 31, () => [0.6, 0.0, 0.0]);
+      }
+      // Wurzelteller am dicken Ende
+      for (let k = 0; k < 7; k++) {
+        const a = (k / 7) * Math.PI * 2;
+        addLathe(b, 4, 5, (t) => [-0.5 - t * 0.04, 0.07 + Math.cos(a) * t * 0.14, Math.sin(a) * t * 0.14], (t) => { const r = 0.02 * (1 - t * 0.6); return [r, r]; }, 31, () => [0.5, 0.0, 0.0]);
+      }
+      return b;
+    }
+
+    // dunkler Busch aus mehreren Nadelballen (Unterholz im Nebelwald). Höhe ~1.
+    function buildBushMesh() {
+      const b = createGeometryBuilder();
+      for (let k = 0; k < 6; k++) {
+        const a = k * 2.4, r = 0.18 + (k % 3) * 0.08;
+        const cx = Math.cos(a) * r, cz = Math.sin(a) * r, cy = 0.3 + (k % 2) * 0.2, rr = 0.25 + (k % 3) * 0.06;
+        addLathe(b, 6, 8, (t) => [cx, cy - rr * 0.8 + t * rr * 1.6, cz], (t) => { const q = Math.sin(t * Math.PI) * rr + 0.01; const j = 1.0 + 0.15 * Math.sin(t * 9.0 + k); return [q * j, q * j]; },
+          30, (t) => [0.5 + 0.5 * t, 0.0, t * 0.3]);
+      }
+      return b;
+    }
+
+    // Ein Körper wird als Abstandsfunktion beschrieben (negativ = innen). Grundkörper wie Kapseln und Ellipsoide
+    // werden mit smin weich verschmolzen, so entstehen nahtlose Übergänge (Technik nach Inigo Quilez).
+    // sdfMesh tastet die Funktion auf einem Gitter ab und baut daraus mit "Surface Nets" ein glattes Mesh.
+
+    function smin(a, b, k) {
+      const h = Math.max(k - Math.abs(a - b), 0.0) / k;
+      return Math.min(a, b) - h * h * k * 0.25;
+    }
+    function sdCapsule(p, a, b, r) {
+      const pa = [p[0] - a[0], p[1] - a[1], p[2] - a[2]], ba = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const h = clamp01((pa[0] * ba[0] + pa[1] * ba[1] + pa[2] * ba[2]) / (ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2]));
+      return Math.hypot(pa[0] - ba[0] * h, pa[1] - ba[1] * h, pa[2] - ba[2] * h) - r;
+    }
+    // Kapsel mit unterschiedlichen Radien an beiden Enden (verjüngt)
+    function sdTaper(p, a, b, ra, rb) {
+      const pa = [p[0] - a[0], p[1] - a[1], p[2] - a[2]], ba = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const h = clamp01((pa[0] * ba[0] + pa[1] * ba[1] + pa[2] * ba[2]) / (ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2]));
+      return Math.hypot(pa[0] - ba[0] * h, pa[1] - ba[1] * h, pa[2] - ba[2] * h) - lerp(ra, rb, h);
+    }
+    function sdEllipsoid(p, c, r) {
+      const q = [(p[0] - c[0]) / r[0], (p[1] - c[1]) / r[1], (p[2] - c[2]) / r[2]];
+      const k0 = Math.hypot(q[0], q[1], q[2]);
+      const k1 = Math.hypot(q[0] / r[0], q[1] / r[1], q[2] / r[2]);
+      return k1 > 0 ? (k0 * (k0 - 1.0)) / k1 : -Math.min(r[0], r[1], r[2]);
+    }
+
+    // f(p) -> Abstand, vert(b, p, n) legt einen Vertex an (Material, UV und Extras wählt der Aufrufer)
+    function sdfMesh(f, min, max, step, vert) {
+      const nx = Math.ceil((max[0] - min[0]) / step) + 1, ny = Math.ceil((max[1] - min[1]) / step) + 1, nz = Math.ceil((max[2] - min[2]) / step) + 1;
+      const vals = new Float32Array(nx * ny * nz);
+      const P = (i, j, k) => [min[0] + i * step, min[1] + j * step, min[2] + k * step];
+      const id = (i, j, k) => i + nx * (j + ny * k);
+      for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) vals[id(i, j, k)] = f(P(i, j, k));
+
+      const b = createGeometryBuilder();
+      const cellIdx = new Int32Array((nx - 1) * (ny - 1) * (nz - 1)).fill(-1);
+      const cid = (i, j, k) => i + (nx - 1) * (j + (ny - 1) * k);
+      const corners = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
+      const edges = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+      const e = step * 0.5;
+      for (let k = 0; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+        const v = corners.map(([a, c, d]) => vals[id(i + a, j + c, k + d)]);
+        let neg = 0;
+        for (const x of v) if (x < 0) neg++;
+        if (neg === 0 || neg === 8) continue;
+        // Mittelwert der Schnittpunkte auf den Zellkanten
+        let px = 0, py = 0, pz = 0, n = 0;
+        for (const [a, c] of edges) {
+          if ((v[a] < 0) === (v[c] < 0)) continue;
+          const t = v[a] / (v[a] - v[c]);
+          const A = corners[a], C = corners[c];
+          px += A[0] + (C[0] - A[0]) * t; py += A[1] + (C[1] - A[1]) * t; pz += A[2] + (C[2] - A[2]) * t;
+          n++;
+        }
+        const p = [min[0] + (i + px / n) * step, min[1] + (j + py / n) * step, min[2] + (k + pz / n) * step];
+        const g = [f([p[0] + e, p[1], p[2]]) - f([p[0] - e, p[1], p[2]]), f([p[0], p[1] + e, p[2]]) - f([p[0], p[1] - e, p[2]]), f([p[0], p[1], p[2] + e]) - f([p[0], p[1], p[2] - e])];
+        const gl2 = Math.hypot(g[0], g[1], g[2]) || 1;
+        cellIdx[cid(i, j, k)] = b.positions.length / 3;
+        vert(b, p, [g[0] / gl2, g[1] / gl2, g[2] / gl2]);
+      }
+      // für jede Gitterkante mit Vorzeichenwechsel ein Viereck aus den vier angrenzenden Zellen
+      const quad = (a, c, d, e2) => {
+        if (a < 0 || c < 0 || d < 0 || e2 < 0) return;
+        // Umlaufsinn so wählen, dass die Fläche nach außen zeigt (wie die Gradienten-Normalen)
+        const pos = b.positions, nor = b.normals;
+        const ux = pos[c * 3] - pos[a * 3], uy = pos[c * 3 + 1] - pos[a * 3 + 1], uz = pos[c * 3 + 2] - pos[a * 3 + 2];
+        const vx = pos[d * 3] - pos[a * 3], vy = pos[d * 3 + 1] - pos[a * 3 + 1], vz = pos[d * 3 + 2] - pos[a * 3 + 2];
+        const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+        const dot = cx * (nor[a * 3] + nor[d * 3]) + cy * (nor[a * 3 + 1] + nor[d * 3 + 1]) + cz * (nor[a * 3 + 2] + nor[d * 3 + 2]);
+        if (dot > 0) b.pushQuad(a, c, d, e2); else b.pushQuad(a, e2, d, c);
+      };
+      for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+        if ((vals[id(i, j, k)] < 0) === (vals[id(i + 1, j, k)] < 0)) continue;
+        quad(cellIdx[cid(i, j - 1, k - 1)], cellIdx[cid(i, j, k - 1)], cellIdx[cid(i, j, k)], cellIdx[cid(i, j - 1, k)]);
+      }
+      for (let k = 1; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+        if ((vals[id(i, j, k)] < 0) === (vals[id(i, j + 1, k)] < 0)) continue;
+        quad(cellIdx[cid(i - 1, j, k - 1)], cellIdx[cid(i, j, k - 1)], cellIdx[cid(i, j, k)], cellIdx[cid(i - 1, j, k)]);
+      }
+      for (let k = 0; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+        if ((vals[id(i, j, k)] < 0) === (vals[id(i, j, k + 1)] < 0)) continue;
+        quad(cellIdx[cid(i - 1, j - 1, k)], cellIdx[cid(i, j - 1, k)], cellIdx[cid(i, j, k)], cellIdx[cid(i - 1, j, k)]);
+      }
       return b;
     }
 
@@ -2314,10 +2427,18 @@
           emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
         }
       } else if (matId == 22) {
-        // Springfisch: leuchtendes Seitenband
-        float side = exp(-pow((vUv.x - 0.25) * 10.0, 2.0)) + exp(-pow((vUv.x - 0.75) * 10.0, 2.0));
-        base = vec3(0.03, 0.05, 0.08);
-        emissive += vTint.rgb * (side * 1.6 + glowMask * 0.9 + 0.08);
+        // Leuchtfisch: dunkler Rücken, heller Bauch, Schuppenmuster, leuchtende Seitenlinie mit Pulsen, glühende Flossenränder
+        float up = smoothstep(-0.6, 0.8, N.y);
+        vec2 sc = vec2(vUv.x * 60.0, vUv.y * 40.0);
+        sc.x += floor(sc.y) * 0.5;
+        float scale = smoothstep(0.35, 0.5, length(fract(sc) - 0.5));
+        base = mix(vec3(0.05, 0.06, 0.09), vec3(0.01, 0.02, 0.05), up) * (0.75 + 0.35 * scale);
+        albA = albC = mix(vec3(0.45, 0.5, 0.55), vec3(0.08, 0.12, 0.2), up) * (0.75 + 0.35 * scale);
+        float side = exp(-pow((vUv.x - 0.25) * 14.0, 2.0)) + exp(-pow((vUv.x - 0.75) * 14.0, 2.0));
+        float pulse = 0.6 + 0.4 * sin(vUv.y * 30.0 - t * 8.0);
+        emissive += vTint.rgb * (side * 1.8 * pulse + scale * 0.12 + 0.05);
+        emissive += vTint.rgb * min(glowMask, 1.0) * 1.2;
+        emissive += vec3(1.0, 0.9, 0.6) * step(2.0, glowMask) * 3.0;
         wet = 1.0;
       } else if (matId == 23 || matId == 24) {
         // Wolf: fast schwarzer Schemen, nur ein feiner Saum in der Farbe des Nebels, Augen glühen
@@ -2515,7 +2636,7 @@
       vec3 zw = zoneWeights(z);
       // im Nebeltal blasse Schwebeteilchen statt Glühwürmchen, auf den Himmelsinseln kaum etwas
       vColor = mix(aColor, vec3(0.9, 0.8, 0.95) * 0.4, zw.x);
-      vAlpha = fade * (0.15 + 0.85 * blink) * dot(zw, vec3(0.7, 1.0, 0.15));
+      vAlpha = fade * (0.15 + 0.85 * blink) * dot(zw, vec3(0.0, 1.0, 0.1));
       gl_Position = uViewProj * wp;
       gl_PointSize = clamp((aSize * uPixelRatio * 22.0) / max(dist, 1.5), 1.0, 10.0);
     }`;
@@ -2734,8 +2855,10 @@
     // Lichtung des Wolfs (halblinks) und sein Versteck im Wald dahinter
     function wolfSpot(sc) {
       const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 4.0);
-      return { x, z: sc.z };
+      return { x, z: sc.z, y: terrainHeight(x, sc.z) + 0.6 }; // y: Oberkante des Felsvorsprungs
     }
+    // Richtung zum Mond im Nebelwald (wie SUN_A im Shader): Lichtkegel fallen aus dieser Richtung
+    const MOON_DIR_A = (() => { const v = [-0.30, 0.55, -0.78], l = Math.hypot(...v); return v.map((c) => c / l); })();
     function wolfDen(sc) {
       const z = sc.z - 5.0;
       const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 15.0);
@@ -2824,9 +2947,13 @@
       const bankCliffHousings = [];
       const plungeRipples = [];
       const lightShafts = [];
+      // Lichtkegel: die Achse des Kegels zeigt genau zum Mond
       const addShaft = (x, z, sx, intensity) => {
-        const model = Mat4.create();
-        Mat4.compose(model, [x, terrainHeight(x, z), z], 0, 0.1, 0.15, [sx, 1.0 + sx * 0.25, sx]);
+        const up = MOON_DIR_A;
+        let rx = [up[1], -up[0], 0]; const rl = Math.hypot(rx[0], rx[1]) || 1; rx = [rx[0] / rl, rx[1] / rl, 0];
+        const fz = [rx[1] * up[2], -rx[0] * up[2], rx[0] * up[1] - rx[1] * up[0]];
+        const sy = 1.0 + sx * 0.25, y = terrainHeight(x, z);
+        const model = new Float32Array([rx[0] * sx, rx[1] * sx, rx[2] * sx, 0, up[0] * sy, up[1] * sy, up[2] * sy, 0, fz[0] * sx, fz[1] * sx, fz[2] * sx, 0, x, y, z, 1]);
         lightShafts.push({ model, z, color: [0.55, 0.65, 0.85, intensity] });
       };
 
@@ -2863,12 +2990,32 @@
         pushInst(dead ? "deadTrees" : "pines", [p.x, p.y - 0.3, p.z], rot(i, 8.1), (hash2(i, 9.1) - 0.5) * 0.14, (hash2(i, 9.7) - 0.5) * 0.14,
           [h, h * (dead ? 0.8 : 1.0), h], CYAN);
       }
-      // ein wenig Unterholz: Farne am Waldrand
-      for (let i = 0; i < 260; i++) {
+      // ein wenig Unterholz: dunkle Farne, Büsche und umgestürzte Stämme (nichts leuchtet)
+      const DARK = [0, 0, 0, 1];
+      for (let i = 0; i < 200; i++) {
         const p = bankSpot(i, 15.0, 0.6, 10.0, 1.4, 0.0, -165.0);
         if (inClearing(p.x, p.z, -2.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 15.9))) continue;
-        const sc = 0.8 + hash2(i, 16.3) * 0.9;
-        pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], CYAN);
+        const sc = 0.9 + hash2(i, 16.3) * 1.0;
+        pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], DARK);
+      }
+      for (let i = 0; i < 130; i++) {
+        const p = bankSpot(i, 150.0, 1.5, 22.0, 1.3, 0.0, -165.0);
+        if (inClearing(p.x, p.z, -2.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 150.9))) continue;
+        const sc = 0.9 + hash2(i, 151.0) * 1.4;
+        pushInst("bushes", [p.x, p.y - 0.25, p.z], rot(i, 152.0), 0, 0, [sc * 1.4, sc, sc * 1.4], DARK);
+      }
+      for (let i = 0; i < 26; i++) {
+        const p = bankSpot(i, 155.0, 1.5, 18.0, 1.2, 0.0, -165.0);
+        if (inClearing(p.x, p.z) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 155.9))) continue;
+        const L = 5.0 + hash2(i, 156.0) * 5.0;
+        pushInst("logs", [p.x, p.y - 0.1, p.z], rot(i, 157.0), 0, (hash2(i, 158.0) - 0.5) * 0.1, [L, L * 0.9, L], DARK);
+      }
+      // die Lichtung des Wolfs: flacher Felsvorsprung, davor (zum Fluss hin) ein umgestürzter Stamm, der die Beine verdeckt
+      {
+        const sp = wolfSpot(SCENES[0]);
+        pushInst("rocks", [sp.x, sp.y - 0.75, sp.z], 0.4, 0, 0, [2.6, 0.75, 2.3], [0.75, 0.78, 0.85, 1]);
+        const lx = sp.x - SCENES[0].side * 2.2;
+        pushInst("logs", [lx, terrainHeight(lx, sp.z + 0.5) - 0.05, sp.z + 0.5], Math.PI * 0.5 + 0.15, 0, 0, [7.0, 8.5, 7.0], DARK);
       }
       // moosige Steine am Ufer, wenige
       for (let i = 0; i < 18; i++) {
@@ -2950,9 +3097,15 @@
       floatingPeaks.forEach((pk, idx) => {
         pk.x = riverCenterX(pk.z) + pk.offsetX;
         pk.rot = idx * 1.4;
-        const topY = pk.y + pk.sy * 0.33;
-        if (pk.build === "fortress") pushInst("fortress", [pk.x, topY - 0.8, pk.z], 0.6, 0, 0, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
-        if (pk.build === "ruins") pushInst("ruins", [pk.x, topY - 0.6, pk.z], 1.1, 0, 0, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
+        // zum Fluss und zur Kamera gekippt, damit man sieht, was oben steht
+        pk.tiltX = 0.22;
+        pk.tiltZ = pk.offsetX < 0 ? -0.26 : 0.26;
+        const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
+        const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
+        const topH = pk.sy * 0.33;
+        if (pk.build === "fortress") pushInst("fortress", onTop(topH - 0.8), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
+        if (pk.build === "ruins") pushInst("ruins", onTop(topH - 0.5), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 1.1, pk.sx * 1.1, pk.sx * 1.1], STONE_C);
+        const topY = pk.y + topH;
         if (pk.fall) {
           const fx = pk.x + 4.0;
           waterfalls.push({ x: fx, y: topY - 0.5, z: pk.z + 2.0, rotY: 0.0, sx: 3.2, sy: topY - 0.5 - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
@@ -3030,6 +3183,8 @@
           inst("deadTrees", buildDeadTreeMesh(), 8.0),
           inst("castleGothic", buildGothicCastleMesh(), 30.0),
           inst("ferns", buildFernRosetteMesh(), 2.0),
+          inst("bushes", buildBushMesh(), 3.0),
+          inst("logs", buildFallenLogMesh(), 6.0),
           inst("lanterns", buildLanternPostMesh(), 2.0),
           inst("giantMushrooms", buildGiantMushroomMeshV2(), 14.0),
           inst("mushroomArches", buildMushroomArchMesh(), 14.0),
@@ -3269,55 +3424,7 @@
       return b;
     }
 
-    function buildFishMesh() {
-      const b = createGeometryBuilder();
-      addLathe(b, 16, 10, (t) => [0, 0, -0.5 + t * 1.0], (t) => {
-        const r = 0.16 * Math.pow(Math.sin(Math.min(t * 1.08, 1.0) * Math.PI), 0.65) + 0.012;
-        return [r * 0.7, r];
-      }, 22, (t) => [0.9, 0.0, t]);
-      // Schwanzflosse und Rückenflosse
-      const fin = (pts) => {
-        const base = b.positions.length / 3;
-        for (const p of pts) b.pushVertex(p[0], p[1], p[2], 1, 0, 0, p[3], p[4], 0.9, 1.0, p[5], 22);
-        b.pushTri(base, base + 1, base + 2);
-        if (pts.length === 4) b.pushTri(base, base + 2, base + 3);
-      };
-      fin([[0, 0, 0.45, 0.5, 0.0, 0.95], [0, 0.26, 0.78, 0.0, 1.0, 1.3], [0, 0.0, 0.66, 0.5, 0.8, 1.2], [0, -0.26, 0.78, 1.0, 1.0, 1.3]]);
-      fin([[0, 0.14, -0.15, 0.5, 0.0, 0.4], [0, 0.32, 0.12, 0.5, 1.0, 0.6], [0, 0.13, 0.2, 0.5, 0.5, 0.7]]);
-      b.computeSmoothNormals();
-      return b;
-    }
 
-    // Wolf (Nebeltal): dunkler Schemen mit zottigem Fell und leuchtenden Augen. Schaut nach -z, Schulterhöhe ~0.8.
-    // Beine: extra.z = Seite der Schrittphase (+1/-1) mal Abstand von der Hüfte, für den Laufzyklus im Shader.
-    function buildWolfMesh() {
-      const b = createGeometryBuilder();
-      const shag = (t, a, base) => base * (1.0 + 0.16 * Math.abs(Math.sin(a * 7.0 + t * 23.0)) * Math.sin(a * 3.0 + t * 11.0));
-      // Rumpf: vorne hoch und kräftig, hinten schmal
-      addLathe(b, 16, 14, (t) => [0, 0.56 + 0.06 * Math.sin(t * Math.PI) + 0.08 * t, 0.55 - t * 1.05], (t, a) => {
-        const r = 0.14 + 0.11 * Math.sin(Math.min(t * 1.2, 1.0) * Math.PI) + 0.07 * t;
-        return [shag(t, a, r * 0.8), shag(t, a, r * 1.15)];
-      }, 23, (t) => [0.6, 0.0, 0.0]);
-      // Hals, Kopf und Schnauze
-      // Hals, Kopf, Ohren und Augen haben Material 24: sie drehen sich im Shader um das Nackengelenk (Heulen)
-      addLathe(b, 8, 10, (t) => [0, 0.72 + t * 0.12, -0.46 - t * 0.28], (t, a) => [shag(t, a, 0.13 - t * 0.03), shag(t, a, 0.15 - t * 0.04)], 24, () => [0.7, 0.0, 0.0]);
-      addLathe(b, 8, 10, (t) => [0, 0.83 - t * 0.07, -0.72 - t * 0.3], (t) => { const r = 0.09 * (1.0 - t * 0.6) + 0.01; return [r, r * 0.9]; }, 24, () => [0.8, 0.0, 0.0]);
-      // Ohren
-      for (const sx of [-1, 1]) {
-        addLathe(b, 3, 4, (t) => [sx * (0.05 + t * 0.015), 0.91 + t * 0.1, -0.68 + t * 0.02], (t) => { const r = 0.035 * (1 - t) + 0.003; return [r, r * 0.5]; }, 24, () => [0.8, 0.0, 0.0]);
-        // Augen
-        addBox(b, [sx * 0.05, 0.86, -0.84], [0.04, 0.024, 0.02], 0, 0, 24, 3.0);
-      }
-      // Beine mit Phase für den Laufzyklus (diagonal gleich)
-      [[-0.09, -0.38, 1], [0.09, -0.38, -1], [-0.09, 0.42, -1], [0.09, 0.42, 1]].forEach(([x, z, ph]) => {
-        const back = z > 0;
-        addLathe(b, 6, 7, (t) => [x * 1.3, 0.5 * (1.0 - t), z + (back ? Math.sin(t * Math.PI) * 0.08 : 0.0)],
-          (t, a) => { const r = (back ? 0.085 : 0.07) * (1.0 - t * 0.5); return [shag(t, a, r), shag(t, a, r)]; }, 23, (t) => [0.5, 0.0, ph * (0.05 + t)]);
-      });
-      // buschiger Schwanz
-      addLathe(b, 8, 8, (t) => [0, 0.68 - t * 0.3, 0.55 + t * 0.4], (t, a) => { const r = 0.06 + 0.04 * Math.sin(t * Math.PI); return [shag(t, a, r), shag(t, a, r)]; }, 23, () => [0.6, 0.0, 0.0]);
-      return b;
-    }
 
     // Fledermaus: kleiner Körper, zwei gezackte Hautflügel (Material 21, extra.z = Spannweite für den Flügelschlag)
     function buildBatMesh() {
@@ -3333,46 +3440,131 @@
       return b;
     }
 
-    // Manta: flacher, rautenförmiger Körper mit verdickter Mitte und langem Peitschenschwanz. Spannweite 2.
+    // Manta: flacher Körper mit weit geschwungenen, nach hinten gezogenen Schwingen, Kopflappen und Peitschenschwanz.
+    // Spannweite ~2, schaut nach -z. extra.z = Abstand von der Körpermitte (für den wellenförmigen Flügelschlag).
     function buildMantaMesh() {
-      const b = createGeometryBuilder();
-      const nI = 14, nJ = 6;
-      for (const s of [-1, 1]) {
-        const base = b.positions.length / 3;
-        for (let i = 0; i <= nI; i++) {
-          const u = i / nI;
-          const lead = -0.65 + u * 0.62, trail = 0.38 - u * 0.36;
-          for (let j = 0; j <= nJ; j++) {
-            const v = j / nJ;
-            const z = lerp(lead, trail, v);
-            const thick = 0.09 * (1.0 - u) * Math.sin(v * Math.PI);
-            b.pushVertex(s * u, thick - u * u * 0.05, z, 0, 1, 0, u, v, 0.9, 0.0, u, 21);
-          }
+      const f = (p) => {
+        let d = sdEllipsoid(p, [0, 0, 0], [0.22, 0.07, 0.42]);
+        for (const s of [-1, 1]) {
+          // Schwinge: Vorderkante leicht gebogen, Spitze nach hinten gezogen, nach außen dünner
+          d = smin(d, sdFlat(p, [s * 0.1, 0.0, -0.18], [s * 0.62, 0.02, 0.0], 0.13, 1, 3.5), 0.12);
+          d = smin(d, sdFlat(p, [s * 0.55, 0.02, 0.0], [s * 1.0, -0.03, 0.22], 0.05, 1, 3.5), 0.12);
+          d = smin(d, sdFlat(p, [s * 0.1, 0.0, 0.15], [s * 0.5, 0.0, 0.12], 0.1, 1, 3.5), 0.1);
+          d = smin(d, sdFlat(p, [s * 0.1, -0.01, -0.38], [s * 0.13, -0.03, -0.55], 0.03, 0, 2.0), 0.03);
         }
-        for (let i = 0; i < nI; i++) for (let j = 0; j < nJ; j++) {
-          const a = base + i * (nJ + 1) + j;
-          if (s > 0) b.pushQuad(a, a + 1, a + nJ + 2, a + nJ + 1); else b.pushQuad(a, a + nJ + 1, a + nJ + 2, a + 1);
-        }
-      }
-      // Kopflappen und Schwanz
-      for (const s of [-1, 1]) addLathe(b, 3, 5, (t) => [s * 0.1, 0.0, -0.62 - t * 0.12], (t) => { const r = 0.03 * (1 - t) + 0.005; return [r, r]; }, 21, () => [0.8, 0.0, 0.0]);
-      addLathe(b, 12, 5, (t) => [0, -0.02 * t, 0.35 + t * 1.6], (t) => { const r = 0.035 * (1.0 - t) + 0.003; return [r, r]; }, 21, () => [0.8, 0.0, 0.0]);
-      b.computeSmoothNormals();
+        d = smin(d, sdTaper(p, [0, 0, 0.35], [0, -0.03, 1.9], 0.035, 0.006), 0.05);
+        return d;
+      };
+      return sdfMesh(f, [-1.08, -0.15, -0.65], [1.08, 0.15, 1.95], 0.02, (b, p, n) => {
+        b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.abs(p[0]), p[2] + 0.6, 0.9, 0.0, Math.abs(p[0]), 21);
+      });
+    }
+
+
+    // --- Tiere aus verschmolzenen Grundkörpern (siehe sdfmesh.js) ---
+    // abgeflachte Kapsel: Abstand mit gestauchter Achse (für Flossen und Hörner)
+    function sdFlat(p, a, b, r, ax, squash) {
+      const q = [p[0], p[1], p[2]], aa = [a[0], a[1], a[2]], bb = [b[0], b[1], b[2]];
+      q[ax] *= squash; aa[ax] *= squash; bb[ax] *= squash;
+      return sdCapsule(q, aa, bb, r) / squash;
+    }
+    // Fellrauheit: kleine Störung der Oberfläche
+    const furNoise = (p, s) => (fbm2(p[0] * 31.0 + p[1] * 17.0, p[2] * 29.0 + p[1] * 7.0, 2) - 0.5) * s;
+
+    // Wolf: schaut nach -z, Pfoten bei y=0, Schulterhöhe ~0.8.
+    // Material 23 = Rumpf und Beine, 24 = Hals und Kopf (dreht sich beim Heulen). extra.z der Beine = Schrittphase.
+    function buildWolfMesh() {
+      const legs = [
+        { ph: 1, pts: [[-0.08, 0.52, -0.34], [-0.085, 0.26, -0.37], [-0.085, 0.04, -0.35]], r: [0.058, 0.038, 0.03] },
+        { ph: -1, pts: [[0.08, 0.52, -0.34], [0.085, 0.26, -0.37], [0.085, 0.04, -0.35]], r: [0.058, 0.038, 0.03] },
+        { ph: -1, pts: [[-0.09, 0.56, 0.34], [-0.095, 0.3, 0.47], [-0.09, 0.04, 0.41]], r: [0.075, 0.04, 0.03] },
+        { ph: 1, pts: [[0.09, 0.56, 0.34], [0.095, 0.3, 0.47], [0.09, 0.04, 0.41]], r: [0.075, 0.04, 0.03] }
+      ];
+      const legD = (p, L) => {
+        const [a, b2, c2] = L.pts;
+        return Math.min(sdTaper(p, a, b2, L.r[0], L.r[1]), sdTaper(p, b2, c2, L.r[1], L.r[2]), sdEllipsoid(p, [c2[0], 0.03, c2[2] - 0.03], [0.038, 0.028, 0.055]));
+      };
+      const headD = (p) => {
+        let d = sdTaper(p, [0, 0.62, -0.38], [0, 0.82, -0.6], 0.16, 0.11);
+        d = smin(d, sdEllipsoid(p, [0, 0.84, -0.66], [0.1, 0.1, 0.13]), 0.06);
+        d = smin(d, sdTaper(p, [0, 0.82, -0.74], [0, 0.77, -0.96], 0.065, 0.034), 0.04);
+        for (const s of [-1, 1]) d = smin(d, sdFlat(p, [s * 0.06, 0.9, -0.62], [s * 0.085, 1.07, -0.6], 0.042, 2, 2.2), 0.02);
+        return d;
+      };
+      const bodyD = (p) => {
+        let d = sdEllipsoid(p, [0, 0.58, -0.22], [0.17, 0.23, 0.3]);
+        d = smin(d, sdEllipsoid(p, [0, 0.6, 0.22], [0.13, 0.16, 0.32]), 0.14);
+        d = smin(d, sdTaper(p, [0, 0.64, 0.5], [0, 0.36, 0.86], 0.06, 0.04), 0.06);
+        return d;
+      };
+      const f = (p) => {
+        let d = smin(bodyD(p), headD(p), 0.08);
+        for (const L of legs) d = smin(d, legD(p, L), 0.06);
+        return d + furNoise(p, 0.016);
+      };
+      const b = sdfMesh(f, [-0.32, -0.02, -1.05], [0.32, 1.1, 0.95], 0.022, (b, p, n) => {
+        const dh = headD(p), db = bodyD(p);
+        let best = Math.min(dh, db), leg = null;
+        for (const L of legs) { const dl = legD(p, L); if (dl < best) { best = dl; leg = L; } }
+        const isHead = !leg && dh <= db;
+        const swing = leg ? leg.ph * (0.05 + clamp01((0.56 - p[1]) / 0.56)) : 0.0;
+        b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.atan2(p[0], p[1]) / 6.283 + 0.5, p[2] + 1.0, 0.45 + 0.55 * clamp01(p[1] / 0.8), 0.0, swing, isHead ? 24 : 23);
+      });
+      // glühende Augen
+      for (const s of [-1, 1]) addBox(b, [s * 0.052, 0.865, -0.765], [0.035, 0.02, 0.02], s * 0.4, 0, 24, 3.0);
       return b;
     }
 
-    // Herdentier: Rumpf, langer Hals, kleiner Kopf mit Hörnern, vier dünne Beine (Laufzyklus wie beim Wolf). Schaut nach -z.
-    function buildHerdAnimalMesh() {
-      const b = createGeometryBuilder();
-      addLathe(b, 10, 10, (t) => [0, 0.95 + 0.05 * Math.sin(t * Math.PI), 0.5 - t * 1.0], (t) => { const r = 0.16 + 0.1 * Math.sin(t * Math.PI); return [r * 0.85, r]; }, 23, () => [0.7, 0.0, 0.0]);
-      addLathe(b, 6, 8, (t) => [0, 1.0 + t * 0.45, -0.45 - t * 0.25], (t) => { const r = 0.1 - t * 0.04; return [r, r]; }, 23, () => [0.7, 0.0, 0.0]);
-      addLathe(b, 6, 8, (t) => [0, 1.45 - t * 0.06, -0.7 - t * 0.24], (t) => { const r = 0.07 * (1.0 - t * 0.5); return [r, r]; }, 23, () => [0.8, 0.0, 0.0]);
-      for (const s of [-1, 1]) addLathe(b, 5, 4, (t) => [s * (0.04 + t * 0.1), 1.5 + t * 0.15, -0.72 + t * 0.12], (t) => { const r = 0.02 * (1 - t) + 0.003; return [r, r]; }, 23, () => [0.8, 0.0, 0.0]);
-      [[-0.1, -0.35, 1], [0.1, -0.35, -1], [-0.1, 0.38, -1], [0.1, 0.38, 1]].forEach(([x, z, ph]) => {
-        addLathe(b, 6, 6, (t) => [x, 0.9 * (1.0 - t), z], (t) => { const r = 0.045 * (1.0 - t * 0.4); return [r, r]; }, 23, (t) => [0.5, 0.0, ph * (0.05 + t)]);
+    // Leuchtfisch: schaut nach -z, Länge ~1. extra.z = Position entlang des Körpers (für den Schwanzschlag)
+    function buildFishMesh() {
+      const f = (p) => {
+        let d = sdEllipsoid(p, [0, 0, -0.05], [0.085, 0.15, 0.42]);
+        d = smin(d, sdTaper(p, [0, 0, 0.25], [0, 0, 0.5], 0.06, 0.018), 0.08);
+        // gegabelte Schwanzflosse, Rücken-, Bauch- und Brustflossen als flache Kapseln
+        d = smin(d, sdFlat(p, [0, 0.0, 0.48], [0, 0.2, 0.7], 0.035, 0, 5.0), 0.03);
+        d = smin(d, sdFlat(p, [0, 0.0, 0.48], [0, -0.2, 0.7], 0.035, 0, 5.0), 0.03);
+        d = smin(d, sdFlat(p, [0, 0.12, -0.15], [0, 0.26, 0.12], 0.035, 0, 5.0), 0.04);
+        d = smin(d, sdFlat(p, [0, -0.12, 0.05], [0, -0.2, 0.2], 0.03, 0, 5.0), 0.04);
+        for (const s of [-1, 1]) d = smin(d, sdFlat(p, [s * 0.07, -0.05, -0.18], [s * 0.2, -0.12, -0.02], 0.03, 1, 4.0), 0.03);
+        return d;
+      };
+      const b = sdfMesh(f, [-0.25, -0.3, -0.55], [0.25, 0.32, 0.8], 0.014, (b, p, n) => {
+        const fin = Math.abs(p[0]) < 0.03 && (Math.abs(p[1]) > 0.14 || p[2] > 0.45) ? 1.0 : 0.0;
+        b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], Math.atan2(p[0], p[1]) / 6.283 + 0.5, p[2] + 0.5, 0.9, fin, clamp01((p[2] + 0.45) / 1.15) * 1.2, 22);
       });
-      addLathe(b, 4, 5, (t) => [0, 1.0 - t * 0.35, 0.52 + t * 0.12], (t) => { const r = 0.03 * (1 - t) + 0.005; return [r, r]; }, 23, () => [0.6, 0.0, 0.0]);
+      for (const s of [-1, 1]) addBox(b, [s * 0.075, 0.04, -0.33], [0.012, 0.035, 0.035], 0, 0, 22, 3.0);
       return b;
+    }
+
+    // Herdentier (antilopenartig): schaut nach -z, Schulterhöhe ~1. Beine mit Schrittphase wie beim Wolf.
+    function buildHerdAnimalMesh() {
+      const legs = [
+        { ph: 1, pts: [[-0.08, 0.88, -0.32], [-0.08, 0.46, -0.35], [-0.08, 0.0, -0.31]] },
+        { ph: -1, pts: [[0.08, 0.88, -0.32], [0.08, 0.46, -0.35], [0.08, 0.0, -0.31]] },
+        { ph: -1, pts: [[-0.09, 0.9, 0.33], [-0.09, 0.46, 0.45], [-0.09, 0.0, 0.38]] },
+        { ph: 1, pts: [[0.09, 0.9, 0.33], [0.09, 0.46, 0.45], [0.09, 0.0, 0.38]] }
+      ];
+      const legD = (p, L) => Math.min(sdTaper(p, L.pts[0], L.pts[1], 0.055, 0.03), sdTaper(p, L.pts[1], L.pts[2], 0.028, 0.02));
+      const f = (p) => {
+        let d = sdEllipsoid(p, [0, 0.96, 0.05], [0.15, 0.19, 0.46]);
+        d = smin(d, sdEllipsoid(p, [0, 0.98, -0.28], [0.16, 0.22, 0.22]), 0.1);
+        d = smin(d, sdTaper(p, [0, 1.05, -0.4], [0, 1.42, -0.6], 0.09, 0.055), 0.06);
+        d = smin(d, sdEllipsoid(p, [0, 1.46, -0.68], [0.06, 0.07, 0.1]), 0.04);
+        d = smin(d, sdTaper(p, [0, 1.44, -0.74], [0, 1.39, -0.86], 0.05, 0.03), 0.03);
+        for (const s of [-1, 1]) {
+          d = Math.min(d, sdTaper(p, [s * 0.035, 1.51, -0.67], [s * 0.075, 1.72, -0.6], 0.028, 0.02));
+          d = Math.min(d, sdTaper(p, [s * 0.075, 1.72, -0.6], [s * 0.06, 1.86, -0.42], 0.02, 0.006));
+        }
+        for (const L of legs) d = smin(d, legD(p, L), 0.05);
+        d = smin(d, sdTaper(p, [0, 1.02, 0.5], [0, 0.82, 0.6], 0.03, 0.015), 0.03);
+        return d + furNoise(p, 0.008);
+      };
+      return sdfMesh(f, [-0.3, -0.02, -0.95], [0.3, 1.9, 0.7], 0.028, (b, p, n) => {
+        let best = 1e9, leg = null;
+        for (const L of legs) { const dl = legD(p, L); if (dl < best) { best = dl; leg = L; } }
+        const onLeg = leg && best < 0.02 && p[1] < 0.9;
+        b.pushVertex(p[0], p[1], p[2], n[0], n[1], n[2], 0.5, p[1], 0.5 + 0.5 * clamp01(p[1] / 1.0), 0.0, onLeg ? leg.ph * (0.05 + clamp01((0.9 - p[1]) / 0.9)) : 0.0, 23);
+      });
     }
 
     const creatureMeshes = {
@@ -3436,7 +3628,7 @@
         if (d > 200 || d < -80) return;
         const zOff = (camZ - d) - sc.z; // Versatz, falls die Szene in einer anderen Runde der Schleife liegt
         const active = si === sceneIdx;
-        if (!active && sc.type !== "wolf") return; // nur der Wolf ist auch vorher (versteckt) und nachher zu sehen
+        if (!active && sc.type !== "wolf" && sc.type !== "mantas") return; // Wolf und Mantas sind auch vor und nach ihrer Szene da
         const st = active ? sceneT : d > 0 ? 0 : sc.dur;
 
         if (sc.type === "wolf") {
@@ -3446,7 +3638,8 @@
           const outT = ease(st, 0.5, 3.0), backT = ease(st, 8.0, 10.0);
           const f = outT * (1.0 - backT);
           const x = lerp(den.x, spot.x, f), z = lerp(den.z, spot.z, f) + zOff;
-          const y = terrainHeight(x, z) - 0.05;
+          // auf den letzten Schritten steigt der Wolf auf den Felsvorsprung
+          const y = lerp(terrainHeight(x, z) - 0.05, spot.y, ease(f, 0.75, 1.0));
           const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
           const yawOut = Math.atan2(-(spot.x - den.x), -(spot.z - den.z));
           const toBoat = Math.atan2(-(cam[0] - x), -(cam[2] - z));
@@ -3514,7 +3707,7 @@
           let fx = 0, fy = 0, fz = 0, n = 0;
           spots.forEach(([side, dz, delay], i) => {
             const z = sc.z + dz + zOff, cx = riverCenterX(z);
-            const x = cx + side * (3.8 + hash2(i, 310.0) * 1.2);
+            const x = cx + side * (2.3 + hash2(i, 310.0) * 0.8);
             const up = ease(st, 0.6 + delay, 1.6 + delay), down = ease(st, 7.0 + delay * 0.5, 8.2 + delay * 0.5);
             const h = 7.0 + hash2(i, 311.0) * 3.0;
             const lift = up * (1.0 - down);
@@ -3533,8 +3726,9 @@
           const p = clamp01(st / sc.dur);
           for (let i = 0; i < 14; i++) {
             const ox = (hash2(i, 320.0) - 0.5) * 16, oz = (hash2(i, 321.0) - 0.5) * 12;
-            const x0 = riverCenterX(sc.z) + sc.side * 80, x1 = riverCenterX(sc.z) + sc.side * 28;
-            const z0 = sc.z - 55, z1 = sc.z + 5;
+            // die Herde zieht auf dem Hügelkamm entlang, als Silhouette vor dem Himmel
+            const x0 = riverCenterX(sc.z - 80) + sc.side * HERD_RIDGE, x1 = riverCenterX(sc.z + 10) + sc.side * HERD_RIDGE;
+            const z0 = sc.z - 80, z1 = sc.z + 10;
             const x = lerp(x0, x1, p) + ox, z = lerp(z0, z1, p) + oz + zOff;
             const y = terrainHeight(x, z) - 0.05;
             const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
@@ -3547,25 +3741,30 @@
           }
           if (n) focus(cxs / n, cys / n + 2.0, czs / n);
         } else if (sc.type === "mantas") {
-          // schwarze Mantas gleiten mit langsamen Wellenschlägen in einem Bogen an den Schwebefelsen vorbei
+          // schwarze Mantas: kreisen zuerst hinter dem Schlossfelsen, gleiten dann in einem Bogen über den Fluss
+          // und verschwinden hinter dem Ruinenfelsen, wo sie weiterkreisen
+          const rockA = world.floatingPeaks[1], rockB = world.floatingPeaks[2];
           let lead = null;
-          for (let i = 0; i < 5; i++) {
-            const q = clamp01((st - 0.5 - i * 0.6) / 10.0);
-            if (q <= 0 || q >= 1) continue;
+          for (let i = 0; i < 4; i++) {
+            const q = clamp01((st - 0.8 - i * 0.7) / 9.5);
+            const orbit = (pk, a, r, h) => [pk.x + Math.cos(a) * r, pk.y + h, pk.z + zOff + Math.sin(a) * r];
+            const aOrb = t * 0.12 + i * 1.6;
+            const A = orbit(rockA, aOrb, 34 + i * 4, 6 + i * 2), B = orbit(rockB, aOrb + 2.0, 30 + i * 4, 8 + i * 2);
             const cx = riverCenterX(sc.z);
-            const P0 = [cx + sc.side * 70, 45 + i * 3, sc.z - 60 + i * 4], P1 = [cx + sc.side * 25, 26 + i, sc.z - 30];
-            const P2 = [cx - sc.side * 15, 22 + i * 2, sc.z - 25], P3 = [cx - sc.side * 70, 40 + i * 2, sc.z - 55];
-            const x = bez3(P0[0], P1[0], P2[0], P3[0], q), y = bez3(P0[1], P1[1], P2[1], P3[1], q), z = bez3(P0[2], P1[2], P2[2], P3[2], q) + zOff;
-            const q2 = Math.min(q + 0.01, 1);
-            const vx = bez3(P0[0], P1[0], P2[0], P3[0], q2) - x, vz = bez3(P0[2], P1[2], P2[2], P3[2], q2) + zOff - z;
+            const M1 = [cx + 18, 24 + i * 1.5, sc.z - 34 + zOff + i * 3], M2 = [cx - 10, 20 + i, sc.z - 40 + zOff];
+            let x, y, z, vx, vz;
+            const pos = (u) => [bez3(A[0], M1[0], M2[0], B[0], u), bez3(A[1], M1[1], M2[1], B[1], u), bez3(A[2], M1[2], M2[2], B[2], u)];
+            if (q <= 0) { [x, y, z] = A; const A2 = orbit(rockA, aOrb + 0.05, 34 + i * 4, 6 + i * 2); vx = A2[0] - x; vz = A2[2] - z; }
+            else if (q >= 1) { [x, y, z] = B; const B2 = orbit(rockB, aOrb + 2.05, 30 + i * 4, 8 + i * 2); vx = B2[0] - x; vz = B2[2] - z; }
+            else { [x, y, z] = pos(q); const p2 = pos(Math.min(q + 0.01, 1)); vx = p2[0] - x; vz = p2[2] - z; }
             const g = take(creatureMeshes.manta, [0.015, 0.015, 0.02, 0]);
-            const s = 5.0 + i * 0.6;
-            Mat4.compose(g.model, [x, y, z], Math.atan2(-vx, -vz), 0.05, -sc.side * 0.25 * Math.sin(q * Math.PI), [s, s, s]);
+            const s = 5.5 + i * 0.7;
+            Mat4.compose(g.model, [x, y + Math.sin(t * 0.6 + i) * 0.8, z], Math.atan2(-vx, -vz), 0.05, -0.2 * Math.sin(q * Math.PI), [s, s, s]);
             g.anim[0] = i * 1.1;
             g.anim[2] = -0.72;
             if (i === 1) lead = [x, y, z];
           }
-          if (lead) focus(lead[0], lead[1], lead[2]);
+          if (active && lead) focus(lead[0], lead[1], lead[2]);
         }
       });
     }
@@ -3838,7 +4037,7 @@
         gl.bindVertexArray(world.mountainMesh.vao);
         world.floatingPeaks.forEach((pk, idx) => {
           if (!near(pk.z, pk.sx + 20)) return;
-          Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot, 0, 0, [pk.sx, pk.sy, pk.sz]);
+          Mat4.compose(tempModelMat, [pk.x, pk.y, pk.z], pk.rot, pk.tiltX || 0, pk.tiltZ || 0, [pk.sx, pk.sy, pk.sz]);
           setModel(tempModelMat, [0.92, 1.0, 1.15, 1], 0.0);
           gl.drawElements(gl.TRIANGLES, world.mountainMesh.indexCount, gl.UNSIGNED_INT, 0);
         });

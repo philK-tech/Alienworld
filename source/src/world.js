@@ -16,8 +16,10 @@ const SCENES = [
 // Lichtung des Wolfs (halblinks) und sein Versteck im Wald dahinter
 function wolfSpot(sc) {
   const x = riverCenterX(sc.z) + sc.side * (riverHalfWidth(sc.z) + 4.0);
-  return { x, z: sc.z };
+  return { x, z: sc.z, y: terrainHeight(x, sc.z) + 0.6 }; // y: Oberkante des Felsvorsprungs
 }
+// Richtung zum Mond im Nebelwald (wie SUN_A im Shader): Lichtkegel fallen aus dieser Richtung
+const MOON_DIR_A = (() => { const v = [-0.30, 0.55, -0.78], l = Math.hypot(...v); return v.map((c) => c / l); })();
 function wolfDen(sc) {
   const z = sc.z - 5.0;
   const x = riverCenterX(z) + sc.side * (riverHalfWidth(sc.z) + 15.0);
@@ -106,9 +108,13 @@ function buildWorld() {
   const bankCliffHousings = [];
   const plungeRipples = [];
   const lightShafts = [];
+  // Lichtkegel: die Achse des Kegels zeigt genau zum Mond
   const addShaft = (x, z, sx, intensity) => {
-    const model = Mat4.create();
-    Mat4.compose(model, [x, terrainHeight(x, z), z], 0, 0.1, 0.15, [sx, 1.0 + sx * 0.25, sx]);
+    const up = MOON_DIR_A;
+    let rx = [up[1], -up[0], 0]; const rl = Math.hypot(rx[0], rx[1]) || 1; rx = [rx[0] / rl, rx[1] / rl, 0];
+    const fz = [rx[1] * up[2], -rx[0] * up[2], rx[0] * up[1] - rx[1] * up[0]];
+    const sy = 1.0 + sx * 0.25, y = terrainHeight(x, z);
+    const model = new Float32Array([rx[0] * sx, rx[1] * sx, rx[2] * sx, 0, up[0] * sy, up[1] * sy, up[2] * sy, 0, fz[0] * sx, fz[1] * sx, fz[2] * sx, 0, x, y, z, 1]);
     lightShafts.push({ model, z, color: [0.55, 0.65, 0.85, intensity] });
   };
 
@@ -145,12 +151,32 @@ function buildWorld() {
     pushInst(dead ? "deadTrees" : "pines", [p.x, p.y - 0.3, p.z], rot(i, 8.1), (hash2(i, 9.1) - 0.5) * 0.14, (hash2(i, 9.7) - 0.5) * 0.14,
       [h, h * (dead ? 0.8 : 1.0), h], CYAN);
   }
-  // ein wenig Unterholz: Farne am Waldrand
-  for (let i = 0; i < 260; i++) {
+  // ein wenig Unterholz: dunkle Farne, Büsche und umgestürzte Stämme (nichts leuchtet)
+  const DARK = [0, 0, 0, 1];
+  for (let i = 0; i < 200; i++) {
     const p = bankSpot(i, 15.0, 0.6, 10.0, 1.4, 0.0, -165.0);
     if (inClearing(p.x, p.z, -2.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 15.9))) continue;
-    const sc = 0.8 + hash2(i, 16.3) * 0.9;
-    pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], CYAN);
+    const sc = 0.9 + hash2(i, 16.3) * 1.0;
+    pushInst("ferns", [p.x, p.y - 0.05, p.z], rot(i, 17.4), 0, 0, [sc, sc, sc], DARK);
+  }
+  for (let i = 0; i < 130; i++) {
+    const p = bankSpot(i, 150.0, 1.5, 22.0, 1.3, 0.0, -165.0);
+    if (inClearing(p.x, p.z, -2.0) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 150.9))) continue;
+    const sc = 0.9 + hash2(i, 151.0) * 1.4;
+    pushInst("bushes", [p.x, p.y - 0.25, p.z], rot(i, 152.0), 0, 0, [sc * 1.4, sc, sc * 1.4], DARK);
+  }
+  for (let i = 0; i < 26; i++) {
+    const p = bankSpot(i, 155.0, 1.5, 18.0, 1.2, 0.0, -165.0);
+    if (inClearing(p.x, p.z) || !zoneChance(p.z, 1.0, 0.0, 0.0, hash2(i, 155.9))) continue;
+    const L = 5.0 + hash2(i, 156.0) * 5.0;
+    pushInst("logs", [p.x, p.y - 0.1, p.z], rot(i, 157.0), 0, (hash2(i, 158.0) - 0.5) * 0.1, [L, L * 0.9, L], DARK);
+  }
+  // die Lichtung des Wolfs: flacher Felsvorsprung, davor (zum Fluss hin) ein umgestürzter Stamm, der die Beine verdeckt
+  {
+    const sp = wolfSpot(SCENES[0]);
+    pushInst("rocks", [sp.x, sp.y - 0.75, sp.z], 0.4, 0, 0, [2.6, 0.75, 2.3], [0.75, 0.78, 0.85, 1]);
+    const lx = sp.x - SCENES[0].side * 2.2;
+    pushInst("logs", [lx, terrainHeight(lx, sp.z + 0.5) - 0.05, sp.z + 0.5], Math.PI * 0.5 + 0.15, 0, 0, [7.0, 8.5, 7.0], DARK);
   }
   // moosige Steine am Ufer, wenige
   for (let i = 0; i < 18; i++) {
@@ -232,9 +258,15 @@ function buildWorld() {
   floatingPeaks.forEach((pk, idx) => {
     pk.x = riverCenterX(pk.z) + pk.offsetX;
     pk.rot = idx * 1.4;
-    const topY = pk.y + pk.sy * 0.33;
-    if (pk.build === "fortress") pushInst("fortress", [pk.x, topY - 0.8, pk.z], 0.6, 0, 0, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
-    if (pk.build === "ruins") pushInst("ruins", [pk.x, topY - 0.6, pk.z], 1.1, 0, 0, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
+    // zum Fluss und zur Kamera gekippt, damit man sieht, was oben steht
+    pk.tiltX = 0.22;
+    pk.tiltZ = pk.offsetX < 0 ? -0.26 : 0.26;
+    const R = Mat4.compose(Mat4.create(), [0, 0, 0], pk.rot, pk.tiltX, pk.tiltZ, [1, 1, 1]);
+    const onTop = (h) => [pk.x + R[4] * h, pk.y + R[5] * h, pk.z + R[6] * h];
+    const topH = pk.sy * 0.33;
+    if (pk.build === "fortress") pushInst("fortress", onTop(topH - 0.8), pk.rot + 0.6, pk.tiltX, pk.tiltZ, [pk.sx * 0.9, pk.sx * 0.9, pk.sx * 0.9], STONE_C);
+    if (pk.build === "ruins") pushInst("ruins", onTop(topH - 0.5), pk.rot + 1.1, pk.tiltX, pk.tiltZ, [pk.sx * 1.1, pk.sx * 1.1, pk.sx * 1.1], STONE_C);
+    const topY = pk.y + topH;
     if (pk.fall) {
       const fx = pk.x + 4.0;
       waterfalls.push({ x: fx, y: topY - 0.5, z: pk.z + 2.0, rotY: 0.0, sx: 3.2, sy: topY - 0.5 - 6.0, sz: 2.0, isSkyFall: true, peakIdx: idx, groundY: 6.0 });
@@ -312,6 +344,8 @@ function buildWorld() {
       inst("deadTrees", buildDeadTreeMesh(), 8.0),
       inst("castleGothic", buildGothicCastleMesh(), 30.0),
       inst("ferns", buildFernRosetteMesh(), 2.0),
+      inst("bushes", buildBushMesh(), 3.0),
+      inst("logs", buildFallenLogMesh(), 6.0),
       inst("lanterns", buildLanternPostMesh(), 2.0),
       inst("giantMushrooms", buildGiantMushroomMeshV2(), 14.0),
       inst("mushroomArches", buildMushroomArchMesh(), 14.0),
