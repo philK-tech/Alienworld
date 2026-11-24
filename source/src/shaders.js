@@ -745,8 +745,64 @@ void main() {
     if (abs(N.y) > 0.7) joint = 1.0;
     float blockVar = 0.85 + 0.3 * hash21(floor(bp) + vSeed * 13.0);
     vec3 stone = vTint.rgb * blockVar * (0.55 + 0.45 * joint) * (0.8 + 0.4 * tex);
-    // dunkles Gemäuer: herablaufende Schmutz- und Wasserschlieren
-    if (vTint.r < 0.5) stone *= 0.6 + 0.4 * smoothstep(0.25, 0.7, vnoise(vec2(lp.x * 2.5 + lp.z * 2.5, lp.y * 0.25)));
+    if (vTint.r < 0.5) {
+      // Gruselschloss: Quader- und Plattenstein nach dem Steinmaterial aus "The Ninth Vigil" (MIT):
+      // leicht verzogene Blöcke im Verband, je Block eigene Höhe, Tönung und Verwitterung,
+      // ausgebrochene helle Kanten, eingesunkene Fugen, Feuchtigkeit unter den Lagerfugen, großflächig fleckig.
+      float hgt, mortar, spall, damp = 0.0, tone, wear;
+      if (abs(N.y) < 0.7) {
+        vec2 wq = bp + (vec2(vnoise(lp.xz * 0.7 + lp.y * 0.4), vnoise(lp.zy * 0.7 + 3.1)) - 0.5) * vec2(0.09, 0.06);
+        vec2 cell = floor(wq), f = fract(wq);
+        float bH = hash21(cell + 1.7) * 2.0 - 1.0, bW = hash21(cell + 9.1);
+        tone = hash21(cell + 5.3) * 2.0 - 1.0;
+        float chip = fbm(wq * vec2(5.0, 8.0) + cell * 1.3);
+        float dU = min(f.x, 1.0 - f.x) / 0.055, dV = min(f.y, 1.0 - f.y) / 0.085;
+        float dj = min(dU, dV) - (chip - 0.45) * 1.7;
+        mortar = 1.0 - smoothstep(0.0, 1.0, dj);
+        float bevel = 1.0 - smoothstep(0.5, 3.4, dj);
+        spall = clamp(bevel * (1.0 - mortar) * smoothstep(0.55, 0.85, chip) * 1.5 * (0.45 + 0.75 * bW), 0.0, 1.0);
+        wear = bW;
+        // Feuchte läuft unter jeder Lagerfuge herab, in Schlieren
+        float run = smoothstep(0.42, 0.8, vnoise(vec2(wq.x * 9.0, lp.y * 0.6)));
+        damp = clamp(run * exp(-(1.0 - f.y) * 2.6) * (0.4 + 0.6 * bW) * 1.4, 0.0, 1.0);
+        hgt = bH * 0.05 - mortar * 0.1 - bevel * 0.025 - spall * 0.03;
+      } else {
+        // Bodenplatten: unregelmäßige, verlegte Steine (Zellen), Fugen voll Schmutz
+        vec2 g = lp.xz * 1.1;
+        vec2 gi = floor(g), gf = fract(g);
+        float f1 = 9.0, f2 = 9.0; vec2 cid = gi;
+        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+          vec2 o = vec2(x, y), c = gi + o;
+          vec2 r = o + 0.15 + 0.7 * vec2(hash21(c + 3.3), hash21(c + 7.7)) - gf;
+          float dd = dot(r, r);
+          if (dd < f1) { f2 = f1; f1 = dd; cid = c; } else if (dd < f2) f2 = dd;
+        }
+        float edge = sqrt(f2) - sqrt(f1);
+        tone = hash21(cid + 5.3) * 2.0 - 1.0;
+        wear = hash21(cid + 9.1);
+        mortar = 1.0 - smoothstep(0.03, 0.12, edge);
+        spall = 0.0;
+        hgt = smoothstep(0.0, 0.3, edge) * 0.06 - mortar * 0.04;
+      }
+      // großflächig: ausgebleichte trockene und dunkle feuchte Zonen
+      float mz = fbm(lp.xy * 0.09 + lp.zz * 0.07);
+      float bleach = clamp((mz - 0.52) * 6.0, 0.0, 1.0), shade = clamp((0.48 - mz) * 6.0, 0.0, 1.0);
+      vec3 sc = vTint.rgb * (1.0 + tone * 0.28 + (fine - 0.5) * 0.25) * (1.0 + bleach * 0.25 - shade * 0.35);
+      sc *= 1.0 - 0.35 * smoothstep(0.3, 0.6, fine) * wear * 0.6;              // Narben und Poren
+      sc = mix(sc, vTint.rgb * 0.45, mortar);                                    // tiefe Fugen
+      sc = mix(sc, vTint.rgb * vec3(1.7, 1.7, 1.8), spall);                       // frische Bruchkanten
+      sc = mix(sc, sc * vec3(0.45, 0.55, 0.47), damp);                            // feucht, leicht grünlich
+      stone = sc;
+      // Relief aus der Höhe über Bildschirmableitungen (Bump Mapping), Blöcke ~0,4 m
+      vec3 dpx = dFdx(vWorldPos), dpy = dFdy(vWorldPos);
+      float hx = dFdx(hgt), hy = dFdy(hgt);
+      vec3 r1 = cross(dpy, N), r2 = cross(N, dpx);
+      float det = dot(dpx, r1);
+      vec3 gradH = sign(det) * (hx * r1 + hy * r2);
+      N = normalize(abs(det) * N - gradH * 0.45);
+      wet = max(wet, damp * 0.6);
+      ao *= 1.0 - mortar * 0.5;
+    }
     float moss = smoothstep(0.55, 0.85, N.y + (fine - 0.5) * 0.5);
     vec3 mossC = zw.y > 0.5 ? vec3(0.04, 0.10, 0.08) : vec3(0.22, 0.30, 0.08);
     albA = albC = mix(stone, mossC, moss * 0.85);

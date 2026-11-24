@@ -329,7 +329,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       g.anim[3] = -0.12 + 0.95 * (ease(st, 5.4, 6.3) - ease(st, 8.0, 8.8));
       if (active && st > 5.6 && !sc.howled) { sc.howled = true; if (typeof playHowl === "function") playHowl(); }
       if (!active && d > 0) sc.howled = false;
-      if (active) focus(x, y + 1.4, z);
+      if (active && st < 8.8) focus(x, y + 1.4, z); // nach dem Heulen gibt die Kamera den Wolf frei
     } else if (sc.type === "castle") {
       // das Schloss tritt aus dem Nebel; ein Fledermausschwarm steigt von den Zinnen vor den Mond (als Silhouette),
       // dann stürzt er auf Augenhöhe direkt auf das Boot zu und rauscht knapp über den Kopf hinweg
@@ -366,7 +366,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         g.anim[2] = 5.0;
       }
       // das Schloss bleibt im Blick; wenn der Schwarm vorbeirauscht, duckt sich die Kamera kurz
-      focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
+      if (st < 10.2) focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
       // gerade so ducken, wenn der Schwarm ankommt
       sceneDuck = ease(st, 7.3, 7.9) * (1.0 - ease(st, 9.6, 10.6));
       cue(sc, st, "batsFlutter", 3.0, panX(CASTLE.x) * 0.3);
@@ -429,7 +429,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       // man steht auf und tritt einen Schritt zurück, um die Tentakel besser zu sehen
       sceneStand = ease(st, 0.8, 2.2) * (1.0 - ease(st, 9.0, 10.4));
       sceneShake = Math.max(sceneShake, rockAmp * (1.0 - ease(st, 1.4, 2.6)) * 0.6);
-      if (n) focus(fx / n, Math.max(fy / n, 2.0), Math.min(fz / n, cam[2] - 6.0)); else focus(bx, 2.0, cam[2] - 10.0);
+      if (n) focus(fx / n, Math.max(fy / n * 0.6, 0.8), Math.min(fz / n, cam[2] - 6.0)); else focus(bx, 1.0, cam[2] - 10.0);
     } else if (sc.type === "herd") {
       // eine Herde zieht in der Ferne schräg über die Ebene
       let cxs = 0, cys = 0, czs = 0, n = 0;

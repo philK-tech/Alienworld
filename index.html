@@ -2582,8 +2582,64 @@
         if (abs(N.y) > 0.7) joint = 1.0;
         float blockVar = 0.85 + 0.3 * hash21(floor(bp) + vSeed * 13.0);
         vec3 stone = vTint.rgb * blockVar * (0.55 + 0.45 * joint) * (0.8 + 0.4 * tex);
-        // dunkles Gemäuer: herablaufende Schmutz- und Wasserschlieren
-        if (vTint.r < 0.5) stone *= 0.6 + 0.4 * smoothstep(0.25, 0.7, vnoise(vec2(lp.x * 2.5 + lp.z * 2.5, lp.y * 0.25)));
+        if (vTint.r < 0.5) {
+          // Gruselschloss: Quader- und Plattenstein nach dem Steinmaterial aus "The Ninth Vigil" (MIT):
+          // leicht verzogene Blöcke im Verband, je Block eigene Höhe, Tönung und Verwitterung,
+          // ausgebrochene helle Kanten, eingesunkene Fugen, Feuchtigkeit unter den Lagerfugen, großflächig fleckig.
+          float hgt, mortar, spall, damp = 0.0, tone, wear;
+          if (abs(N.y) < 0.7) {
+            vec2 wq = bp + (vec2(vnoise(lp.xz * 0.7 + lp.y * 0.4), vnoise(lp.zy * 0.7 + 3.1)) - 0.5) * vec2(0.09, 0.06);
+            vec2 cell = floor(wq), f = fract(wq);
+            float bH = hash21(cell + 1.7) * 2.0 - 1.0, bW = hash21(cell + 9.1);
+            tone = hash21(cell + 5.3) * 2.0 - 1.0;
+            float chip = fbm(wq * vec2(5.0, 8.0) + cell * 1.3);
+            float dU = min(f.x, 1.0 - f.x) / 0.055, dV = min(f.y, 1.0 - f.y) / 0.085;
+            float dj = min(dU, dV) - (chip - 0.45) * 1.7;
+            mortar = 1.0 - smoothstep(0.0, 1.0, dj);
+            float bevel = 1.0 - smoothstep(0.5, 3.4, dj);
+            spall = clamp(bevel * (1.0 - mortar) * smoothstep(0.55, 0.85, chip) * 1.5 * (0.45 + 0.75 * bW), 0.0, 1.0);
+            wear = bW;
+            // Feuchte läuft unter jeder Lagerfuge herab, in Schlieren
+            float run = smoothstep(0.42, 0.8, vnoise(vec2(wq.x * 9.0, lp.y * 0.6)));
+            damp = clamp(run * exp(-(1.0 - f.y) * 2.6) * (0.4 + 0.6 * bW) * 1.4, 0.0, 1.0);
+            hgt = bH * 0.05 - mortar * 0.1 - bevel * 0.025 - spall * 0.03;
+          } else {
+            // Bodenplatten: unregelmäßige, verlegte Steine (Zellen), Fugen voll Schmutz
+            vec2 g = lp.xz * 1.1;
+            vec2 gi = floor(g), gf = fract(g);
+            float f1 = 9.0, f2 = 9.0; vec2 cid = gi;
+            for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+              vec2 o = vec2(x, y), c = gi + o;
+              vec2 r = o + 0.15 + 0.7 * vec2(hash21(c + 3.3), hash21(c + 7.7)) - gf;
+              float dd = dot(r, r);
+              if (dd < f1) { f2 = f1; f1 = dd; cid = c; } else if (dd < f2) f2 = dd;
+            }
+            float edge = sqrt(f2) - sqrt(f1);
+            tone = hash21(cid + 5.3) * 2.0 - 1.0;
+            wear = hash21(cid + 9.1);
+            mortar = 1.0 - smoothstep(0.03, 0.12, edge);
+            spall = 0.0;
+            hgt = smoothstep(0.0, 0.3, edge) * 0.06 - mortar * 0.04;
+          }
+          // großflächig: ausgebleichte trockene und dunkle feuchte Zonen
+          float mz = fbm(lp.xy * 0.09 + lp.zz * 0.07);
+          float bleach = clamp((mz - 0.52) * 6.0, 0.0, 1.0), shade = clamp((0.48 - mz) * 6.0, 0.0, 1.0);
+          vec3 sc = vTint.rgb * (1.0 + tone * 0.28 + (fine - 0.5) * 0.25) * (1.0 + bleach * 0.25 - shade * 0.35);
+          sc *= 1.0 - 0.35 * smoothstep(0.3, 0.6, fine) * wear * 0.6;              // Narben und Poren
+          sc = mix(sc, vTint.rgb * 0.45, mortar);                                    // tiefe Fugen
+          sc = mix(sc, vTint.rgb * vec3(1.7, 1.7, 1.8), spall);                       // frische Bruchkanten
+          sc = mix(sc, sc * vec3(0.45, 0.55, 0.47), damp);                            // feucht, leicht grünlich
+          stone = sc;
+          // Relief aus der Höhe über Bildschirmableitungen (Bump Mapping), Blöcke ~0,4 m
+          vec3 dpx = dFdx(vWorldPos), dpy = dFdy(vWorldPos);
+          float hx = dFdx(hgt), hy = dFdy(hgt);
+          vec3 r1 = cross(dpy, N), r2 = cross(N, dpx);
+          float det = dot(dpx, r1);
+          vec3 gradH = sign(det) * (hx * r1 + hy * r2);
+          N = normalize(abs(det) * N - gradH * 0.45);
+          wet = max(wet, damp * 0.6);
+          ao *= 1.0 - mortar * 0.5;
+        }
         float moss = smoothstep(0.55, 0.85, N.y + (fine - 0.5) * 0.5);
         vec3 mossC = zw.y > 0.5 ? vec3(0.04, 0.10, 0.08) : vec3(0.22, 0.30, 0.08);
         albA = albC = mix(stone, mossC, moss * 0.85);
@@ -4085,7 +4141,7 @@
           g.anim[3] = -0.12 + 0.95 * (ease(st, 5.4, 6.3) - ease(st, 8.0, 8.8));
           if (active && st > 5.6 && !sc.howled) { sc.howled = true; if (typeof playHowl === "function") playHowl(); }
           if (!active && d > 0) sc.howled = false;
-          if (active) focus(x, y + 1.4, z);
+          if (active && st < 8.8) focus(x, y + 1.4, z); // nach dem Heulen gibt die Kamera den Wolf frei
         } else if (sc.type === "castle") {
           // das Schloss tritt aus dem Nebel; ein Fledermausschwarm steigt von den Zinnen vor den Mond (als Silhouette),
           // dann stürzt er auf Augenhöhe direkt auf das Boot zu und rauscht knapp über den Kopf hinweg
@@ -4122,7 +4178,7 @@
             g.anim[2] = 5.0;
           }
           // das Schloss bleibt im Blick; wenn der Schwarm vorbeirauscht, duckt sich die Kamera kurz
-          focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
+          if (st < 10.2) focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
           // gerade so ducken, wenn der Schwarm ankommt
           sceneDuck = ease(st, 7.3, 7.9) * (1.0 - ease(st, 9.6, 10.6));
           cue(sc, st, "batsFlutter", 3.0, panX(CASTLE.x) * 0.3);
@@ -4185,7 +4241,7 @@
           // man steht auf und tritt einen Schritt zurück, um die Tentakel besser zu sehen
           sceneStand = ease(st, 0.8, 2.2) * (1.0 - ease(st, 9.0, 10.4));
           sceneShake = Math.max(sceneShake, rockAmp * (1.0 - ease(st, 1.4, 2.6)) * 0.6);
-          if (n) focus(fx / n, Math.max(fy / n, 2.0), Math.min(fz / n, cam[2] - 6.0)); else focus(bx, 2.0, cam[2] - 10.0);
+          if (n) focus(fx / n, Math.max(fy / n * 0.6, 0.8), Math.min(fz / n, cam[2] - 6.0)); else focus(bx, 1.0, cam[2] - 10.0);
         } else if (sc.type === "herd") {
           // eine Herde zieht in der Ferne schräg über die Ebene
           let cxs = 0, cys = 0, czs = 0, n = 0;
@@ -4466,17 +4522,49 @@
       }, 9000 + Math.random() * 12000);
     }
 
+    // iPhone/iPad: Web Audio schweigt, solange der Stummschalter aktiv ist, und startet nur direkt in einer Bedienung.
+    // Abhilfe: Wiedergabe-Modus anmelden (neuere iOS) bzw. ein stummes HTML-Audio im Kreis abspielen (ältere iOS),
+    // dazu ein kurzer stummer Puffer, der den Kontext im Tipp-Ereignis freischaltet.
+    let silentEl = null;
+    function unlockAudio() {
+      try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+      if (!silentEl) {
+        const n = 800, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+        const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+        w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true);
+        v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 16000, true);
+        v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+        silentEl = document.createElement("audio");
+        silentEl.setAttribute("playsinline", "");
+        silentEl.loop = true;
+        silentEl.src = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+      }
+      const pr = silentEl.play();
+      if (pr && pr.catch) pr.catch(() => {});
+      if (audioCtx) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = audioCtx.createBuffer(1, 1, 22050);
+        src.connect(audioCtx.destination);
+        src.start(0);
+        if (audioCtx.state !== "running") audioCtx.resume();
+      }
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && audioEnabled && audioCtx && audioCtx.state !== "running") audioCtx.resume();
+    });
+
     function setAudio(enabled, byUser = true) {
       if (byUser) audioUserSet = true;
       audioEnabled = enabled;
       if (enabled) {
         initAudio();
-        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        unlockAudio();
         if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.6, audioCtx.currentTime, 0.4);
         btnAudio.textContent = "Ton An";
         btnAudio.classList.remove("muted");
       } else {
         if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.15);
+        if (silentEl) silentEl.pause();
         btnAudio.textContent = "Ton Aus";
         btnAudio.classList.add("muted");
       }
@@ -4671,14 +4759,16 @@
     btnAudio.addEventListener("click", () => setAudio(!audioEnabled));
     // Browser erlauben Ton erst nach einer Bedienung: beim ersten Tippen oder Klicken einschalten,
     // sofern man den Ton nicht selbst schon geschaltet hat
+    // iOS zählt nur Loslassen bzw. Klick als Freigabe, daher mehrere Ereignisse
+    const AUTO_EVENTS = ["pointerup", "touchend", "click", "keydown"];
     const audioAutoStart = (e) => {
       if (e.target === btnAudio || e.key === "m" || e.key === "M") return;
-      window.removeEventListener("pointerdown", audioAutoStart);
-      window.removeEventListener("keydown", audioAutoStart);
-      if (!audioUserSet) setAudio(true, false);
+      if (!audioUserSet && !audioEnabled) setAudio(true, false);
+      else if (audioEnabled) unlockAudio();
+      // erst aufhören, wenn der Kontext wirklich läuft
+      if (audioCtx && audioCtx.state === "running") AUTO_EVENTS.forEach((n) => window.removeEventListener(n, audioAutoStart, true));
     };
-    window.addEventListener("pointerdown", audioAutoStart);
-    window.addEventListener("keydown", audioAutoStart);
+    AUTO_EVENTS.forEach((n) => window.addEventListener(n, audioAutoStart, true));
     window.addEventListener("keydown", (e) => {
       if (e.code === "Space") {
         e.preventDefault();
@@ -5038,7 +5128,7 @@
       scene.speed += ((slow ? SCENES[scene.idx].slow : 1.0) - scene.speed) * (1.0 - Math.exp(-dt * 1.2));
       // langsames Heranzoomen während der Szene
       const zoomTarget = slow && scene.t > 1.0 ? SCENES[scene.idx].zoom : 0.0;
-      scene.zoom += (zoomTarget - scene.zoom) * (1.0 - Math.exp(-dt * (snapFrames > 0 ? 50.0 : 0.7)));
+      scene.zoom += (zoomTarget - scene.zoom) * (1.0 - Math.exp(-dt * (snapFrames > 0 ? 50.0 : zoomTarget < scene.zoom ? 1.6 : 0.7)));
     }
 
     function render(now) {
@@ -5082,7 +5172,7 @@
       pois.forEach(consider);
       for (const p of staticPois) {
         const d = aheadDist(zCur, p.z);
-        if (d > -5 && d < 80) consider({ x: p.x, y: p.y, z: zCur - d, w: p.w });
+        if (d > 9 && d < 80) consider({ x: p.x, y: p.y, z: zCur - d, w: p.w });
       }
       if (best) {
         tYaw = best.rel;
@@ -5096,7 +5186,10 @@
         tPitch = Math.max(-0.4, Math.min(0.9, Math.atan2(dy, Math.hypot(dx, dz))));
       }
       // bei Testsprüngen (#t=...) rastet der Blick in den ersten Bildern sofort ein
-      const ease = snapFrames-- > 0 ? 1.0 : 1.0 - Math.exp(-dt * (sceneFocusOn ? 2.2 : best ? 1.3 : 0.6));
+      // nach einer Szene schwenkt der Blick zügig wieder nach vorn
+      if (sceneFocusOn) gaze.release = 3.0; else gaze.release = Math.max(0, (gaze.release || 0) - dt);
+      const rate = sceneFocusOn ? 2.2 : gaze.release > 0 ? 2.0 : best ? 1.3 : 0.6;
+      const ease = snapFrames-- > 0 ? 1.0 : 1.0 - Math.exp(-dt * rate);
       gaze.yaw += wrapAngle(tYaw - gaze.yaw) * ease;
       gaze.pitch += (tPitch - gaze.pitch) * ease;
       // eigener Blick klingt nach 2,5 Sekunden ohne Bewegung wieder ab
@@ -5112,7 +5205,7 @@
       camEye[0] += Math.sin(heading) * sceneStand * 0.55;
       camEye[1] += sceneStand * 0.55;
       camEye[2] += Math.cos(heading) * sceneStand * 0.55;
-      const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12 - sceneStand * 0.24));
+      const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12 - sceneStand * 0.32));
       camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
       camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;
       camTarget[2] = camEye[2] - Math.cos(yaw) * Math.cos(pitch) * 10.0;

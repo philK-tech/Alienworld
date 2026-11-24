@@ -26,14 +26,16 @@ btnToggle.addEventListener("click", toggleRun);
 btnAudio.addEventListener("click", () => setAudio(!audioEnabled));
 // Browser erlauben Ton erst nach einer Bedienung: beim ersten Tippen oder Klicken einschalten,
 // sofern man den Ton nicht selbst schon geschaltet hat
+// iOS zählt nur Loslassen bzw. Klick als Freigabe, daher mehrere Ereignisse
+const AUTO_EVENTS = ["pointerup", "touchend", "click", "keydown"];
 const audioAutoStart = (e) => {
   if (e.target === btnAudio || e.key === "m" || e.key === "M") return;
-  window.removeEventListener("pointerdown", audioAutoStart);
-  window.removeEventListener("keydown", audioAutoStart);
-  if (!audioUserSet) setAudio(true, false);
+  if (!audioUserSet && !audioEnabled) setAudio(true, false);
+  else if (audioEnabled) unlockAudio();
+  // erst aufhören, wenn der Kontext wirklich läuft
+  if (audioCtx && audioCtx.state === "running") AUTO_EVENTS.forEach((n) => window.removeEventListener(n, audioAutoStart, true));
 };
-window.addEventListener("pointerdown", audioAutoStart);
-window.addEventListener("keydown", audioAutoStart);
+AUTO_EVENTS.forEach((n) => window.addEventListener(n, audioAutoStart, true));
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
     e.preventDefault();
@@ -393,7 +395,7 @@ function updateScene(dt) {
   scene.speed += ((slow ? SCENES[scene.idx].slow : 1.0) - scene.speed) * (1.0 - Math.exp(-dt * 1.2));
   // langsames Heranzoomen während der Szene
   const zoomTarget = slow && scene.t > 1.0 ? SCENES[scene.idx].zoom : 0.0;
-  scene.zoom += (zoomTarget - scene.zoom) * (1.0 - Math.exp(-dt * (snapFrames > 0 ? 50.0 : 0.7)));
+  scene.zoom += (zoomTarget - scene.zoom) * (1.0 - Math.exp(-dt * (snapFrames > 0 ? 50.0 : zoomTarget < scene.zoom ? 1.6 : 0.7)));
 }
 
 function render(now) {
@@ -437,7 +439,7 @@ function render(now) {
   pois.forEach(consider);
   for (const p of staticPois) {
     const d = aheadDist(zCur, p.z);
-    if (d > -5 && d < 80) consider({ x: p.x, y: p.y, z: zCur - d, w: p.w });
+    if (d > 9 && d < 80) consider({ x: p.x, y: p.y, z: zCur - d, w: p.w });
   }
   if (best) {
     tYaw = best.rel;
@@ -451,7 +453,10 @@ function render(now) {
     tPitch = Math.max(-0.4, Math.min(0.9, Math.atan2(dy, Math.hypot(dx, dz))));
   }
   // bei Testsprüngen (#t=...) rastet der Blick in den ersten Bildern sofort ein
-  const ease = snapFrames-- > 0 ? 1.0 : 1.0 - Math.exp(-dt * (sceneFocusOn ? 2.2 : best ? 1.3 : 0.6));
+  // nach einer Szene schwenkt der Blick zügig wieder nach vorn
+  if (sceneFocusOn) gaze.release = 3.0; else gaze.release = Math.max(0, (gaze.release || 0) - dt);
+  const rate = sceneFocusOn ? 2.2 : gaze.release > 0 ? 2.0 : best ? 1.3 : 0.6;
+  const ease = snapFrames-- > 0 ? 1.0 : 1.0 - Math.exp(-dt * rate);
   gaze.yaw += wrapAngle(tYaw - gaze.yaw) * ease;
   gaze.pitch += (tPitch - gaze.pitch) * ease;
   // eigener Blick klingt nach 2,5 Sekunden ohne Bewegung wieder ab
@@ -467,7 +472,7 @@ function render(now) {
   camEye[0] += Math.sin(heading) * sceneStand * 0.55;
   camEye[1] += sceneStand * 0.55;
   camEye[2] += Math.cos(heading) * sceneStand * 0.55;
-  const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12 - sceneStand * 0.24));
+  const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12 - sceneStand * 0.32));
   camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
   camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;
   camTarget[2] = camEye[2] - Math.cos(yaw) * Math.cos(pitch) * 10.0;

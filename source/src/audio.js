@@ -220,17 +220,49 @@ function scheduleAmbientCalls() {
   }, 9000 + Math.random() * 12000);
 }
 
+// iPhone/iPad: Web Audio schweigt, solange der Stummschalter aktiv ist, und startet nur direkt in einer Bedienung.
+// Abhilfe: Wiedergabe-Modus anmelden (neuere iOS) bzw. ein stummes HTML-Audio im Kreis abspielen (ältere iOS),
+// dazu ein kurzer stummer Puffer, der den Kontext im Tipp-Ereignis freischaltet.
+let silentEl = null;
+function unlockAudio() {
+  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+  if (!silentEl) {
+    const n = 800, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 16000, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+    silentEl = document.createElement("audio");
+    silentEl.setAttribute("playsinline", "");
+    silentEl.loop = true;
+    silentEl.src = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  }
+  const pr = silentEl.play();
+  if (pr && pr.catch) pr.catch(() => {});
+  if (audioCtx) {
+    const src = audioCtx.createBufferSource();
+    src.buffer = audioCtx.createBuffer(1, 1, 22050);
+    src.connect(audioCtx.destination);
+    src.start(0);
+    if (audioCtx.state !== "running") audioCtx.resume();
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && audioEnabled && audioCtx && audioCtx.state !== "running") audioCtx.resume();
+});
+
 function setAudio(enabled, byUser = true) {
   if (byUser) audioUserSet = true;
   audioEnabled = enabled;
   if (enabled) {
     initAudio();
-    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    unlockAudio();
     if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.6, audioCtx.currentTime, 0.4);
     btnAudio.textContent = "Ton An";
     btnAudio.classList.remove("muted");
   } else {
     if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.15);
+    if (silentEl) silentEl.pause();
     btnAudio.textContent = "Ton Aus";
     btnAudio.classList.add("muted");
   }
