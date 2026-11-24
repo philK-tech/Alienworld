@@ -343,10 +343,22 @@ void main() {
     // Springfisch: Schwanzschlag
     p.x += sin(uTime * 16.0 + uAnim.x - aExtra.z * 5.0) * 0.09 * aExtra.z;
   } else if (matId == 34 && uAnim.y > 0.0) {
-    // Tentakel in der Szene: Peitschenwelle läuft vom Ansatz zur Spitze (uAnim.y = Stärke)
+    // Tentakel in der Szene, jeder mit eigener Bewegung:
+    // uAnim.x Phase, uAnim.y Stärke, uAnim.z Tempo, uAnim.w Stil (Nachkomma = Anteil Spiralbewegung, ganzzahlig = Einrollen der Spitze)
     float hgt = aExtra.z, w = hgt * hgt;
-    p.x += uAnim.y * w * sin(uTime * 4.0 + uAnim.x - hgt * 4.0) * 0.34;
-    p.z += uAnim.y * w * cos(uTime * 4.0 + uAnim.x - hgt * 3.5) * 0.12;
+    float ph = uTime * 4.0 * uAnim.z + uAnim.x;
+    float coil = fract(uAnim.w), curl = floor(uAnim.w) * 0.5;
+    vec2 whip = vec2(sin(ph - hgt * 4.0) * 0.34, cos(ph - hgt * 3.5) * 0.12);
+    vec2 spiral = vec2(sin(ph * 0.8 - hgt * 7.0), cos(ph * 0.8 - hgt * 7.0)) * 0.2;
+    vec2 off = mix(whip, spiral, coil) * uAnim.y * w;
+    p.x += off.x;
+    p.z += off.y;
+    // Einrollen: die Spitze krümmt sich zusammen und öffnet sich wieder
+    float k = curl * (0.6 + 0.4 * sin(ph * 0.5 + 1.0)) * smoothstep(0.45, 1.0, hgt);
+    p.x -= k * 0.35;
+    p.y -= k * k * 0.25;
+    // Muskelzucken: leichtes Pulsieren der Dicke
+    p.xz *= 1.0 + 0.06 * sin(uTime * 9.0 * uAnim.z + uAnim.x * 3.0 - hgt * 12.0) * (1.0 - hgt);
   } else if (matId == 34) {
     // Tentakel: schwingt langsam, die Spitze stärker als der Ansatz
     float ph = origin.x * 0.31 + origin.z * 0.17;
@@ -661,13 +673,35 @@ void main() {
     wet = 0.6;
     foliage = true;
   } else if (matId == 34) {
-    // Tentakel: dunkel glänzende Haut, an der Innenseite Reihen leuchtender Saugnäpfe, leuchtende Spitze
-    float inner = smoothstep(0.55, 0.9, cos((vUv.x - 0.5) * 6.28318));
-    vec2 d1 = dotField(vec2(vUv.x * 6.0, vUv.y * 46.0), 0.32, 0.9);
-    base = mix(vec3(0.02, 0.015, 0.035), vec3(0.06, 0.03, 0.08), tex);
+    // Tentakel: dunkel glänzende Haut mit Querfalten, an der Innenseite zwei versetzte Reihen
+    // ringförmiger Saugnäpfe, die zur Spitze hin kleiner werden; leuchtende Spitze
+    float r = 0.1 * pow(max(1.0 - vUv.y, 0.0), 0.85) + 0.005;           // Radius wie im Mesh
+    float arc = (vUv.x - 0.5) * 6.28318 * r;                            // Bogenlänge um die Innenseite
+    float sy = -log(max(1.0 - 0.93 * vUv.y, 0.02)) / 0.93 / 0.034;      // Abstand der Näpfe schrumpft zur Spitze
+    float cell = floor(sy);
+    float dd = 0.034 * (1.0 - 0.93 * vUv.y);                            // Napfgröße an dieser Stelle
+    float sh = mod(cell, 2.0) < 1.0 ? 0.0 : 0.5;                        // Reihen versetzt
+    float lx = arc / dd + sh;
+    vec2 q = vec2(fract(lx) - 0.5, fract(sy) - 0.5);
+    float rs = 0.36 + 0.07 * hash21(vec2(cell, floor(lx)));
+    float dist = length(q);
+    float onSide = smoothstep(2.3, 1.7, abs(arc / dd)) * step(vUv.y, 0.97);
+    float rim = smoothstep(rs, rs - 0.07, dist) * smoothstep(rs * 0.45, rs * 0.7, dist) * onSide;
+    float cup = smoothstep(rs * 0.55, rs * 0.25, dist) * onSide;
+    float pore = smoothstep(rs * 0.18, 0.0, dist) * onSide;
+    float folds = 0.5 + 0.5 * sin(vUv.y * 140.0 + tex * 4.0);
+    float back = 1.0 - smoothstep(0.0, 0.8, onSide);
+    vec3 skin = mix(vec3(0.02, 0.015, 0.035), vec3(0.07, 0.03, 0.08), tex) * (0.75 + 0.35 * folds * back);
+    vec3 belly = vec3(0.10, 0.05, 0.09);
+    base = mix(skin, belly, onSide * 0.6);
+    base = mix(base, vec3(0.16, 0.09, 0.13), rim);
+    base = mix(base, vec3(0.01, 0.005, 0.012), cup);
     albA = albC = base * 6.0;
-    emissive += vTint.rgb * (d1.x * inner * 1.8 + smoothstep(0.85, 1.0, vUv.y) * 1.5 + 0.03);
-    wet = 0.9;
+    // Flecken auf dem Rücken, die Näpfe leuchten am Rand und tief im Inneren
+    float spots = smoothstep(0.7, 0.76, fbm(vec2(vUv.x * 14.0, vUv.y * 70.0))) * back;
+    base *= 1.0 - spots * 0.5;
+    emissive += vTint.rgb * (rim * 0.9 + pore * 1.6 + spots * 0.06 + smoothstep(0.88, 1.0, vUv.y) * 1.5 + 0.02);
+    wet = 0.95;
   } else if (matId == 35) {
     // Glaskugel: Rand leuchtet, im Inneren ein pulsierender Kern
     float fres2 = pow(1.0 - abs(dot(N, V)), 2.5);

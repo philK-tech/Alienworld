@@ -24,6 +24,16 @@ function toggleRun() {
 
 btnToggle.addEventListener("click", toggleRun);
 btnAudio.addEventListener("click", () => setAudio(!audioEnabled));
+// Browser erlauben Ton erst nach einer Bedienung: beim ersten Tippen oder Klicken einschalten,
+// sofern man den Ton nicht selbst schon geschaltet hat
+const audioAutoStart = (e) => {
+  if (e.target === btnAudio || e.key === "m" || e.key === "M") return;
+  window.removeEventListener("pointerdown", audioAutoStart);
+  window.removeEventListener("keydown", audioAutoStart);
+  if (!audioUserSet) setAudio(true, false);
+};
+window.addEventListener("pointerdown", audioAutoStart);
+window.addEventListener("keydown", audioAutoStart);
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
     e.preventDefault();
@@ -392,6 +402,7 @@ function render(now) {
   // kurzes Ducken der Kamera (Fledermausschwarm), wirkt nach dem Aufruf der Tiere im nächsten Bild
   ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
   updateCreatures(zCur, t, scene.idx, scene.t, camEye);
+  updateAudio(camZone, sceneGrowl);
 
   // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten
   let tYaw = Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12;
@@ -439,7 +450,7 @@ function render(now) {
   camEye[0] += Math.sin(heading) * sceneStand * 0.55;
   camEye[1] += sceneStand * 0.55;
   camEye[2] += Math.cos(heading) * sceneStand * 0.55;
-  const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12));
+  const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12 - sceneStand * 0.24));
   camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
   camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;
   camTarget[2] = camEye[2] - Math.cos(yaw) * Math.cos(pitch) * 10.0;

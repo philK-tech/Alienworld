@@ -1127,7 +1127,7 @@ function buildMushroomArchMesh() {
 // gerader Tentakel für die Peitschen-Szene: verjüngt sich zur Spitze, Saugnäpfe auf einer Seite. Höhe 1.
 function buildWhipTentacleMesh() {
   const b = createGeometryBuilder();
-  addLathe(b, 30, 12, (t) => [0, t, 0], (t) => { const r = 0.1 * Math.pow(1.0 - t, 0.85) + 0.005; return [r, r]; }, 34, (t) => [0.5 + 0.5 * t, 1.0, t]);
+  addLathe(b, 48, 18, (t) => [0, t, 0], (t) => { const r = 0.1 * Math.pow(1.0 - t, 0.85) + 0.005; return [r, r]; }, 34, (t) => [0.5 + 0.5 * t, 1.0, t]);
   return b;
 }
 

@@ -214,7 +214,8 @@ let sceneFocusOn = false;
 let sceneDuck = 0.0;
 let sceneShake = 0.0; // Schütteln des Boots (Tentakel)
 let sceneRock = 0.0;  // Kippen des Boots im Takt der Tentakel (-1..1)
-let sceneStand = 0.0; // Aufstehen und einen Schritt zurück im Boot (0..1)
+let sceneStand = 0.0;
+let sceneGrowl = 0.0; // Lautstärke des Tentakelgrollens (audio.js) // Aufstehen und einen Schritt zurück im Boot (0..1)
 // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
 const DUST_MAX = 240;
 const dustData = new Float32Array(DUST_MAX * 5);
@@ -233,6 +234,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
   sceneShake = 0.0;
   sceneRock = 0.0;
   sceneStand = 0.0;
+  sceneGrowl = 0.0;
   dustCount = 0;
   const dust = (x, y, z, size, a) => {
     if (dustCount >= DUST_MAX || a <= 0.002) return;
@@ -256,6 +258,15 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
     rippleDraws.push(r);
   };
   const focus = (x, y, z) => { sceneFocus[0] = x; sceneFocus[1] = y; sceneFocus[2] = z; sceneFocusOn = true; };
+  // Geräusch einmal pro Szenendurchlauf auslösen, sobald die Szenenzeit 'at' erreicht (pan: -1 links .. 1 rechts)
+  const cue = (sc, st, name, at, pan) => {
+    const k = "_cue" + name + at;
+    if (st < at) { sc[k] = false; return; }
+    if (sc[k]) return;
+    sc[k] = true;
+    if (st - at < 0.6 && typeof sfx === "function") sfx(name, Math.max(-1, Math.min(1, pan || 0)));
+  };
+  const panX = (x) => (x - cam[0]) / 10.0;
 
   SCENES.forEach((sc, si) => {
     const d = aheadDist(camZ, sc.z);
@@ -328,11 +339,15 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
       // gerade so ducken, wenn der Schwarm ankommt
       sceneDuck = ease(st, 7.3, 7.9) * (1.0 - ease(st, 9.6, 10.6));
+      cue(sc, st, "batsFlutter", 3.0, panX(CASTLE.x) * 0.3);
+      cue(sc, st, "batsRush", 6.4, 0);
     } else if (sc.type === "fish") {
       // ein Leuchtfisch steigt vor dem Bug auf, springt im Bogen über die Fahrspur und taucht wieder ein
       const zJ = cam[2] - 9.0, cx = riverCenterX(zJ);
       const t0 = 1.4, t1 = 3.8, xa = sc.side * 4.5, xb = -sc.side * 3.5;
       ripple(cx + xa, zJ, st > t0 - 1.0 && st < t0 + 0.5 ? 1.0 - Math.abs(st - t0 + 0.3) * 1.3 : 0);
+      cue(sc, st, "splashOut", t0, panX(cx + xa));
+      cue(sc, st, "splashIn", t1, panX(cx + xb));
       ripple(cx + xb, zJ, st > t1 - 0.1 && st < t1 + 1.5 ? 1.0 - (st - t1) * 0.65 : 0);
       if (st > t0 && st < t1) {
         const p = (st - t0) / (t1 - t0);
@@ -357,20 +372,30 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       spots.forEach(([side, x, z, delay, h], i) => {
         const up = ease(st, 0.6 + delay, 1.4 + delay), down = ease(st, 7.6 + delay * 0.3, 8.6 + delay * 0.3);
         const lift = up * (1.0 - down);
+        cue(sc, st, "tentacleRise", 0.6 + delay, panX(x));
         ripple(x, z, (st > 0.3 + delay && st < 2.5 + delay ? 1.0 : 0) + (st > 7.6 && st < 10.0 ? 0.8 : 0));
         if (lift <= 0.001) return;
         const g = take(creatureMeshes.tentacle, side > 0 ? [0.6, 0.12, 0.9] : [0.05, 0.55, 0.8]);
         // die seitlichen neigen sich über das Boot, die vorderen bäumen sich vor dem Bug auf
         const lean = i < 2 ? 0.3 : 0.15;
         Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * lean * lift, [h, h * 1.1, h]);
-        // alle im selben Takt (Phase 0 bzw. gegenphasig je Seite)
-        g.anim[0] = side > 0 ? 0.0 : Math.PI;
+        // jeder bewegt sich anders: [Phase, Tempo, Stil]. Die beiden seitlichen schlagen im Takt des Boots,
+        // vorn rollt einer langsam spiralig, der andere peitscht schnell mit einrollender Spitze
+        const mv = [[Math.PI, 1.0, 1.0], [0.0, 1.0, 0.35], [0.6, 0.6, 0.9], [2.1, 1.4, 2.15]][i];
+        g.anim[0] = mv[0];
         g.anim[1] = (i < 2 ? 0.5 : 0.9) + (i < 2 ? 0.35 : 0.7) * ease(st, 2.0, 2.8);
+        g.anim[2] = mv[1];
+        g.anim[3] = mv[2];
         fx += x; fy += h * lift * 0.5; fz += z; n++;
         rockAmp = Math.max(rockAmp, lift);
       });
       // Boot kippt im Takt der Schläge (gleiche Frequenz wie die Peitschenwelle im Shader)
       sceneRock = Math.sin(t * 4.0) * rockAmp * ease(st, 1.5, 2.5);
+      sceneGrowl = rockAmp * (1.0 - ease(st, 8.0, 9.5));
+      // Schlag aufs Wasser bei jedem Umkehrpunkt des Kippens, abwechselnd links und rechts
+      const sw = Math.sin(t * 4.0) > 0 ? 1 : -1;
+      if (sc._sw !== undefined && sw !== sc._sw && st > 2.6 && st < 8.0 && typeof sfx === "function") sfx("tentacleSlap", sw * 0.7);
+      sc._sw = sw;
       // man steht auf und tritt einen Schritt zurück, um die Tentakel besser zu sehen
       sceneStand = ease(st, 0.8, 2.2) * (1.0 - ease(st, 9.0, 10.4));
       sceneShake = Math.max(sceneShake, rockAmp * (1.0 - ease(st, 1.4, 2.6)) * 0.6);
@@ -379,6 +404,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       // eine Herde zieht in der Ferne schräg über die Ebene
       let cxs = 0, cys = 0, czs = 0, n = 0;
       const p = clamp01(st / sc.dur);
+      cue(sc, st, "herd", 0.8, -0.6);
       for (let i = 0; i < 14; i++) {
         const ox = (hash2(i, 320.0) - 0.5) * 16, oz = (hash2(i, 321.0) - 0.5) * 12;
         // die Herde zieht auf dem Hügelkamm entlang, als Silhouette vor dem Himmel
@@ -407,6 +433,8 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       // schwarze Mantas: kommen schräg von links vorn aus der Ferne, gleiten über den Fluss
       // und ziehen schräg rechts hinter das Boot, wo sie aus dem Bild verschwinden
       let lead = null;
+      cue(sc, st, "mantaCall", 1.5, -0.7);
+      for (let i = 0; i < 4; i++) cue(sc, st, "mantaPass", 5.8 + i * 1.1, 0);
       for (let i = 0; i < 4; i++) {
         const q = clamp01((st - 0.3 - i * 1.1) / 10.0);
         if (q <= 0 || q >= 1) continue;

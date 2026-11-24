@@ -1677,7 +1677,7 @@
     // gerader Tentakel für die Peitschen-Szene: verjüngt sich zur Spitze, Saugnäpfe auf einer Seite. Höhe 1.
     function buildWhipTentacleMesh() {
       const b = createGeometryBuilder();
-      addLathe(b, 30, 12, (t) => [0, t, 0], (t) => { const r = 0.1 * Math.pow(1.0 - t, 0.85) + 0.005; return [r, r]; }, 34, (t) => [0.5 + 0.5 * t, 1.0, t]);
+      addLathe(b, 48, 18, (t) => [0, t, 0], (t) => { const r = 0.1 * Math.pow(1.0 - t, 0.85) + 0.005; return [r, r]; }, 34, (t) => [0.5 + 0.5 * t, 1.0, t]);
       return b;
     }
 
@@ -2180,10 +2180,22 @@
         // Springfisch: Schwanzschlag
         p.x += sin(uTime * 16.0 + uAnim.x - aExtra.z * 5.0) * 0.09 * aExtra.z;
       } else if (matId == 34 && uAnim.y > 0.0) {
-        // Tentakel in der Szene: Peitschenwelle läuft vom Ansatz zur Spitze (uAnim.y = Stärke)
+        // Tentakel in der Szene, jeder mit eigener Bewegung:
+        // uAnim.x Phase, uAnim.y Stärke, uAnim.z Tempo, uAnim.w Stil (Nachkomma = Anteil Spiralbewegung, ganzzahlig = Einrollen der Spitze)
         float hgt = aExtra.z, w = hgt * hgt;
-        p.x += uAnim.y * w * sin(uTime * 4.0 + uAnim.x - hgt * 4.0) * 0.34;
-        p.z += uAnim.y * w * cos(uTime * 4.0 + uAnim.x - hgt * 3.5) * 0.12;
+        float ph = uTime * 4.0 * uAnim.z + uAnim.x;
+        float coil = fract(uAnim.w), curl = floor(uAnim.w) * 0.5;
+        vec2 whip = vec2(sin(ph - hgt * 4.0) * 0.34, cos(ph - hgt * 3.5) * 0.12);
+        vec2 spiral = vec2(sin(ph * 0.8 - hgt * 7.0), cos(ph * 0.8 - hgt * 7.0)) * 0.2;
+        vec2 off = mix(whip, spiral, coil) * uAnim.y * w;
+        p.x += off.x;
+        p.z += off.y;
+        // Einrollen: die Spitze krümmt sich zusammen und öffnet sich wieder
+        float k = curl * (0.6 + 0.4 * sin(ph * 0.5 + 1.0)) * smoothstep(0.45, 1.0, hgt);
+        p.x -= k * 0.35;
+        p.y -= k * k * 0.25;
+        // Muskelzucken: leichtes Pulsieren der Dicke
+        p.xz *= 1.0 + 0.06 * sin(uTime * 9.0 * uAnim.z + uAnim.x * 3.0 - hgt * 12.0) * (1.0 - hgt);
       } else if (matId == 34) {
         // Tentakel: schwingt langsam, die Spitze stärker als der Ansatz
         float ph = origin.x * 0.31 + origin.z * 0.17;
@@ -2498,13 +2510,35 @@
         wet = 0.6;
         foliage = true;
       } else if (matId == 34) {
-        // Tentakel: dunkel glänzende Haut, an der Innenseite Reihen leuchtender Saugnäpfe, leuchtende Spitze
-        float inner = smoothstep(0.55, 0.9, cos((vUv.x - 0.5) * 6.28318));
-        vec2 d1 = dotField(vec2(vUv.x * 6.0, vUv.y * 46.0), 0.32, 0.9);
-        base = mix(vec3(0.02, 0.015, 0.035), vec3(0.06, 0.03, 0.08), tex);
+        // Tentakel: dunkel glänzende Haut mit Querfalten, an der Innenseite zwei versetzte Reihen
+        // ringförmiger Saugnäpfe, die zur Spitze hin kleiner werden; leuchtende Spitze
+        float r = 0.1 * pow(max(1.0 - vUv.y, 0.0), 0.85) + 0.005;           // Radius wie im Mesh
+        float arc = (vUv.x - 0.5) * 6.28318 * r;                            // Bogenlänge um die Innenseite
+        float sy = -log(max(1.0 - 0.93 * vUv.y, 0.02)) / 0.93 / 0.034;      // Abstand der Näpfe schrumpft zur Spitze
+        float cell = floor(sy);
+        float dd = 0.034 * (1.0 - 0.93 * vUv.y);                            // Napfgröße an dieser Stelle
+        float sh = mod(cell, 2.0) < 1.0 ? 0.0 : 0.5;                        // Reihen versetzt
+        float lx = arc / dd + sh;
+        vec2 q = vec2(fract(lx) - 0.5, fract(sy) - 0.5);
+        float rs = 0.36 + 0.07 * hash21(vec2(cell, floor(lx)));
+        float dist = length(q);
+        float onSide = smoothstep(2.3, 1.7, abs(arc / dd)) * step(vUv.y, 0.97);
+        float rim = smoothstep(rs, rs - 0.07, dist) * smoothstep(rs * 0.45, rs * 0.7, dist) * onSide;
+        float cup = smoothstep(rs * 0.55, rs * 0.25, dist) * onSide;
+        float pore = smoothstep(rs * 0.18, 0.0, dist) * onSide;
+        float folds = 0.5 + 0.5 * sin(vUv.y * 140.0 + tex * 4.0);
+        float back = 1.0 - smoothstep(0.0, 0.8, onSide);
+        vec3 skin = mix(vec3(0.02, 0.015, 0.035), vec3(0.07, 0.03, 0.08), tex) * (0.75 + 0.35 * folds * back);
+        vec3 belly = vec3(0.10, 0.05, 0.09);
+        base = mix(skin, belly, onSide * 0.6);
+        base = mix(base, vec3(0.16, 0.09, 0.13), rim);
+        base = mix(base, vec3(0.01, 0.005, 0.012), cup);
         albA = albC = base * 6.0;
-        emissive += vTint.rgb * (d1.x * inner * 1.8 + smoothstep(0.85, 1.0, vUv.y) * 1.5 + 0.03);
-        wet = 0.9;
+        // Flecken auf dem Rücken, die Näpfe leuchten am Rand und tief im Inneren
+        float spots = smoothstep(0.7, 0.76, fbm(vec2(vUv.x * 14.0, vUv.y * 70.0))) * back;
+        base *= 1.0 - spots * 0.5;
+        emissive += vTint.rgb * (rim * 0.9 + pore * 1.6 + spots * 0.06 + smoothstep(0.88, 1.0, vUv.y) * 1.5 + 0.02);
+        wet = 0.95;
       } else if (matId == 35) {
         // Glaskugel: Rand leuchtet, im Inneren ein pulsierender Kern
         float fres2 = pow(1.0 - abs(dot(N, V)), 2.5);
@@ -3859,7 +3893,8 @@
     let sceneDuck = 0.0;
     let sceneShake = 0.0; // Schütteln des Boots (Tentakel)
     let sceneRock = 0.0;  // Kippen des Boots im Takt der Tentakel (-1..1)
-    let sceneStand = 0.0; // Aufstehen und einen Schritt zurück im Boot (0..1)
+    let sceneStand = 0.0;
+    let sceneGrowl = 0.0; // Lautstärke des Tentakelgrollens (audio.js) // Aufstehen und einen Schritt zurück im Boot (0..1)
     // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
     const DUST_MAX = 240;
     const dustData = new Float32Array(DUST_MAX * 5);
@@ -3878,6 +3913,7 @@
       sceneShake = 0.0;
       sceneRock = 0.0;
       sceneStand = 0.0;
+      sceneGrowl = 0.0;
       dustCount = 0;
       const dust = (x, y, z, size, a) => {
         if (dustCount >= DUST_MAX || a <= 0.002) return;
@@ -3901,6 +3937,15 @@
         rippleDraws.push(r);
       };
       const focus = (x, y, z) => { sceneFocus[0] = x; sceneFocus[1] = y; sceneFocus[2] = z; sceneFocusOn = true; };
+      // Geräusch einmal pro Szenendurchlauf auslösen, sobald die Szenenzeit 'at' erreicht (pan: -1 links .. 1 rechts)
+      const cue = (sc, st, name, at, pan) => {
+        const k = "_cue" + name + at;
+        if (st < at) { sc[k] = false; return; }
+        if (sc[k]) return;
+        sc[k] = true;
+        if (st - at < 0.6 && typeof sfx === "function") sfx(name, Math.max(-1, Math.min(1, pan || 0)));
+      };
+      const panX = (x) => (x - cam[0]) / 10.0;
 
       SCENES.forEach((sc, si) => {
         const d = aheadDist(camZ, sc.z);
@@ -3973,11 +4018,15 @@
           focus(CASTLE.x, CASTLE.top - 6.0, CASTLE.z + zOff);
           // gerade so ducken, wenn der Schwarm ankommt
           sceneDuck = ease(st, 7.3, 7.9) * (1.0 - ease(st, 9.6, 10.6));
+          cue(sc, st, "batsFlutter", 3.0, panX(CASTLE.x) * 0.3);
+          cue(sc, st, "batsRush", 6.4, 0);
         } else if (sc.type === "fish") {
           // ein Leuchtfisch steigt vor dem Bug auf, springt im Bogen über die Fahrspur und taucht wieder ein
           const zJ = cam[2] - 9.0, cx = riverCenterX(zJ);
           const t0 = 1.4, t1 = 3.8, xa = sc.side * 4.5, xb = -sc.side * 3.5;
           ripple(cx + xa, zJ, st > t0 - 1.0 && st < t0 + 0.5 ? 1.0 - Math.abs(st - t0 + 0.3) * 1.3 : 0);
+          cue(sc, st, "splashOut", t0, panX(cx + xa));
+          cue(sc, st, "splashIn", t1, panX(cx + xb));
           ripple(cx + xb, zJ, st > t1 - 0.1 && st < t1 + 1.5 ? 1.0 - (st - t1) * 0.65 : 0);
           if (st > t0 && st < t1) {
             const p = (st - t0) / (t1 - t0);
@@ -4002,20 +4051,30 @@
           spots.forEach(([side, x, z, delay, h], i) => {
             const up = ease(st, 0.6 + delay, 1.4 + delay), down = ease(st, 7.6 + delay * 0.3, 8.6 + delay * 0.3);
             const lift = up * (1.0 - down);
+            cue(sc, st, "tentacleRise", 0.6 + delay, panX(x));
             ripple(x, z, (st > 0.3 + delay && st < 2.5 + delay ? 1.0 : 0) + (st > 7.6 && st < 10.0 ? 0.8 : 0));
             if (lift <= 0.001) return;
             const g = take(creatureMeshes.tentacle, side > 0 ? [0.6, 0.12, 0.9] : [0.05, 0.55, 0.8]);
             // die seitlichen neigen sich über das Boot, die vorderen bäumen sich vor dem Bug auf
             const lean = i < 2 ? 0.3 : 0.15;
             Mat4.compose(g.model, [x, -h * (1.0 - lift) - 0.3, z], side > 0 ? Math.PI : 0, 0, -side * lean * lift, [h, h * 1.1, h]);
-            // alle im selben Takt (Phase 0 bzw. gegenphasig je Seite)
-            g.anim[0] = side > 0 ? 0.0 : Math.PI;
+            // jeder bewegt sich anders: [Phase, Tempo, Stil]. Die beiden seitlichen schlagen im Takt des Boots,
+            // vorn rollt einer langsam spiralig, der andere peitscht schnell mit einrollender Spitze
+            const mv = [[Math.PI, 1.0, 1.0], [0.0, 1.0, 0.35], [0.6, 0.6, 0.9], [2.1, 1.4, 2.15]][i];
+            g.anim[0] = mv[0];
             g.anim[1] = (i < 2 ? 0.5 : 0.9) + (i < 2 ? 0.35 : 0.7) * ease(st, 2.0, 2.8);
+            g.anim[2] = mv[1];
+            g.anim[3] = mv[2];
             fx += x; fy += h * lift * 0.5; fz += z; n++;
             rockAmp = Math.max(rockAmp, lift);
           });
           // Boot kippt im Takt der Schläge (gleiche Frequenz wie die Peitschenwelle im Shader)
           sceneRock = Math.sin(t * 4.0) * rockAmp * ease(st, 1.5, 2.5);
+          sceneGrowl = rockAmp * (1.0 - ease(st, 8.0, 9.5));
+          // Schlag aufs Wasser bei jedem Umkehrpunkt des Kippens, abwechselnd links und rechts
+          const sw = Math.sin(t * 4.0) > 0 ? 1 : -1;
+          if (sc._sw !== undefined && sw !== sc._sw && st > 2.6 && st < 8.0 && typeof sfx === "function") sfx("tentacleSlap", sw * 0.7);
+          sc._sw = sw;
           // man steht auf und tritt einen Schritt zurück, um die Tentakel besser zu sehen
           sceneStand = ease(st, 0.8, 2.2) * (1.0 - ease(st, 9.0, 10.4));
           sceneShake = Math.max(sceneShake, rockAmp * (1.0 - ease(st, 1.4, 2.6)) * 0.6);
@@ -4024,6 +4083,7 @@
           // eine Herde zieht in der Ferne schräg über die Ebene
           let cxs = 0, cys = 0, czs = 0, n = 0;
           const p = clamp01(st / sc.dur);
+          cue(sc, st, "herd", 0.8, -0.6);
           for (let i = 0; i < 14; i++) {
             const ox = (hash2(i, 320.0) - 0.5) * 16, oz = (hash2(i, 321.0) - 0.5) * 12;
             // die Herde zieht auf dem Hügelkamm entlang, als Silhouette vor dem Himmel
@@ -4052,6 +4112,8 @@
           // schwarze Mantas: kommen schräg von links vorn aus der Ferne, gleiten über den Fluss
           // und ziehen schräg rechts hinter das Boot, wo sie aus dem Bild verschwinden
           let lead = null;
+          cue(sc, st, "mantaCall", 1.5, -0.7);
+          for (let i = 0; i < 4; i++) cue(sc, st, "mantaPass", 5.8 + i * 1.1, 0);
           for (let i = 0; i < 4; i++) {
             const q = clamp01((st - 0.3 - i * 1.1) / 10.0);
             if (q <= 0 || q >= 1) continue;
@@ -4075,67 +4137,358 @@
       });
     }
 
-    // --- Optional Web Audio ---
-    let audioCtx = null, masterGain = null, audioEnabled = false;
+    // Aufbau: Musik und Atmosphäre je Zone auf eigenem Bus, Überblendung nach den Zonengewichten.
+    // Alles läuft über einen gemeinsamen Hall (Convolver mit erzeugter Impulsantwort) und einen Kompressor.
+    // Die Szenen lösen über sfx(name, pan) Geräusche aus (siehe creatures.js).
+    let audioCtx = null, masterGain = null, audioEnabled = false, audioUserSet = false;
+    let reverbIn = null, sfxBus = null, noiseBuf = null;
+    const zoneBus = [null, null, null];
+    let tentacleGrowl = null, riverGain = null;
+
+    function makeNoiseBuffer(sec, brown) {
+      const n = Math.floor(audioCtx.sampleRate * sec);
+      const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < n; i++) {
+        const w = Math.random() * 2 - 1;
+        if (brown) { last = (last + 0.025 * w) / 1.025; d[i] = last * 3.2; } else d[i] = w;
+      }
+      return buf;
+    }
+
+    function makeImpulse(sec, decay) {
+      const n = Math.floor(audioCtx.sampleRate * sec);
+      const buf = audioCtx.createBuffer(2, n, audioCtx.sampleRate);
+      for (let c = 0; c < 2; c++) {
+        const d = buf.getChannelData(c);
+        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay);
+      }
+      return buf;
+    }
+
+    // Dauerrauschen mit Filter (Wind, Fluss); gibt den Gain-Knoten zurück
+    function noiseLoop(dest, type, freq, q, gain, brown, lfoRate, lfoDepth) {
+      const src = audioCtx.createBufferSource();
+      src.buffer = brown ? makeNoiseBuffer(4, true) : noiseBuf;
+      src.loop = true;
+      src.playbackRate.value = 0.9 + Math.random() * 0.2;
+      const f = audioCtx.createBiquadFilter();
+      f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = audioCtx.createGain();
+      g.gain.value = gain;
+      src.connect(f); f.connect(g); g.connect(dest);
+      if (lfoRate) {
+        // Böen: langsames Schwanken von Lautstärke und Filter
+        const lfo = audioCtx.createOscillator();
+        lfo.frequency.value = lfoRate;
+        const lg = audioCtx.createGain(); lg.gain.value = gain * lfoDepth;
+        const lf = audioCtx.createGain(); lf.gain.value = freq * 0.5 * lfoDepth;
+        lfo.connect(lg); lg.connect(g.gain);
+        lfo.connect(lf); lf.connect(f.frequency);
+        lfo.start();
+      }
+      src.start();
+      return g;
+    }
+
+    const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+    // Flächenklang: mehrere verstimmte Oszillatoren durch einen Tiefpass, langsames Ein- und Ausblenden
+    function padNote(dest, m, when, dur, opt) {
+      const g = audioCtx.createGain();
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = opt.cut; lp.Q.value = 0.7;
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(opt.vol, when + opt.att);
+      g.gain.setValueAtTime(opt.vol, when + dur - opt.rel * 0.3);
+      g.gain.linearRampToValueAtTime(0, when + dur + opt.rel);
+      lp.connect(g); g.connect(dest);
+      for (const det of opt.detune) {
+        const o = audioCtx.createOscillator();
+        o.type = opt.wave;
+        o.frequency.value = midi(m);
+        o.detune.value = det;
+        o.connect(lp);
+        o.start(when); o.stop(when + dur + opt.rel + 0.1);
+      }
+    }
+
+    // Glocken- oder Flötenton mit Abklingen
+    function bellNote(dest, m, when, vol, decay, wave, vib) {
+      const o = audioCtx.createOscillator();
+      o.type = wave;
+      o.frequency.value = midi(m);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(vol, when + (vib ? 0.25 : 0.01));
+      g.gain.exponentialRampToValueAtTime(0.0005, when + decay);
+      o.connect(g); g.connect(dest);
+      if (vib) {
+        const v = audioCtx.createOscillator(); v.frequency.value = 5.0;
+        const vg = audioCtx.createGain(); vg.gain.value = 4;
+        v.connect(vg); vg.connect(o.detune); v.start(when); v.stop(when + decay);
+      } else {
+        // leiser Oberton für den Glockencharakter
+        const o2 = audioCtx.createOscillator(); o2.frequency.value = midi(m) * 2.76;
+        const g2 = audioCtx.createGain();
+        g2.gain.setValueAtTime(vol * 0.25, when); g2.gain.exponentialRampToValueAtTime(0.0003, when + decay * 0.4);
+        o2.connect(g2); g2.connect(dest); o2.start(when); o2.stop(when + decay);
+      }
+      o.start(when); o.stop(when + decay + 0.05);
+    }
+
+    // Musik je Zone: Akkordfolge (MIDI-Noten), Tonleiter für die Melodie, Klangfarbe
+    const ZONE_MUSIC = [
+      { // Nebelwald: d-Moll, tief und dunkel, vereinzelte Spieluhrtöne
+        chords: [[38, 50, 53, 57], [34, 50, 53, 58], [31, 50, 55, 58], [33, 49, 52, 57]],
+        scale: [62, 65, 67, 69, 70, 74, 77], chordLen: 9.0, notesPer: 3, noteVol: 0.05, noteDecay: 4.5, noteWave: "sine", vib: false,
+        pad: { wave: "sawtooth", detune: [-7, 6], cut: 520, vol: 0.022, att: 3.5, rel: 4.0 }
+      },
+      { // Pilzwald: schwebend, lydisch, Glockenarpeggien
+        chords: [[41, 53, 57, 60, 64], [39, 51, 55, 58, 62], [44, 56, 60, 63, 67], [41, 53, 59, 64, 69]],
+        scale: [72, 74, 76, 79, 81, 83, 84, 88], chordLen: 7.0, notesPer: 7, noteVol: 0.035, noteDecay: 3.2, noteWave: "triangle", vib: false,
+        pad: { wave: "triangle", detune: [-9, 0, 8], cut: 1400, vol: 0.02, att: 2.5, rel: 3.0 }
+      },
+      { // Ebene: weit und hell, C-Dur und a-Moll, Flötenmelodie
+        chords: [[36, 48, 55, 64, 67], [33, 48, 52, 57, 59], [29, 45, 53, 57, 60], [31, 47, 55, 62, 64]],
+        scale: [67, 69, 72, 74, 76, 79, 81], chordLen: 8.0, notesPer: 4, noteVol: 0.045, noteDecay: 2.6, noteWave: "sine", vib: true,
+        pad: { wave: "sawtooth", detune: [-5, 5], cut: 1800, vol: 0.016, att: 3.0, rel: 3.5 }
+      }
+    ];
+    const musicState = [{ next: 0, idx: 0 }, { next: 0, idx: 0 }, { next: 0, idx: 0 }];
+    const zoneLevel = [1, 0, 0];
+
+    function scheduleMusic() {
+      if (!audioCtx || !audioEnabled) return;
+      const now = audioCtx.currentTime;
+      ZONE_MUSIC.forEach((z, zi) => {
+        const ms = musicState[zi];
+        if (ms.next < now) ms.next = now + 0.1;
+        if (ms.next > now + 1.0) return;
+        // stille Zonen nicht spielen (spart Rechenzeit), aber im Takt bleiben
+        if (zoneLevel[zi] > 0.01) {
+          const ch = z.chords[ms.idx % z.chords.length];
+          for (const m of ch) padNote(zoneBus[zi], m, ms.next, z.chordLen, z.pad);
+          // Bassnote eine Oktave tiefer, sehr leise
+          padNote(zoneBus[zi], ch[0] - 12 + (zi === 0 ? 12 : 0), ms.next, z.chordLen, { ...z.pad, vol: z.pad.vol * 0.8, cut: 300 });
+          // Melodietöne verstreut im Akkord, bevorzugt Akkordtöne
+          for (let k = 0; k < z.notesPer; k++) {
+            if (Math.random() < 0.35) continue;
+            const when = ms.next + (k / z.notesPer) * z.chordLen + Math.random() * 0.4;
+            let m = z.scale[Math.floor(Math.random() * z.scale.length)];
+            if (Math.random() < 0.5) m = ch[1 + Math.floor(Math.random() * (ch.length - 1))] + 12 * (zi === 2 ? 1 : 2);
+            bellNote(zoneBus[zi], m, when, z.noteVol * (0.6 + Math.random() * 0.4), z.noteDecay, z.noteWave, z.vib);
+          }
+        }
+        ms.next += z.chordLen;
+        ms.idx++;
+      });
+    }
+
     function initAudio() {
       if (audioCtx) return;
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
       audioCtx = new Ctx();
+      noiseBuf = makeNoiseBuffer(3, false);
+      const comp = audioCtx.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.ratio.value = 4;
+      comp.connect(audioCtx.destination);
       masterGain = audioCtx.createGain();
       masterGain.gain.value = 0.0;
-      masterGain.connect(audioCtx.destination);
+      masterGain.connect(comp);
 
-      // Soft filtered pink/brown noise for river & waterfall ambiance
-      const bufSize = audioCtx.sampleRate * 3;
-      const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-      const data = noiseBuf.getChannelData(0);
-      let lastOut = 0.0;
-      for (let i = 0; i < bufSize; i++) {
-        const white = Math.random() * 2 - 1;
-        lastOut = (lastOut + 0.025 * white) / 1.025;
-        data[i] = lastOut * 2.8;
+      const conv = audioCtx.createConvolver();
+      conv.buffer = makeImpulse(3.8, 2.6);
+      const wet = audioCtx.createGain(); wet.gain.value = 0.55;
+      reverbIn = audioCtx.createGain();
+      reverbIn.connect(conv); conv.connect(wet); wet.connect(masterGain);
+
+      for (let i = 0; i < 3; i++) {
+        const g = audioCtx.createGain();
+        g.gain.value = zoneLevel[i];
+        g.connect(masterGain);
+        g.connect(reverbIn);
+        zoneBus[i] = g;
       }
-      const noiseSrc = audioCtx.createBufferSource();
-      noiseSrc.buffer = noiseBuf;
-      noiseSrc.loop = true;
+      sfxBus = audioCtx.createGain();
+      sfxBus.gain.value = 1.0;
+      sfxBus.connect(masterGain);
+      const sfxVerb = audioCtx.createGain(); sfxVerb.gain.value = 0.35;
+      sfxBus.connect(sfxVerb); sfxVerb.connect(reverbIn);
 
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = "bandpass";
-      filter.frequency.value = 420;
-      filter.Q.value = 0.65;
+      // Fluss: leises Plätschern in allen Zonen
+      riverGain = noiseLoop(masterGain, "bandpass", 420, 0.65, 0.1, true, 0.13, 0.4);
+      // Atmosphäre je Zone: kalter Wind im Nebelwald, Summen im Pilzwald, offener Wind über der Ebene
+      noiseLoop(zoneBus[0], "lowpass", 380, 0.8, 0.12, true, 0.07, 0.7);
+      noiseLoop(zoneBus[0], "bandpass", 1900, 6.0, 0.006, false, 0.05, 0.9); // feines Pfeifen in den Wipfeln
+      const hum = audioCtx.createOscillator(); hum.frequency.value = 55; hum.type = "triangle";
+      const humG = audioCtx.createGain(); humG.gain.value = 0.02;
+      const humL = audioCtx.createOscillator(); humL.frequency.value = 0.3;
+      const humLG = audioCtx.createGain(); humLG.gain.value = 0.012;
+      humL.connect(humLG); humLG.connect(humG.gain);
+      hum.connect(humG); humG.connect(zoneBus[1]); hum.start(); humL.start();
+      noiseLoop(zoneBus[1], "highpass", 5000, 0.7, 0.008, false, 0.2, 0.8);
+      noiseLoop(zoneBus[2], "bandpass", 700, 0.5, 0.11, true, 0.05, 0.8);
 
-      const waterGain = audioCtx.createGain();
-      waterGain.gain.value = 0.35;
+      // Grollen der Tentakel (Lautstärke folgt der Szene)
+      const gr = audioCtx.createOscillator(); gr.type = "sawtooth"; gr.frequency.value = 38;
+      const grL = audioCtx.createOscillator(); grL.frequency.value = 2.0;
+      const grLG = audioCtx.createGain(); grLG.gain.value = 6;
+      grL.connect(grLG); grLG.connect(gr.frequency);
+      const grF = audioCtx.createBiquadFilter(); grF.type = "lowpass"; grF.frequency.value = 160;
+      tentacleGrowl = audioCtx.createGain(); tentacleGrowl.gain.value = 0;
+      gr.connect(grF); grF.connect(tentacleGrowl); tentacleGrowl.connect(sfxBus);
+      gr.start(); grL.start();
 
-      noiseSrc.connect(filter);
-      filter.connect(waterGain);
-      waterGain.connect(masterGain);
-      noiseSrc.start();
-
-      // Gentle ambient drone
-      const osc = audioCtx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = 110.0;
-      const oscGain = audioCtx.createGain();
-      oscGain.gain.value = 0.06;
-      osc.connect(oscGain);
-      oscGain.connect(masterGain);
-      osc.start();
+      setInterval(scheduleMusic, 250);
+      scheduleAmbientCalls();
     }
 
-    function setAudio(enabled) {
+    // vereinzelte Tierrufe aus der Ferne, passend zur Zone (Eule, Pilzgezwitscher, Raubvogel)
+    function scheduleAmbientCalls() {
+      setTimeout(() => {
+        if (audioCtx && audioEnabled) {
+          const zi = zoneLevel.indexOf(Math.max(...zoneLevel));
+          const pan = Math.random() * 1.6 - 0.8;
+          if (zi === 0) sfx("owl", pan); else if (zi === 1) sfx("chirp", pan); else sfx("hawk", pan);
+        }
+        scheduleAmbientCalls();
+      }, 9000 + Math.random() * 12000);
+    }
+
+    function setAudio(enabled, byUser = true) {
+      if (byUser) audioUserSet = true;
       audioEnabled = enabled;
       if (enabled) {
         initAudio();
         if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
-        if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.45, audioCtx.currentTime, 0.25);
+        if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.6, audioCtx.currentTime, 0.4);
         btnAudio.textContent = "Ton An";
         btnAudio.classList.remove("muted");
       } else {
         if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.15);
         btnAudio.textContent = "Ton Aus";
         btnAudio.classList.add("muted");
+      }
+    }
+
+    // pro Bild aus main.js: Zonen überblenden, Tentakelgrollen nachführen
+    function updateAudio(zoneW, growl) {
+      for (let i = 0; i < 3; i++) zoneLevel[i] = zoneW[i];
+      if (!audioCtx || !audioEnabled) return;
+      const now = audioCtx.currentTime;
+      for (let i = 0; i < 3; i++) zoneBus[i].gain.setTargetAtTime(zoneW[i] * (1.0 - growl * 0.6), now, 0.5);
+      tentacleGrowl.gain.setTargetAtTime(growl * 0.12, now, 0.2);
+    }
+
+    // --- Geräusche ---
+    function sfxOut(pan, vol) {
+      const g = audioCtx.createGain(); g.gain.value = vol;
+      if (audioCtx.createStereoPanner) {
+        const p = audioCtx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan));
+        g.connect(p); p.connect(sfxBus);
+        return { g, p };
+      }
+      g.connect(sfxBus);
+      return { g, p: null };
+    }
+    function noiseHit(dest, when, dur, type, f0, f1, q, vol, att) {
+      const s = audioCtx.createBufferSource(); s.buffer = noiseBuf;
+      s.playbackRate.value = 0.8 + Math.random() * 0.4;
+      const f = audioCtx.createBiquadFilter(); f.type = type; f.Q.value = q;
+      f.frequency.setValueAtTime(f0, when); f.frequency.exponentialRampToValueAtTime(f1, when + dur);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.0001, when);
+      g.gain.exponentialRampToValueAtTime(vol, when + (att || 0.01));
+      g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+      s.connect(f); f.connect(g); g.connect(dest);
+      s.start(when, Math.random() * 2); s.stop(when + dur + 0.05);
+    }
+    function toneSweep(dest, when, dur, wave, f0, f1, vol) {
+      const o = audioCtx.createOscillator(); o.type = wave;
+      o.frequency.setValueAtTime(f0, when); o.frequency.exponentialRampToValueAtTime(f1, when + dur);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(vol, when + dur * 0.15);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+      o.connect(g); g.connect(dest); o.start(when); o.stop(when + dur + 0.05);
+    }
+
+    function sfx(name, pan = 0) {
+      if (!audioCtx || !audioEnabled) return;
+      const now = audioCtx.currentTime;
+      if (name === "batsFlutter") {
+        // Schwarm steigt auf: viele schnelle, leise Flügelschläge und hohe Pieptöne
+        const o = sfxOut(pan, 0.5);
+        for (let i = 0; i < 70; i++) noiseHit(o.g, now + Math.random() * 3.5, 0.05, "bandpass", 1800, 900, 1.5, 0.05 + Math.random() * 0.05);
+        for (let i = 0; i < 12; i++) toneSweep(o.g, now + Math.random() * 3.5, 0.06, "sine", 5200 + Math.random() * 1500, 3800, 0.012);
+      } else if (name === "batsRush") {
+        // Schwarm rauscht knapp über den Kopf: anschwellendes Flattern, Zischen von vorn nach hinten
+        const o = sfxOut(0, 1.0);
+        for (let i = 0; i < 140; i++) {
+          const w = now + Math.pow(Math.random(), 0.6) * 1.8;
+          noiseHit(o.g, w, 0.04 + Math.random() * 0.03, "bandpass", 2200, 700, 1.2, 0.06 + Math.random() * 0.08);
+        }
+        noiseHit(o.g, now + 0.4, 1.6, "bandpass", 600, 3000, 0.8, 0.35, 0.9);
+        for (let i = 0; i < 18; i++) toneSweep(o.g, now + Math.random() * 1.6, 0.07, "sine", 6000 + Math.random() * 2000, 4200, 0.02);
+      } else if (name === "splashOut" || name === "splashIn") {
+        // Fisch: hellen Spritzer, beim Eintauchen ein dumpfes "Plopp"
+        const o = sfxOut(pan, 0.9);
+        noiseHit(o.g, now, 0.5, "highpass", 2500, 900, 0.7, 0.25, 0.005);
+        noiseHit(o.g, now + 0.05, 0.8, "bandpass", 1200, 300, 1.0, 0.18, 0.02);
+        if (name === "splashIn") toneSweep(o.g, now, 0.18, "sine", 420, 120, 0.25);
+        for (let i = 0; i < 8; i++) noiseHit(o.g, now + 0.25 + Math.random() * 0.8, 0.06, "bandpass", 3500, 2000, 3.0, 0.03);
+      } else if (name === "tentacleRise") {
+        // Tentakel bricht durch die Oberfläche: schwerer Schwall, tiefes Rauschen
+        const o = sfxOut(pan, 1.0);
+        noiseHit(o.g, now, 1.8, "lowpass", 1800, 200, 0.7, 0.5, 0.03);
+        noiseHit(o.g, now + 0.1, 1.2, "highpass", 3000, 1200, 0.7, 0.18, 0.02);
+        toneSweep(o.g, now, 1.2, "sine", 90, 40, 0.35);
+        for (let i = 0; i < 14; i++) noiseHit(o.g, now + 0.6 + Math.random() * 1.6, 0.08, "bandpass", 2600, 1500, 2.0, 0.05);
+      } else if (name === "tentacleSlap") {
+        // Peitschenschlag: kurzes Zischen, dann klatschendes Wasser
+        const o = sfxOut(pan, 0.7);
+        noiseHit(o.g, now, 0.25, "bandpass", 900, 3500, 1.5, 0.12, 0.2);
+        noiseHit(o.g, now + 0.22, 0.45, "lowpass", 2500, 300, 0.8, 0.35, 0.005);
+        toneSweep(o.g, now + 0.22, 0.2, "sine", 140, 60, 0.25);
+      } else if (name === "herd") {
+        // Herde in der Ferne: dumpfes Hufgetrappel, das an- und abschwillt, darüber Staubrauschen
+        const o = sfxOut(pan, 0.8);
+        const dur = 10.0;
+        noiseHit(o.g, now, dur, "lowpass", 400, 250, 0.6, 0.12, 3.0);
+        for (let i = 0; i < 160; i++) {
+          const u = Math.random(), w = now + u * dur;
+          const env = Math.sin(u * Math.PI);
+          toneSweep(o.g, w, 0.12, "sine", 90 + Math.random() * 40, 45, 0.06 * env + 0.005);
+        }
+        for (let i = 0; i < 3; i++) toneSweep(o.g, now + 2 + i * 2.7 + Math.random(), 0.9, "sawtooth", 260 + Math.random() * 60, 170, 0.012);
+      } else if (name === "mantaCall") {
+        // tiefer, walartiger Ruf der Mantas aus der Ferne
+        const o = sfxOut(pan, 0.8);
+        for (const det of [0, 1.5]) {
+          const ox = audioCtx.createOscillator(); ox.type = "sine";
+          ox.frequency.setValueAtTime(180 + det, now); ox.frequency.linearRampToValueAtTime(240 + det, now + 1.2);
+          ox.frequency.linearRampToValueAtTime(150 + det, now + 3.0);
+          const g = audioCtx.createGain();
+          g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(0.09, now + 0.8); g.gain.linearRampToValueAtTime(0, now + 3.2);
+          ox.connect(g); g.connect(o.g); ox.start(now); ox.stop(now + 3.3);
+        }
+      } else if (name === "mantaPass") {
+        // Manta gleitet vorbei: Luftrauschen wandert von links nach rechts hinter das Boot
+        const o = sfxOut(-0.8, 1.0);
+        if (o.p) { o.p.pan.setValueAtTime(-0.8, now); o.p.pan.linearRampToValueAtTime(0.9, now + 3.0); }
+        noiseHit(o.g, now, 3.2, "bandpass", 350, 900, 0.9, 0.3, 1.4);
+        noiseHit(o.g, now + 0.8, 2.0, "lowpass", 300, 150, 0.7, 0.2, 0.8);
+      } else if (name === "owl") {
+        const o = sfxOut(pan, 0.5);
+        for (let i = 0; i < 2; i++) toneSweep(o.g, now + i * 0.55, 0.42, "sine", 420, 360, 0.05);
+      } else if (name === "chirp") {
+        const o = sfxOut(pan, 0.5);
+        for (let i = 0; i < 5; i++) toneSweep(o.g, now + i * 0.11, 0.09, "sine", 2400 + i * 300, 3600 + i * 200, 0.02);
+      } else if (name === "hawk") {
+        const o = sfxOut(pan, 0.5);
+        toneSweep(o.g, now, 1.1, "triangle", 1900, 1300, 0.03);
       }
     }
 
@@ -4157,6 +4510,7 @@
       fb.gain.value = 0.35;
       out.connect(lp);
       lp.connect(masterGain);
+      lp.connect(reverbIn);
       lp.connect(echo);
       echo.connect(fb);
       fb.connect(echo);
@@ -4207,6 +4561,16 @@
 
     btnToggle.addEventListener("click", toggleRun);
     btnAudio.addEventListener("click", () => setAudio(!audioEnabled));
+    // Browser erlauben Ton erst nach einer Bedienung: beim ersten Tippen oder Klicken einschalten,
+    // sofern man den Ton nicht selbst schon geschaltet hat
+    const audioAutoStart = (e) => {
+      if (e.target === btnAudio || e.key === "m" || e.key === "M") return;
+      window.removeEventListener("pointerdown", audioAutoStart);
+      window.removeEventListener("keydown", audioAutoStart);
+      if (!audioUserSet) setAudio(true, false);
+    };
+    window.addEventListener("pointerdown", audioAutoStart);
+    window.addEventListener("keydown", audioAutoStart);
     window.addEventListener("keydown", (e) => {
       if (e.code === "Space") {
         e.preventDefault();
@@ -4575,6 +4939,7 @@
       // kurzes Ducken der Kamera (Fledermausschwarm), wirkt nach dem Aufruf der Tiere im nächsten Bild
       ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
       updateCreatures(zCur, t, scene.idx, scene.t, camEye);
+      updateAudio(camZone, sceneGrowl);
 
       // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten
       let tYaw = Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12;
@@ -4622,7 +4987,7 @@
       camEye[0] += Math.sin(heading) * sceneStand * 0.55;
       camEye[1] += sceneStand * 0.55;
       camEye[2] += Math.cos(heading) * sceneStand * 0.55;
-      const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12));
+      const pitch = Math.max(-0.8, Math.min(1.0, gaze.pitch + look.pitch - sceneDuck * 0.12 - sceneStand * 0.24));
       camTarget[0] = camEye[0] - Math.sin(yaw) * Math.cos(pitch) * 10.0;
       camTarget[1] = camEye[1] + Math.sin(pitch) * 10.0;
       camTarget[2] = camEye[2] - Math.cos(yaw) * Math.cos(pitch) * 10.0;
