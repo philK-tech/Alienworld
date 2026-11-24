@@ -797,17 +797,17 @@ void main() {
         dB = min(dB, segDist(vUv, w, vec2(0.38, 1.0)));
         bones = smoothstep(0.035, 0.012, dB);
         float veins = smoothstep(0.012, 0.0, abs(fract(fbm(vUv * vec2(8.0, 5.0)) * 5.0) - 0.5) - 0.48);
-        membrane = (1.0 - bones) * (0.75 - 0.35 * veins);
+        membrane = (1.0 - bones) * (0.75 - 0.35 * veins) * (0.3 + 0.7 * vUv.y * vUv.y);
         albA = albC = mix(vTint.rgb, vec3(0.005), bones);
       } else {
         // Manta: die äußeren Schwingen sind dünn
-        membrane = smoothstep(0.35, 0.95, vExtra.z) * 0.8;
+        membrane = smoothstep(0.55, 1.0, vExtra.z) * 0.6;
       }
       vec3 L = normalize(SUN_A * zw.x + SUN_C * zw.z + MOON_DIR * zw.y);
       float back = pow(max(dot(-V, L), 0.0), 3.0);
-      vec3 lightC = vec3(1.0, 0.72, 0.3) * zw.x + vec3(1.0, 0.55, 0.4) * zw.z * 2.5 + vec3(0.3, 0.5, 0.9) * zw.y;
+      vec3 lightC = vec3(1.0, 0.72, 0.3) * zw.x * 0.35 + vec3(1.0, 0.6, 0.45) * zw.z * 0.5 + vec3(0.3, 0.5, 0.9) * zw.y * 0.3;
       vec3 skinC = vec3(0.55, 0.12, 0.06);   // Blut in der Flughaut färbt das Licht rötlich
-      emissive += lightC * skinC * membrane * (back * 1.6 + 0.12) / max(emScale, 0.3);
+      emissive += lightC * skinC * membrane * (back * back * 1.2 + 0.02) / max(emScale, 0.3);
     } else {
       emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
     }
