@@ -33,6 +33,15 @@ float hash21(vec2 p) {
   p += dot(p, p + 34.23);
   return fract(p.x * p.y);
 }
+vec3 furHash(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.xxy + p.yxx) * p.zyx);
+}
+float segDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a, ba = b - a;
+  return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+}
 float hash31(vec3 p) {
   p = fract(p * vec3(0.1031, 0.1030, 0.0973));
   p += dot(p, p.yzx + 33.33);
@@ -300,9 +309,11 @@ uniform float uTime;
 uniform float uInstanced;
 uniform vec3 uOffset;
 uniform vec4 uAnim;
+uniform vec2 uShell;   // Fellschichten: x = Höhe der Schicht 0..1, y = Haarlänge (Modelleinheiten), 0 = aus
 
 out vec3 vWorldPos;
 out vec3 vLocalPos;
+out vec3 vObjPos;
 out vec3 vNormal;
 out vec2 vUv;
 out vec3 vExtra;
@@ -401,10 +412,21 @@ void main() {
       p = pivot + r;
       nrm = rn;
     }
+    if (uShell.y > 0.0) {
+      // Fellschicht: entlang der Normale nach außen, Haare fallen zur Spitze hin nach hinten und unten.
+      // Kurz an Schnauze und unteren Beinen, lang an Nacken, Brust und Schwanz, keins auf den Augen.
+      float h = uShell.x;
+      float len = uShell.y * (aExtra.y > 1.5 ? 0.0 : aExtra.y > 0.5 ? 0.25 : 1.0);
+      len *= mix(0.15, 1.0, smoothstep(0.3, 0.55, aPos.y));
+      if (matId == 24) len *= mix(1.5, 0.5, smoothstep(-0.55, -0.85, aPos.z));
+      len *= 1.0 + 0.8 * smoothstep(0.55, 0.9, aPos.z);
+      p += nrm * h * len * 0.8 + vec3(0.0, -0.5, 0.85) * h * h * len * 1.1;
+    }
   }
 
   vec4 wp = modelMat * vec4(p, 1.0);
   vLocalPos = wp.xyz;
+  vObjPos = aPos;
   vWorldPos = wp.xyz + uOffset;
   vNormal = normalize(mat3(modelMat) * nrm);
   vUv = aUv;
@@ -420,6 +442,8 @@ precision highp float;
 
 in vec3 vWorldPos;
 in vec3 vLocalPos;
+in vec3 vObjPos;
+uniform vec2 uShell;
 in vec3 vNormal;
 in vec2 vUv;
 in vec3 vExtra;
@@ -522,6 +546,7 @@ void main() {
   vec3 emissive = vec3(0.0);
   bool foliage = false;
   float rough = 0.6;
+  float shellA = 1.0;
   float wet = 0.0;
 
   if (matId == 0) {
@@ -758,9 +783,31 @@ void main() {
     vec2 d1 = dotField(vUv * vec2(10.0, 4.0), 0.25, 0.55);
     base = vec3(0.02, 0.02, 0.05);
     if (vTint.a < 0.5) {
-      // Vogel: einfarbig, ohne Leuchtzeichnung
+      // Fledermaus und Manta: dunkle Haut, die Flughaut leuchtet im Gegenlicht durch
       base = vTint.rgb * 0.15;
       albA = albC = vTint.rgb;
+      float membrane, bones = 0.0;
+      if (vExtra.y > 0.25) {
+        // Fledermausflügel (uv: x = Spannweite, y = Tiefe): Arm an der Vorderkante, vier Finger vom Handgelenk
+        vec2 w = vec2(0.42, 0.0);
+        float dB = min(vUv.y, segDist(vUv, vec2(0.0, 0.0), w));
+        dB = min(dB, segDist(vUv, w, vec2(1.0, 0.0)));
+        dB = min(dB, segDist(vUv, w, vec2(0.86, 1.0)));
+        dB = min(dB, segDist(vUv, w, vec2(0.64, 1.0)));
+        dB = min(dB, segDist(vUv, w, vec2(0.38, 1.0)));
+        bones = smoothstep(0.035, 0.012, dB);
+        float veins = smoothstep(0.012, 0.0, abs(fract(fbm(vUv * vec2(8.0, 5.0)) * 5.0) - 0.5) - 0.48);
+        membrane = (1.0 - bones) * (0.75 - 0.35 * veins);
+        albA = albC = mix(vTint.rgb, vec3(0.005), bones);
+      } else {
+        // Manta: die äußeren Schwingen sind dünn
+        membrane = smoothstep(0.35, 0.95, vExtra.z) * 0.8;
+      }
+      vec3 L = normalize(SUN_A * zw.x + SUN_C * zw.z + MOON_DIR * zw.y);
+      float back = pow(max(dot(-V, L), 0.0), 3.0);
+      vec3 lightC = vec3(1.0, 0.72, 0.3) * zw.x + vec3(1.0, 0.55, 0.4) * zw.z * 2.5 + vec3(0.3, 0.5, 0.9) * zw.y;
+      vec3 skinC = vec3(0.55, 0.12, 0.06);   // Blut in der Flughaut färbt das Licht rötlich
+      emissive += lightC * skinC * membrane * (back * 1.6 + 0.12) / max(emScale, 0.3);
     } else {
       emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
     }
@@ -779,6 +826,28 @@ void main() {
     emissive += vec3(1.0, 0.9, 0.6) * step(2.0, glowMask) * 3.0;
     wet = 1.0;
   } else if (matId == 23 || matId == 24) {
+    if (uShell.y > 0.0) {
+      // Fellschicht: einzelne Haare (Worley-Punkte im Ruheraum des Modells, damit sie bei jeder Pose am Körper haften).
+      // Nach oben laufen die Haare zu Büscheln zusammen, so entstehen Strähnen mit dunklen Lücken.
+      float h = uShell.x;
+      vec3 q = vObjPos * 70.0;
+      vec3 cq = floor(q / 5.0);
+      vec3 cc = (cq + 0.5 + (furHash(cq) - 0.5) * 0.8) * 5.0;
+      float clumpLen = 0.55 + 0.45 * furHash(cq + 7.0).x;
+      q = mix(q, cc, h * h * 0.55);
+      vec3 ci = floor(q);
+      float dmin = 9.0, len = 1.0;
+      for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+        vec3 c = ci + vec3(x, y, z);
+        vec3 r = furHash(c);
+        float dd = length(q - c - r);
+        if (dd < dmin) { dmin = dd; len = 0.5 + 0.5 * r.z; }
+      }
+      float rad = 0.6 * (1.0 - h * 0.75);
+      float cover = smoothstep(rad, rad * 0.55, dmin) * step(h, len * clumpLen + 0.02);
+      if (cover < 0.05) discard;
+      shellA = cover;
+    }
     // Wolf: fast schwarzer Schemen, nur ein feiner Saum in der Farbe des Nebels, Augen glühen
     float rimW = pow(1.0 - abs(dot(N, V)), 3.0);
     base = vec3(0.008, 0.008, 0.012);
@@ -787,9 +856,17 @@ void main() {
       // Herdentier: Fellfarbe aus der Instanz
       albA = albC = vTint.rgb * (0.8 + 0.4 * fine);
       base = vTint.rgb * 0.1;
+      // Rücken dunkler als der Bauch, Haarspitzen heller als der Ansatz
+      albA *= mix(1.25, 0.8, smoothstep(-0.4, 0.7, N.y));
+      albC = albA;
     } else {
-      emissive += (skyHaze(-V) * 0.6 + vec3(0.12, 0.14, 0.18)) * rimW * 0.5;
+      emissive += (skyHaze(-V) * 0.6 + vec3(0.12, 0.14, 0.18)) * rimW * 0.5 * (uShell.y > 0.0 ? 0.6 + uShell.x : 1.0);
       emissive += vTint.rgb * step(2.0, glowMask) * 12.0;
+    }
+    if (uShell.y > 0.0) {
+      // Ansatz im Schatten der anderen Haare, Spitzen etwas heller
+      float hs = uShell.x;
+      albA *= mix(0.45, 1.2, hs); albC *= mix(0.45, 1.2, hs); ao *= mix(0.5, 1.0, hs);
     }
     emissive /= max(emScale, 0.3);
   }
@@ -839,7 +916,7 @@ void main() {
   }
   col += emissive * emScale * wave * react * (0.85 + 0.15 * sin(t * 1.7 + vSeed * 30.0));
   col = applyFog(col, vWorldPos, uCamPos, t);
-  fragColor = vec4(clamp(col, vec3(0.0), vec3(30.0)), 1.0);
+  fragColor = vec4(clamp(col, vec3(0.0), vec3(30.0)), shellA);
 }`;
 
 const VS_FX = `#version 300 es

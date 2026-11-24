@@ -44,11 +44,39 @@ function buildGliderMesh() {
 function buildBatMesh() {
   const b = createGeometryBuilder();
   addLathe(b, 6, 6, (t) => [0, 0, -0.18 + t * 0.36], (t) => { const r = 0.06 * Math.sin(t * Math.PI) + 0.01; return [r, r]; }, 21, () => [0.8, 0.0, 0.0]);
+  // spitze Ohren
   for (const s of [-1, 1]) {
-    const pts = [[0.04, 0, -0.1], [0.35, 0.04, -0.12], [0.55, 0.0, 0.02], [0.42, 0, 0.12], [0.3, 0, 0.06], [0.2, 0, 0.14], [0.04, 0, 0.1]];
     const base = b.positions.length / 3;
-    pts.forEach(([x, y, z]) => b.pushVertex(s * x, y, z, 0, 1, 0, x, z + 0.5, 0.8, 0.0, x / 0.55, 21));
-    for (let k = 1; k < pts.length - 1; k++) b.pushTri(base, base + k, base + k + 1);
+    b.pushVertex(s * 0.02, 0.04, -0.15, 0, 0, -1, 0, 0, 0.8, 0, 0, 21);
+    b.pushVertex(s * 0.05, 0.04, -0.13, 0, 0, -1, 0, 0, 0.8, 0, 0, 21);
+    b.pushVertex(s * 0.045, 0.11, -0.16, 0, 0, -1, 0, 0, 0.8, 0, 0, 21);
+    b.pushTri(base, base + 1, base + 2);
+  }
+  // Flughaut als feines Gitter: Vorderkante folgt dem Arm, Hinterkante zwischen den Fingerspitzen bogig eingezogen.
+  // uv = (Spannweite, Tiefe), extra.y = 0.5 markiert die Flughaut, extra.z = Abstand zum Körper (Flügelschlag)
+  const NU = 16, NV = 6;
+  const tips = [[0, 0.14], [0.38, 0.2], [0.64, 0.22], [0.86, 0.17], [1.0, 0.0]];
+  const trail = (u) => {
+    for (let k = 1; k < tips.length; k++) {
+      const [u0, z0] = tips[k - 1], [u1, z1] = tips[k];
+      if (u <= u1) { const f = (u - u0) / (u1 - u0); return z0 + (z1 - z0) * f - 0.05 * Math.sin(f * Math.PI) * (k > 1 ? 1 : 0.4); }
+    }
+    return 0;
+  };
+  const lead = (u) => (u < 0.42 ? -0.1 - 0.035 * (u / 0.42) : -0.135 + 0.135 * Math.pow((u - 0.42) / 0.58, 1.4));
+  for (const s of [-1, 1]) {
+    const base = b.positions.length / 3;
+    for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
+      const u = i / NU, v = j / NV;
+      const x = 0.04 + u * 0.56;
+      const z = lead(u) + (trail(u) - lead(u)) * v;
+      const y = 0.025 * Math.sin(v * Math.PI) * (1 - u * 0.6) - 0.02 * u * u;
+      b.pushVertex(s * x, y, z, 0, 1, 0, u, v, 0.8, 0.5, x / 0.55, 21);
+    }
+    for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+      const a = base + j * (NU + 1) + i;
+      if (s > 0) b.pushQuad(a, a + 1, a + NU + 2, a + NU + 1); else b.pushQuad(a, a + NU + 1, a + NU + 2, a + 1);
+    }
   }
   b.computeSmoothNormals();
   return b;
@@ -248,6 +276,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
     d.mesh = mesh;
     d.tint[0] = tint[0]; d.tint[1] = tint[1]; d.tint[2] = tint[2]; d.tint[3] = tint.length > 3 ? tint[3] : 1;
     d.anim[0] = 0; d.anim[1] = 0; d.anim[2] = 0; d.anim[3] = 0;
+    d.fur = 0; d.shells = 0;
     creatureDraws.push(d);
     return d;
   };
@@ -286,6 +315,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       // auf den letzten Schritten steigt der Wolf auf den Felsvorsprung
       const y = lerp(terrainHeight(x, z) - 0.05, spot.y, ease(f, 0.75, 1.0));
       const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
+      g.fur = 0.045; g.shells = 12;
       const yawOut = Math.atan2(-(spot.x - den.x), -(spot.z - den.z));
       const toBoat = Math.atan2(-(cam[0] - x), -(cam[2] - z));
       // Körper dreht sich halb zum Boot, den Rest übernimmt der Kopf
@@ -413,6 +443,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         const x = lerp(x0, x1, p) + ox, z = lerp(z0, z1, p) + oz + zOff;
         const y = terrainHeight(x, z) - 0.05;
         const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
+        if (g) { g.fur = 0.035; g.shells = 6; }
         if (!g) break;
         const s = 3.2 + hash2(i, 322.0) * 0.8;
         const ph = t * 6.5 + i * 1.3;

@@ -202,6 +202,23 @@ function drawScene(pass) {
     gl.bindVertexArray(cd.mesh.vao);
     gl.drawElements(gl.TRIANGLES, cd.mesh.indexCount, gl.UNSIGNED_INT, 0);
   }
+  // Fell: dieselben Tiere noch einmal als Schichten nach außen (Shell-Technik). Die Haare sind ausgestanzt,
+  // ihre Ränder werden über die Kantenglättung (Alpha to Coverage) weich
+  if (!pass.reflect) {
+    gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+    for (const cd of creatureDraws) {
+      if (!cd.fur) continue;
+      setModel(cd.model, cd.tint, 0.0);
+      gl.uniform4fv(u.uAnim, cd.anim);
+      gl.bindVertexArray(cd.mesh.vao);
+      for (let i = 1; i <= cd.shells; i++) {
+        gl.uniform2f(u.uShell, i / cd.shells, cd.fur);
+        gl.drawElements(gl.TRIANGLES, cd.mesh.indexCount, gl.UNSIGNED_INT, 0);
+      }
+    }
+    gl.uniform2f(u.uShell, 0, 0);
+    gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+  }
   gl.uniform4f(u.uAnim, 0, 0, 0, 0);
   if (boat.mesh && boat.tex) {
     gl.activeTexture(gl.TEXTURE1);

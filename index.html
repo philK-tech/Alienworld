@@ -1870,6 +1870,15 @@
       p += dot(p, p + 34.23);
       return fract(p.x * p.y);
     }
+    vec3 furHash(vec3 p) {
+      p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+      p += dot(p, p.yxz + 33.33);
+      return fract((p.xxy + p.yxx) * p.zyx);
+    }
+    float segDist(vec2 p, vec2 a, vec2 b) {
+      vec2 pa = p - a, ba = b - a;
+      return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+    }
     float hash31(vec3 p) {
       p = fract(p * vec3(0.1031, 0.1030, 0.0973));
       p += dot(p, p.yzx + 33.33);
@@ -2137,9 +2146,11 @@
     uniform float uInstanced;
     uniform vec3 uOffset;
     uniform vec4 uAnim;
+    uniform vec2 uShell;   // Fellschichten: x = Höhe der Schicht 0..1, y = Haarlänge (Modelleinheiten), 0 = aus
 
     out vec3 vWorldPos;
     out vec3 vLocalPos;
+    out vec3 vObjPos;
     out vec3 vNormal;
     out vec2 vUv;
     out vec3 vExtra;
@@ -2238,10 +2249,21 @@
           p = pivot + r;
           nrm = rn;
         }
+        if (uShell.y > 0.0) {
+          // Fellschicht: entlang der Normale nach außen, Haare fallen zur Spitze hin nach hinten und unten.
+          // Kurz an Schnauze und unteren Beinen, lang an Nacken, Brust und Schwanz, keins auf den Augen.
+          float h = uShell.x;
+          float len = uShell.y * (aExtra.y > 1.5 ? 0.0 : aExtra.y > 0.5 ? 0.25 : 1.0);
+          len *= mix(0.15, 1.0, smoothstep(0.3, 0.55, aPos.y));
+          if (matId == 24) len *= mix(1.5, 0.5, smoothstep(-0.55, -0.85, aPos.z));
+          len *= 1.0 + 0.8 * smoothstep(0.55, 0.9, aPos.z);
+          p += nrm * h * len * 0.8 + vec3(0.0, -0.5, 0.85) * h * h * len * 1.1;
+        }
       }
 
       vec4 wp = modelMat * vec4(p, 1.0);
       vLocalPos = wp.xyz;
+      vObjPos = aPos;
       vWorldPos = wp.xyz + uOffset;
       vNormal = normalize(mat3(modelMat) * nrm);
       vUv = aUv;
@@ -2257,6 +2279,8 @@
 
     in vec3 vWorldPos;
     in vec3 vLocalPos;
+    in vec3 vObjPos;
+    uniform vec2 uShell;
     in vec3 vNormal;
     in vec2 vUv;
     in vec3 vExtra;
@@ -2359,6 +2383,7 @@
       vec3 emissive = vec3(0.0);
       bool foliage = false;
       float rough = 0.6;
+      float shellA = 1.0;
       float wet = 0.0;
 
       if (matId == 0) {
@@ -2595,9 +2620,31 @@
         vec2 d1 = dotField(vUv * vec2(10.0, 4.0), 0.25, 0.55);
         base = vec3(0.02, 0.02, 0.05);
         if (vTint.a < 0.5) {
-          // Vogel: einfarbig, ohne Leuchtzeichnung
+          // Fledermaus und Manta: dunkle Haut, die Flughaut leuchtet im Gegenlicht durch
           base = vTint.rgb * 0.15;
           albA = albC = vTint.rgb;
+          float membrane, bones = 0.0;
+          if (vExtra.y > 0.25) {
+            // Fledermausflügel (uv: x = Spannweite, y = Tiefe): Arm an der Vorderkante, vier Finger vom Handgelenk
+            vec2 w = vec2(0.42, 0.0);
+            float dB = min(vUv.y, segDist(vUv, vec2(0.0, 0.0), w));
+            dB = min(dB, segDist(vUv, w, vec2(1.0, 0.0)));
+            dB = min(dB, segDist(vUv, w, vec2(0.86, 1.0)));
+            dB = min(dB, segDist(vUv, w, vec2(0.64, 1.0)));
+            dB = min(dB, segDist(vUv, w, vec2(0.38, 1.0)));
+            bones = smoothstep(0.035, 0.012, dB);
+            float veins = smoothstep(0.012, 0.0, abs(fract(fbm(vUv * vec2(8.0, 5.0)) * 5.0) - 0.5) - 0.48);
+            membrane = (1.0 - bones) * (0.75 - 0.35 * veins);
+            albA = albC = mix(vTint.rgb, vec3(0.005), bones);
+          } else {
+            // Manta: die äußeren Schwingen sind dünn
+            membrane = smoothstep(0.35, 0.95, vExtra.z) * 0.8;
+          }
+          vec3 L = normalize(SUN_A * zw.x + SUN_C * zw.z + MOON_DIR * zw.y);
+          float back = pow(max(dot(-V, L), 0.0), 3.0);
+          vec3 lightC = vec3(1.0, 0.72, 0.3) * zw.x + vec3(1.0, 0.55, 0.4) * zw.z * 2.5 + vec3(0.3, 0.5, 0.9) * zw.y;
+          vec3 skinC = vec3(0.55, 0.12, 0.06);   // Blut in der Flughaut färbt das Licht rötlich
+          emissive += lightC * skinC * membrane * (back * 1.6 + 0.12) / max(emScale, 0.3);
         } else {
           emissive += vTint.rgb * (edge * 1.4 + d1.x * 1.6 * glowMask + 0.05);
         }
@@ -2616,6 +2663,28 @@
         emissive += vec3(1.0, 0.9, 0.6) * step(2.0, glowMask) * 3.0;
         wet = 1.0;
       } else if (matId == 23 || matId == 24) {
+        if (uShell.y > 0.0) {
+          // Fellschicht: einzelne Haare (Worley-Punkte im Ruheraum des Modells, damit sie bei jeder Pose am Körper haften).
+          // Nach oben laufen die Haare zu Büscheln zusammen, so entstehen Strähnen mit dunklen Lücken.
+          float h = uShell.x;
+          vec3 q = vObjPos * 70.0;
+          vec3 cq = floor(q / 5.0);
+          vec3 cc = (cq + 0.5 + (furHash(cq) - 0.5) * 0.8) * 5.0;
+          float clumpLen = 0.55 + 0.45 * furHash(cq + 7.0).x;
+          q = mix(q, cc, h * h * 0.55);
+          vec3 ci = floor(q);
+          float dmin = 9.0, len = 1.0;
+          for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+            vec3 c = ci + vec3(x, y, z);
+            vec3 r = furHash(c);
+            float dd = length(q - c - r);
+            if (dd < dmin) { dmin = dd; len = 0.5 + 0.5 * r.z; }
+          }
+          float rad = 0.6 * (1.0 - h * 0.75);
+          float cover = smoothstep(rad, rad * 0.55, dmin) * step(h, len * clumpLen + 0.02);
+          if (cover < 0.05) discard;
+          shellA = cover;
+        }
         // Wolf: fast schwarzer Schemen, nur ein feiner Saum in der Farbe des Nebels, Augen glühen
         float rimW = pow(1.0 - abs(dot(N, V)), 3.0);
         base = vec3(0.008, 0.008, 0.012);
@@ -2624,9 +2693,17 @@
           // Herdentier: Fellfarbe aus der Instanz
           albA = albC = vTint.rgb * (0.8 + 0.4 * fine);
           base = vTint.rgb * 0.1;
+          // Rücken dunkler als der Bauch, Haarspitzen heller als der Ansatz
+          albA *= mix(1.25, 0.8, smoothstep(-0.4, 0.7, N.y));
+          albC = albA;
         } else {
-          emissive += (skyHaze(-V) * 0.6 + vec3(0.12, 0.14, 0.18)) * rimW * 0.5;
+          emissive += (skyHaze(-V) * 0.6 + vec3(0.12, 0.14, 0.18)) * rimW * 0.5 * (uShell.y > 0.0 ? 0.6 + uShell.x : 1.0);
           emissive += vTint.rgb * step(2.0, glowMask) * 12.0;
+        }
+        if (uShell.y > 0.0) {
+          // Ansatz im Schatten der anderen Haare, Spitzen etwas heller
+          float hs = uShell.x;
+          albA *= mix(0.45, 1.2, hs); albC *= mix(0.45, 1.2, hs); ao *= mix(0.5, 1.0, hs);
         }
         emissive /= max(emScale, 0.3);
       }
@@ -2676,7 +2753,7 @@
       }
       col += emissive * emScale * wave * react * (0.85 + 0.15 * sin(t * 1.7 + vSeed * 30.0));
       col = applyFog(col, vWorldPos, uCamPos, t);
-      fragColor = vec4(clamp(col, vec3(0.0), vec3(30.0)), 1.0);
+      fragColor = vec4(clamp(col, vec3(0.0), vec3(30.0)), shellA);
     }`;
 
     const VS_FX = `#version 300 es
@@ -3723,11 +3800,39 @@
     function buildBatMesh() {
       const b = createGeometryBuilder();
       addLathe(b, 6, 6, (t) => [0, 0, -0.18 + t * 0.36], (t) => { const r = 0.06 * Math.sin(t * Math.PI) + 0.01; return [r, r]; }, 21, () => [0.8, 0.0, 0.0]);
+      // spitze Ohren
       for (const s of [-1, 1]) {
-        const pts = [[0.04, 0, -0.1], [0.35, 0.04, -0.12], [0.55, 0.0, 0.02], [0.42, 0, 0.12], [0.3, 0, 0.06], [0.2, 0, 0.14], [0.04, 0, 0.1]];
         const base = b.positions.length / 3;
-        pts.forEach(([x, y, z]) => b.pushVertex(s * x, y, z, 0, 1, 0, x, z + 0.5, 0.8, 0.0, x / 0.55, 21));
-        for (let k = 1; k < pts.length - 1; k++) b.pushTri(base, base + k, base + k + 1);
+        b.pushVertex(s * 0.02, 0.04, -0.15, 0, 0, -1, 0, 0, 0.8, 0, 0, 21);
+        b.pushVertex(s * 0.05, 0.04, -0.13, 0, 0, -1, 0, 0, 0.8, 0, 0, 21);
+        b.pushVertex(s * 0.045, 0.11, -0.16, 0, 0, -1, 0, 0, 0.8, 0, 0, 21);
+        b.pushTri(base, base + 1, base + 2);
+      }
+      // Flughaut als feines Gitter: Vorderkante folgt dem Arm, Hinterkante zwischen den Fingerspitzen bogig eingezogen.
+      // uv = (Spannweite, Tiefe), extra.y = 0.5 markiert die Flughaut, extra.z = Abstand zum Körper (Flügelschlag)
+      const NU = 16, NV = 6;
+      const tips = [[0, 0.14], [0.38, 0.2], [0.64, 0.22], [0.86, 0.17], [1.0, 0.0]];
+      const trail = (u) => {
+        for (let k = 1; k < tips.length; k++) {
+          const [u0, z0] = tips[k - 1], [u1, z1] = tips[k];
+          if (u <= u1) { const f = (u - u0) / (u1 - u0); return z0 + (z1 - z0) * f - 0.05 * Math.sin(f * Math.PI) * (k > 1 ? 1 : 0.4); }
+        }
+        return 0;
+      };
+      const lead = (u) => (u < 0.42 ? -0.1 - 0.035 * (u / 0.42) : -0.135 + 0.135 * Math.pow((u - 0.42) / 0.58, 1.4));
+      for (const s of [-1, 1]) {
+        const base = b.positions.length / 3;
+        for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
+          const u = i / NU, v = j / NV;
+          const x = 0.04 + u * 0.56;
+          const z = lead(u) + (trail(u) - lead(u)) * v;
+          const y = 0.025 * Math.sin(v * Math.PI) * (1 - u * 0.6) - 0.02 * u * u;
+          b.pushVertex(s * x, y, z, 0, 1, 0, u, v, 0.8, 0.5, x / 0.55, 21);
+        }
+        for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+          const a = base + j * (NU + 1) + i;
+          if (s > 0) b.pushQuad(a, a + 1, a + NU + 2, a + NU + 1); else b.pushQuad(a, a + NU + 1, a + NU + 2, a + 1);
+        }
       }
       b.computeSmoothNormals();
       return b;
@@ -3927,6 +4032,7 @@
         d.mesh = mesh;
         d.tint[0] = tint[0]; d.tint[1] = tint[1]; d.tint[2] = tint[2]; d.tint[3] = tint.length > 3 ? tint[3] : 1;
         d.anim[0] = 0; d.anim[1] = 0; d.anim[2] = 0; d.anim[3] = 0;
+        d.fur = 0; d.shells = 0;
         creatureDraws.push(d);
         return d;
       };
@@ -3965,6 +4071,7 @@
           // auf den letzten Schritten steigt der Wolf auf den Felsvorsprung
           const y = lerp(terrainHeight(x, z) - 0.05, spot.y, ease(f, 0.75, 1.0));
           const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
+          g.fur = 0.045; g.shells = 12;
           const yawOut = Math.atan2(-(spot.x - den.x), -(spot.z - den.z));
           const toBoat = Math.atan2(-(cam[0] - x), -(cam[2] - z));
           // Körper dreht sich halb zum Boot, den Rest übernimmt der Kopf
@@ -4092,6 +4199,7 @@
             const x = lerp(x0, x1, p) + ox, z = lerp(z0, z1, p) + oz + zOff;
             const y = terrainHeight(x, z) - 0.05;
             const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
+            if (g) { g.fur = 0.035; g.shells = 6; }
             if (!g) break;
             const s = 3.2 + hash2(i, 322.0) * 0.8;
             const ph = t * 6.5 + i * 1.3;
@@ -4738,6 +4846,23 @@
         gl.uniform4fv(u.uAnim, cd.anim);
         gl.bindVertexArray(cd.mesh.vao);
         gl.drawElements(gl.TRIANGLES, cd.mesh.indexCount, gl.UNSIGNED_INT, 0);
+      }
+      // Fell: dieselben Tiere noch einmal als Schichten nach außen (Shell-Technik). Die Haare sind ausgestanzt,
+      // ihre Ränder werden über die Kantenglättung (Alpha to Coverage) weich
+      if (!pass.reflect) {
+        gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+        for (const cd of creatureDraws) {
+          if (!cd.fur) continue;
+          setModel(cd.model, cd.tint, 0.0);
+          gl.uniform4fv(u.uAnim, cd.anim);
+          gl.bindVertexArray(cd.mesh.vao);
+          for (let i = 1; i <= cd.shells; i++) {
+            gl.uniform2f(u.uShell, i / cd.shells, cd.fur);
+            gl.drawElements(gl.TRIANGLES, cd.mesh.indexCount, gl.UNSIGNED_INT, 0);
+          }
+        }
+        gl.uniform2f(u.uShell, 0, 0);
+        gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       }
       gl.uniform4f(u.uAnim, 0, 0, 0, 0);
       if (boat.mesh && boat.tex) {
