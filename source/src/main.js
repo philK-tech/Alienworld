@@ -570,7 +570,7 @@ function render(now) {
       w = Math.max(0, 1 - Math.max(0, off - 0.5) / 0.5);
       gl.uniform2f(progComposite.u.uRayUV, sx, sy);
     }
-    w *= camZone[0] * 1.6 + camZone[2] * 0.5;
+    w *= camZone[0] * 4.0 + camZone[2] * 0.8;
     gl.uniform1f(progComposite.u.uRayW, w);
     gl.uniform3fv(progComposite.u.uRayCol, camZone[2] > camZone[0] ? [1.0, 0.92, 0.75] : [0.95, 0.8, 0.5]);
   }

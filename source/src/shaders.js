@@ -1312,8 +1312,8 @@ void main() {
     for (int i = 0; i < N; i++) {
       uv -= delta;
       vec3 sCol = texture(uRayTex, uv).rgb;
-      sum += max(dot(sCol, vec3(0.3, 0.5, 0.2)) - 0.04, 0.0) * decay;
-      decay *= 0.955;
+      sum += max(dot(sCol, vec3(0.3, 0.5, 0.2)) - 0.02, 0.0) * decay;
+      decay *= 0.965;
     }
     float fall = exp(-length((vUv - uRayUV) * vec2(uScreen.x / uScreen.y, 1.0)) * 1.6);
     hdr += uRayCol * min(sum / float(N) * uRayW * fall, 0.6);
