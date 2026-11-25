@@ -113,7 +113,7 @@ function buildWorld() {
   // ---------------- Zone 1: finsterer Nebelwald ----------------
   // genau ein Wasserfall, an einer Felskante am rechten Ufer
   {
-    const fz = -34, side = -1;
+    const fz = -34, side = 1;
     const cx = riverCenterX(fz), hw = riverHalfWidth(fz);
     const cliffX = cx + side * (hw + 1.8);
     const yaw = side < 0 ? Math.PI * 0.42 : -Math.PI * 0.42;

@@ -109,8 +109,8 @@ function updateCopies(camZ) {
   }
 }
 
-world.waterfalls.forEach((wf) => staticPois.push({ x: wf.x, y: wf.isSkyFall ? wf.y * 0.6 : wf.y * 0.5, z: wf.z, w: wf.isSkyFall ? 0.9 : 0.8 }));
-world.floatingPeaks.forEach((pk) => { if (pk.fall) staticPois.push({ x: pk.x, y: pk.y, z: pk.z, w: 0.7 }); });
+world.waterfalls.forEach((wf) => staticPois.push({ x: wf.x, y: wf.isSkyFall ? wf.y * 0.6 : wf.y * 0.5, z: wf.z, w: wf.isSkyFall ? 0.9 : 0.8, sky: wf.isSkyFall }));
+world.floatingPeaks.forEach((pk) => { if (pk.fall) staticPois.push({ x: pk.x, y: pk.y, z: pk.z, w: 0.7, sky: true }); });
 
 // Puffer für die Staubwolken (wird jedes Bild neu befüllt)
 const dustVao = gl.createVertexArray();
@@ -424,7 +424,8 @@ function render(now) {
   updateAudio(camZone, sceneGrowl);
 
   // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten
-  let tYaw = Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12;
+  // im Nebelwald bleibt der Blick zwischen den Szenen in der Mitte (Wasserfall rechts, Wolf links, Schloss rechts)
+  let tYaw = (Math.sin(t * 0.11) * 0.55 + Math.sin(t * 0.27 + 1.3) * 0.25 + 0.12) * (1.0 - camZone[0] * 0.85);
   let tPitch = 0.06 + Math.sin(t * 0.15 + 0.5) * 0.08;
   let best = null, bestScore = 0;
   const consider = (p) => {
@@ -439,7 +440,8 @@ function render(now) {
   pois.forEach(consider);
   for (const p of staticPois) {
     const d = aheadDist(zCur, p.z);
-    if (d > 9 && d < 80) consider({ x: p.x, y: p.y, z: zCur - d, w: p.w });
+    // kurzer Blick: nur in einem schmalen Fenster vor dem Wasserfall bzw. Felsen
+    if (d > 9 && d < (p.sky ? 80 : 30)) consider({ x: p.x, y: p.y, z: zCur - d, w: p.w });
   }
   if (best) {
     tYaw = best.rel;
@@ -570,11 +572,21 @@ function render(now) {
       w = Math.max(0, 1 - Math.max(0, off - 0.5) / 0.5);
       gl.uniform2f(progComposite.u.uRayUV, sx, sy);
     }
-    w *= camZone[0] * 4.0 + camZone[2] * 0.8;
+    w *= camZone[2] * 0.8; // nur die Sonne über der Ebene (im Nebelwald wirkte der Mond sonst wie eine Sonne)
     gl.uniform1f(progComposite.u.uRayW, w);
     gl.uniform3fv(progComposite.u.uRayCol, camZone[2] > camZone[0] ? [1.0, 0.92, 0.75] : [0.95, 0.8, 0.5]);
   }
   gl.uniform1f(progComposite.u.uGrain, zoneMix(0.05, 0.035, 0.02));
+  // Hitzeflimmern über der fernen Ebene: Bildschirmhöhe des Horizonts in Blickrichtung
+  {
+    const fx = camTarget[0] - camEye[0], fz = camTarget[2] - camEye[2], fl = Math.hypot(fx, fz) || 1;
+    const p = [camEye[0] + fx / fl * 2000, camEye[1], camEye[2] + fz / fl * 2000];
+    const m = viewProjMat;
+    const cy = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+    const cw = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    gl.uniform1f(progComposite.u.uHorizon, cw > 0 ? cy / cw * 0.5 + 0.5 : -1);
+    gl.uniform1f(progComposite.u.uHeat, camZone[2]);
+  }
   fullscreenPass(null, canvas.width, canvas.height);
   gl.activeTexture(gl.TEXTURE0);
 

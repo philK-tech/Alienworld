@@ -1285,6 +1285,8 @@ uniform vec2 uRayUV;         // Bildschirmposition von Mond bzw. Sonne
 uniform float uRayW;         // Stärke der Strahlen (0 = aus)
 uniform vec3 uRayCol;
 uniform float uGrain;
+uniform float uHorizon;      // Bildschirmhöhe des Horizonts (0..1)
+uniform float uHeat;         // Stärke des Hitzeflimmerns (Ebene)
 
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
@@ -1297,7 +1299,14 @@ void main() {
   float r2 = dot(c, c);
   // Farbsäume wie bei einem Objektiv: in der Bildmitte null, zum Rand hin wachsend (nach The Ninth Vigil)
   vec2 ca = c * r2 * 0.012;
-  vec3 sceneCol = vec3(texture(uSceneTex, vUv + ca).r, texture(uSceneTex, vUv).g, texture(uSceneTex, vUv - ca).b);
+  // Hitzeflimmern: ein schmales Band knapp unter dem Horizont (dort liegt die ferne Ebene) wabert leicht
+  vec2 uv0 = vUv;
+  if (uHeat > 0.01) {
+    float band = smoothstep(uHorizon - 0.2, uHorizon - 0.03, vUv.y) * (1.0 - smoothstep(uHorizon - 0.01, uHorizon + 0.03, vUv.y));
+    float wob = sin(vUv.y * 260.0 - uTime * 5.0 + sin(vUv.x * 37.0 + uTime * 1.7) * 2.5) + 0.5 * sin(vUv.y * 530.0 + vUv.x * 60.0 - uTime * 8.0);
+    uv0 += vec2(wob * 0.0011, wob * 0.0006) * band * uHeat;
+  }
+  vec3 sceneCol = vec3(texture(uSceneTex, uv0 + ca).r, texture(uSceneTex, uv0).g, texture(uSceneTex, uv0 - ca).b);
   if (any(isnan(sceneCol))) sceneCol = vec3(0.0);
   vec3 bloom = texture(uBloomTex, vUv).rgb;
   vec3 hdr = sceneCol + bloom * 0.55;
