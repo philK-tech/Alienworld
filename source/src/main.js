@@ -551,6 +551,30 @@ function render(now) {
   gl.uniform1f(progComposite.u.uTime, state.time);
   gl.uniform2f(progComposite.u.uScreen, canvas.width, canvas.height);
   gl.uniform1f(progComposite.u.uExposure, zoneMix(1.5, 1.6, 0.8));
+  // Lichtstrahlen: im Nebelwald vom gelben Mond, auf der Ebene schwächer von der Sonne
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, rt.bloom[Math.min(1, rt.bloom.length - 1)].tex);
+  gl.uniform1i(progComposite.u.uRayTex, 2);
+  {
+    const L = camZone[2] > camZone[0] ? SUN_C_DIR : MOON_A;
+    const p = [camEye[0] + L[0] * 1000, camEye[1] + L[1] * 1000, camEye[2] + L[2] * 1000, 1];
+    const m = viewProjMat;
+    const cx = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+    const cy = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+    const cw = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    let w = 0;
+    if (cw > 0) {
+      const sx = cx / cw * 0.5 + 0.5, sy = cy / cw * 0.5 + 0.5;
+      // ausblenden, wenn die Quelle weit außerhalb des Bildes liegt
+      const off = Math.max(Math.abs(sx - 0.5), Math.abs(sy - 0.5));
+      w = Math.max(0, 1 - Math.max(0, off - 0.5) / 0.5);
+      gl.uniform2f(progComposite.u.uRayUV, sx, sy);
+    }
+    w *= camZone[0] * 1.6 + camZone[2] * 0.5;
+    gl.uniform1f(progComposite.u.uRayW, w);
+    gl.uniform3fv(progComposite.u.uRayCol, camZone[2] > camZone[0] ? [1.0, 0.92, 0.75] : [0.95, 0.8, 0.5]);
+  }
+  gl.uniform1f(progComposite.u.uGrain, zoneMix(0.05, 0.035, 0.02));
   fullscreenPass(null, canvas.width, canvas.height);
   gl.activeTexture(gl.TEXTURE0);
 

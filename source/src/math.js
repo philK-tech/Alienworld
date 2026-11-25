@@ -191,3 +191,6 @@ const MOON_A = (() => {
   const l = Math.hypot(v[0], v[1], v[2]);
   return v.map((c) => c / l);
 })();
+
+// Sonnenrichtung auf der Ebene (wie SUN_C im Shader), für die Lichtstrahlen
+const SUN_C_DIR = [0.45, 0.72, -0.53];

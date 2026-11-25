@@ -243,7 +243,9 @@ let sceneDuck = 0.0;
 let sceneShake = 0.0; // Schütteln des Boots (Tentakel)
 let sceneRock = 0.0;  // Kippen des Boots im Takt der Tentakel (-1..1)
 let sceneStand = 0.0;
-let sceneGrowl = 0.0; // Lautstärke des Tentakelgrollens (audio.js) // Aufstehen und einen Schritt zurück im Boot (0..1)
+let sceneGrowl = 0.0;
+// auf Handys (Touch) sparsamer: weniger Fellschichten, die ferne Herde ganz ohne
+const LOW_POWER = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches; // Lautstärke des Tentakelgrollens (audio.js) // Aufstehen und einen Schritt zurück im Boot (0..1)
 // Staubwolken: je Wolke x, y, z, Größe, Deckkraft
 const DUST_MAX = 240;
 const dustData = new Float32Array(DUST_MAX * 5);
@@ -315,7 +317,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
       // auf den letzten Schritten steigt der Wolf auf den Felsvorsprung
       const y = lerp(terrainHeight(x, z) - 0.05, spot.y, ease(f, 0.75, 1.0));
       const g = take(creatureMeshes.wolf, [1.0, 0.65, 0.2]);
-      g.fur = 0.045; g.shells = 12;
+      g.fur = 0.045; g.shells = LOW_POWER ? 7 : 12;
       const yawOut = Math.atan2(-(spot.x - den.x), -(spot.z - den.z));
       const toBoat = Math.atan2(-(cam[0] - x), -(cam[2] - z));
       // Körper dreht sich halb zum Boot, den Rest übernimmt der Kopf
@@ -443,7 +445,7 @@ function updateCreatures(camZ, t, sceneIdx, sceneT, cam) {
         const x = lerp(x0, x1, p) + ox, z = lerp(z0, z1, p) + oz + zOff;
         const y = terrainHeight(x, z) - 0.05;
         const g = take(creatureMeshes.herd, [0.32, 0.22, 0.14, 0]);
-        if (g) { g.fur = 0.035; g.shells = 6; }
+        if (g && !LOW_POWER) { g.fur = 0.035; g.shells = 5; }
         if (!g) break;
         const s = 3.2 + hash2(i, 322.0) * 0.8;
         const ph = t * 6.5 + i * 1.3;

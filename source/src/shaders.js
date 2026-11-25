@@ -351,8 +351,14 @@ void main() {
     float flap = sin(ph) * 0.6 + sin(uTime * 1.1 + uAnim.x) * 0.15;
     p.y += flap * pow(aExtra.z, 1.3) * 0.75;
   } else if (matId == 22) {
-    // Springfisch: Schwanzschlag
-    p.x += sin(uTime * 16.0 + uAnim.x - aExtra.z * 5.0) * 0.09 * aExtra.z;
+    // Springfisch: Körperwelle wie bei echten Fischen (nach dem Schwimmer-Modell aus procedural-animals, MIT):
+    // die Welle läuft vom Kopf zum Schwanz, ihre Weite wächst nach hinten stark an, und der Kopf pendelt
+    // leicht gegen den Schwanzschlag. Die Brustflossen rudern.
+    float u = clamp(aExtra.z / 1.2, 0.0, 1.0);
+    float ph = uTime * 11.0 + uAnim.x;
+    float env = 0.11 * exp(2.6 * (u - 1.0)) + 0.01;
+    p.x += env * sin(ph - u * 5.5) - 0.025 * sin(ph) * (1.0 - u);
+    if (abs(aPos.x) > 0.075 && aPos.y < -0.03 && aPos.z < 0.0) p.y += 0.035 * sin(ph * 0.6) * (abs(aPos.x) - 0.075) * 8.0;
   } else if (matId == 34 && uAnim.y > 0.0) {
     // Tentakel in der Szene, jeder mit eigener Bewegung:
     // uAnim.x Phase, uAnim.y Stärke, uAnim.z Tempo, uAnim.w Stil (Nachkomma = Anteil Spiralbewegung, ganzzahlig = Einrollen der Spitze)
@@ -870,14 +876,20 @@ void main() {
   } else if (matId == 22) {
     // Leuchtfisch: dunkler Rücken, heller Bauch, Schuppenmuster, leuchtende Seitenlinie mit Pulsen, glühende Flossenränder
     float up = smoothstep(-0.6, 0.8, N.y);
-    vec2 sc = vec2(vUv.x * 60.0, vUv.y * 40.0);
-    sc.x += floor(sc.y) * 0.5;
-    float scale = smoothstep(0.35, 0.5, length(fract(sc) - 0.5));
+    // überlappende Schuppen: Reihen versetzt, der runde Rand zeigt zum Schwanz
+    vec2 sc = vec2(vUv.x * 70.0, vUv.y * 34.0);
+    sc.x += mod(floor(sc.y), 2.0) * 0.5;
+    vec2 fsc = fract(sc) - vec2(0.5, 0.0);
+    float scale = smoothstep(0.4, 0.52, length(vec2(fsc.x, fsc.y * 1.15)));
+    // Schillern: Farbe wechselt mit dem Blickwinkel
+    float fres3 = pow(1.0 - abs(dot(N, V)), 2.0);
+    vec3 irid = 0.5 + 0.5 * cos(6.28318 * (fres3 * 1.3 + vUv.y * 0.6 + vec3(0.0, 0.33, 0.67)));
     base = mix(vec3(0.05, 0.06, 0.09), vec3(0.01, 0.02, 0.05), up) * (0.75 + 0.35 * scale);
     albA = albC = mix(vec3(0.45, 0.5, 0.55), vec3(0.08, 0.12, 0.2), up) * (0.75 + 0.35 * scale);
     float side = exp(-pow((vUv.x - 0.25) * 14.0, 2.0)) + exp(-pow((vUv.x - 0.75) * 14.0, 2.0));
     float pulse = 0.6 + 0.4 * sin(vUv.y * 30.0 - t * 8.0);
-    emissive += vTint.rgb * (side * 1.8 * pulse + scale * 0.12 + 0.05);
+    albA += irid * 0.12 * (1.0 - scale) * (1.0 - up * 0.5); albC += irid * 0.12 * (1.0 - scale);
+    emissive += vTint.rgb * (side * 1.8 * pulse + scale * 0.12 + 0.05) + irid * vTint.rgb * fres3 * 0.25;
     emissive += vTint.rgb * min(glowMask, 1.0) * 1.2;
     emissive += vec3(1.0, 0.9, 0.6) * step(2.0, glowMask) * 3.0;
     wet = 1.0;
@@ -1265,27 +1277,59 @@ in vec2 vUv;
 out vec4 fragColor;
 uniform sampler2D uSceneTex;
 uniform sampler2D uBloomTex;
+uniform sampler2D uRayTex;   // verkleinerte helle Bildteile (Bloom-Stufe) als Quelle der Lichtstrahlen
 uniform float uTime;
 uniform vec2 uScreen;
 uniform float uExposure;
+uniform vec2 uRayUV;         // Bildschirmposition von Mond bzw. Sonne
+uniform float uRayW;         // Stärke der Strahlen (0 = aus)
+uniform vec3 uRayCol;
+uniform float uGrain;
 
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
+// Interleaved Gradient Noise: räumliches Rauschen ohne Muster (gegen Streifen beim Abtasten)
+float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 
 void main() {
-  vec3 sceneCol = texture(uSceneTex, vUv).rgb;
+  vec2 c = vUv - 0.5;
+  float r2 = dot(c, c);
+  // Farbsäume wie bei einem Objektiv: in der Bildmitte null, zum Rand hin wachsend (nach The Ninth Vigil)
+  vec2 ca = c * r2 * 0.012;
+  vec3 sceneCol = vec3(texture(uSceneTex, vUv + ca).r, texture(uSceneTex, vUv).g, texture(uSceneTex, vUv - ca).b);
   if (any(isnan(sceneCol))) sceneCol = vec3(0.0);
   vec3 bloom = texture(uBloomTex, vUv).rgb;
   vec3 hdr = sceneCol + bloom * 0.55;
+
+  // Lichtstrahlen: von jedem Pixel zur Lichtquelle hin die hellen Bildteile aufsammeln und abklingen lassen.
+  // Dunkle Silhouetten (Bäume, Türme) unterbrechen die Strahlen von selbst.
+  if (uRayW > 0.001) {
+    const int N = 28;
+    vec2 delta = (vUv - uRayUV) * (0.9 / float(N));
+    vec2 uv = vUv - delta * ign(gl_FragCoord.xy);
+    float decay = 1.0, sum = 0.0;
+    for (int i = 0; i < N; i++) {
+      uv -= delta;
+      vec3 sCol = texture(uRayTex, uv).rgb;
+      sum += max(dot(sCol, vec3(0.3, 0.5, 0.2)) - 0.04, 0.0) * decay;
+      decay *= 0.955;
+    }
+    float fall = exp(-length((vUv - uRayUV) * vec2(uScreen.x / uScreen.y, 1.0)) * 1.6);
+    hdr += uRayCol * min(sum / float(N) * uRayW * fall, 0.6);
+  }
+
   hdr *= uExposure;
   // kühle Schatten, leicht türkise Mitten
   float lum = dot(hdr, vec3(0.2126, 0.7152, 0.0722));
   hdr = mix(hdr, hdr * vec3(0.85, 1.0, 1.15), smoothstep(0.2, 0.0, lum) * 0.5);
   vec3 ldr = aces(hdr);
   ldr = pow(ldr, vec3(1.0 / 2.2));
-  vec2 c = vUv - 0.5;
-  ldr *= 1.0 - dot(c, c) * 0.55;
+  ldr *= 1.0 - r2 * 0.55;
+  // Filmkorn: einfarbig, in den Mitten am stärksten, in tiefem Schwarz und hellen Lichtern schwach
+  float l2 = dot(ldr, vec3(0.299, 0.587, 0.114));
+  float g = ign(gl_FragCoord.xy + vec2(fract(uTime * 7.31), fract(uTime * 3.17)) * 211.0) - 0.5;
+  ldr += g * uGrain * smoothstep(0.0, 0.12, l2) * (1.0 - smoothstep(0.6, 1.0, l2));
   // Dithering gegen Farbstufen in den dunklen Verläufen
   float n = fract(sin(dot(gl_FragCoord.xy + fract(uTime) * 61.0, vec2(12.9898, 78.233))) * 43758.5453);
   ldr += (n - 0.5) / 255.0;
