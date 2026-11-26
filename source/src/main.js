@@ -22,6 +22,16 @@ function toggleRun() {
   state.lastFrame = performance.now();
 }
 
+// Testhilfe: #figs stellt alle gebackenen Figuren nebeneinander vor die Startposition, #figs&clip=roar spielt einen Clip
+if (/figs/.test(location.hash)) {
+  const clip = (/clip=(\w+)/.exec(location.hash) || [0, "idle"])[1];
+  ["hero", "skeleton", "cultist", "wraith", "hellhound", "boss"].forEach((n, i) => {
+    const f = spawnFigure(n, { x: riverCenterX(-12) + (i - 2.5) * 2.4, y: 0.0, z: -12 - (n === "boss" ? 2 : 0), yaw: 0 });
+    const tryPlay = () => (f.ready ? f.play(clip, 0) || f.play("idle", 0) : setTimeout(tryPlay, 100));
+    tryPlay();
+  });
+}
+
 btnToggle.addEventListener("click", toggleRun);
 btnAudio.addEventListener("click", () => setAudio(!audioEnabled));
 // Browser erlauben Ton erst nach einer Bedienung: beim ersten Tippen oder Klicken einschalten,
@@ -222,6 +232,8 @@ function drawScene(pass) {
     gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
   }
   gl.uniform4f(u.uAnim, 0, 0, 0, 0);
+  // gebackene Figuren (figures.js) mit eigenem Skinning-Shader
+  drawFigures(pass, vp, cam);
   if (boat.mesh && boat.tex) {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, boat.tex);
@@ -421,6 +433,7 @@ function render(now) {
   // kurzes Ducken der Kamera (Fledermausschwarm), wirkt nach dem Aufruf der Tiere im nächsten Bild
   ridePos[0] = bx; ridePos[1] = 1.2; ridePos[2] = zCur;
   updateCreatures(zCur, t, scene.idx, scene.t, camEye);
+  updateFigures(dt);
   updateAudio(camZone, sceneGrowl);
 
   // Blick: sanftes Umherschauen, dazu Hinwenden zu Tieren und Sehenswürdigkeiten

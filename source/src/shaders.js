@@ -893,6 +893,14 @@ void main() {
     emissive += vTint.rgb * min(glowMask, 1.0) * 1.2;
     emissive += vec3(1.0, 0.9, 0.6) * step(2.0, glowMask) * 3.0;
     wet = 1.0;
+  } else if (matId == 40) {
+    // gebackene Figur (figures.js): Grundfarbe aus dem Vertex (sRGB), Leuchtmaske in vUv.x, Färbung über uTint
+    vec3 c = pow(max(vExtra, vec3(0.0)), vec3(2.2)) * vTint.rgb;
+    base = c * 0.35;
+    albA = albC = c;
+    ao = 1.0;
+    emissive += c * vUv.x * 1.5 / max(emScale, 0.3);
+    rough = 0.65;
   } else if (matId == 23 || matId == 24) {
     if (uShell.y > 0.0) {
       // Fellschicht: einzelne Haare (Worley-Punkte im Ruheraum des Modells, damit sie bei jeder Pose am Körper haften).
