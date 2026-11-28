@@ -1,6 +1,6 @@
 # Alienworld
 
-Eine nächtliche Fahrt durch eine leuchtende Schlucht mit Wasserfällen, Riesenpilzen und Quallen. Alles wird per Code erzeugt (WebGL2), ohne Bilder, Modelle oder Sounddateien.
+Eine Bootsfahrt in WebGL2 durch drei Landschaften: Nebelwald mit Schloss, Pilzwald und offene Ebene mit Schwebefelsen, dazu Tiere und kleine Szenen am Ufer. Landschaft, Tiere und Ton werden per Code erzeugt; von außen kommen nur Bootsmodell und Bootstextur. Das Ergebnis ist eine einzelne HTML-Datei ohne Abhängigkeiten.
 
 ## Ausprobieren
 
@@ -50,6 +50,7 @@ Dafür reicht Node.js 18 oder neuer, Pakete müssen nicht installiert werden.
 | `source/src/math.js` | Hilfsfunktionen, Noise, Flussverlauf, Mat4 |
 | `source/src/geometry.js` | Geometrie-Builder und Upload auf die GPU |
 | `source/src/meshes.js` | Prozedurale Meshes: Terrain, Felsen, Wasserfälle, Bäume, Pilze, Quallen |
+| `source/src/sdfmesh.js` | Organische Formen aus weich verschmolzenen Grundkörpern (SDF, Surface Nets), etwa für Tiere |
 | `source/src/shaders.js` | GLSL-Shader: Materialien, Himmel, Nebel, Wasser, Bloom und Tonemapping |
 | `source/src/world.js` | Platzierung aller Objekte entlang der Strecke |
 | `source/src/renderer.js` | Render-Targets: HDR mit MSAA, Spiegelbild, Bloom-Kette |
@@ -61,3 +62,7 @@ Dafür reicht Node.js 18 oder neuer, Pakete müssen nicht installiert werden.
 | `source/src/main.js` | Zustand, Steuerung, Kamerafahrt und Render-Loop |
 
 Die Dateien in `src` werden in der Reihenfolge aus `build.mjs` aneinandergehängt und laufen in einer gemeinsamen Funktion. Variablen aus früheren Dateien sind in späteren direkt verfügbar.
+
+## Lizenz
+
+MIT, siehe `LICENSE`. Das gilt für den Quellcode. Bootsmodell und Textur in `source/assets/` sind ausgenommen; für sie gelten die Bedingungen ihrer Quelle.
