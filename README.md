@@ -1,6 +1,6 @@
 # Alienworld
 
-Eine Bootsfahrt in WebGL2 durch drei Landschaften: Nebelwald mit Schloss, Pilzwald und offene Ebene mit Schwebefelsen, dazu Tiere und kleine Szenen am Ufer. Landschaft, Tiere und Ton werden per Code erzeugt; von außen kommen nur Bootsmodell und Bootstextur. Das Ergebnis ist eine einzelne HTML-Datei ohne Abhängigkeiten.
+Eine Bootsfahrt in WebGL2 durch drei Landschaften: Nebelwald mit Schloss, Pilzwald und offene Ebene mit Schwebefelsen, dazu Tiere und kleine Szenen am Ufer. Landschaft, Tiere und Ton werden per Code erzeugt; einzige Ausnahme ist das selbst erstellte Bootsmodell mit Textur. Das Ergebnis ist eine einzelne HTML-Datei ohne Abhängigkeiten.
 
 ## Ausprobieren
 
@@ -65,4 +65,4 @@ Die Dateien in `src` werden in der Reihenfolge aus `build.mjs` aneinandergehäng
 
 ## Lizenz
 
-MIT, siehe `LICENSE`. Das gilt für den Quellcode. Bootsmodell und Textur in `source/assets/` sind ausgenommen; für sie gelten die Bedingungen ihrer Quelle.
+MIT, siehe `LICENSE`. Das gilt auch für Bootsmodell und Textur in `source/assets/` (eigene Erstellung).
